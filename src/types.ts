@@ -47,7 +47,7 @@ export interface ContentBlockLike {
 export interface ToolExecutionLike {
   name: string;
   arguments: { command?: string } & Record<string, unknown>;
-  agent?: { ctx?: DshContext };
+  agent?: { ctx?: Pick<DshContext, 'shell'> };
 }
 
 /** Subset of the host's `ToolExecutionResult`. */
@@ -64,9 +64,19 @@ export interface PostToolDecisionLike {
   feedback?: ContentBlockLike[];
 }
 
+/** Subset of the host's `PreToolDecision`. */
+export interface PreToolDecisionLike {
+  kind: 'allow' | 'deny' | 'ask';
+  reason?: string;
+}
+
 /** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
   | ((payload: { ctx?: DshContext }) => void)
+  | ((
+      exec: ToolExecutionLike,
+      next: () => Promise<PreToolDecisionLike>,
+    ) => Promise<PreToolDecisionLike>)
   | ((
       exec: ToolExecutionLike,
       result: ToolResultLike,

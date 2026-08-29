@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { registerMintContext } from './context.js';
+import { installPlanBinding } from './planbind.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
 import type { DshContext } from './types.js';
 
@@ -32,4 +33,5 @@ export function apply(ctx: DshContext, _config: Config): void {
   });
   installCommitReminder(ctx);
   installFailureSignal(ctx);
+  installPlanBinding(ctx);
 }
