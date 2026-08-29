@@ -7,36 +7,6 @@
  * consume). Verify against the live host with `cordis_inspect_*` at load time.
  */
 
-/** Subset of the host's `CollectedOutput`. */
-interface CollectedOutputLike {
-  text: string;
-}
-
-/** Subset of the host's `ShellRunResult`. */
-export interface ShellRunResultLike {
-  exitCode: number | null;
-  stdout: CollectedOutputLike;
-  stderr: CollectedOutputLike;
-}
-
-/** Subset of the host's resolved `ShellExecSpec`. */
-export interface ShellSpecLike {
-  command: string;
-  workdir: string;
-  timeoutMs: number;
-}
-
-/** Subset of the host's `ctx.shell` (ShellExecutor). */
-export interface ShellLike {
-  resolve(request: { command: string; timeoutMs?: number }): ShellSpecLike;
-  run(spec: ShellSpecLike): Promise<ShellRunResultLike>;
-}
-
-/** Subset of the host's `systemPrompt` service. */
-export interface SystemPromptLike {
-  context(spec: { name: string; order: number; text: string | (() => string) }): () => void;
-}
-
 /** Subset of a host text content block. */
 export interface ContentBlockLike {
   type: 'text';
@@ -47,7 +17,7 @@ export interface ContentBlockLike {
 export interface ToolExecutionLike {
   name: string;
   arguments: { command?: string } & Record<string, unknown>;
-  agent?: { ctx?: Pick<DshContext, 'shell'> };
+  agent?: { session?: { header?: { cwd?: string } } };
 }
 
 /** Subset of the host's `ToolExecutionResult`. */
@@ -79,16 +49,27 @@ export interface ToolDefinitionLike {
     schema: Record<string, unknown>;
     render: (args: unknown, value: unknown) => ContentBlockLike[];
   };
-  execute: (args: unknown) => Promise<unknown>;
+  execute: (args: unknown, exec: ToolExecutionLike) => Promise<unknown>;
 }
 
 export interface ToolsLike {
   register(definition: ToolDefinitionLike): () => void;
 }
 
+/** Subset of the host's `systemPrompt` service. */
+export interface SystemPromptLike {
+  context(spec: { name: string; order: number; text: string | (() => string) }): () => void;
+}
+
+/** Subset of the host `Agent` published by `agent/session-start`. */
+export interface AgentLike {
+  ctx: DshContext;
+  session: { header: { cwd?: string } };
+}
+
 /** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
-  | ((payload: { ctx?: DshContext }) => void)
+  | ((payload: { agent?: AgentLike }) => void)
   | ((
       exec: ToolExecutionLike,
       next: () => Promise<PreToolDecisionLike>,
@@ -107,6 +88,5 @@ export type EventListener =
 export interface DshContext {
   on(event: string, listener: EventListener): () => void;
   systemPrompt?: SystemPromptLike;
-  shell?: ShellLike;
   tools?: ToolsLike;
 }

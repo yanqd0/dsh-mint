@@ -1,5 +1,5 @@
 import { runMint } from './mint.js';
-import type { ContentBlockLike, DshContext, ShellLike, ToolDefinitionLike } from './types.js';
+import type { ContentBlockLike, DshContext, ToolDefinitionLike, ToolExecutionLike } from './types.js';
 
 export type QueryScope = 'issue' | 'plan' | 'milestone';
 
@@ -107,9 +107,9 @@ export interface QueryResult {
   error?: string;
 }
 
-/** Run a mint query through the host shell and return a compact summary. */
-export async function executeQuery(shell: ShellLike, args: MintQueryArgs): Promise<QueryResult> {
-  const result = await runMint(shell, buildMintArgs(args));
+/** Run a mint query in the project directory and return a compact summary. */
+export async function executeQuery(cwd: string, args: MintQueryArgs): Promise<QueryResult> {
+  const result = await runMint(cwd, buildMintArgs(args));
   if (!result.ok) {
     return { ok: false, error: result.error ?? 'mint query failed' };
   }
@@ -128,11 +128,16 @@ export function renderQuery(value: unknown): string {
   return JSON.stringify(value, null, 2);
 }
 
-/** Register the `mint_query` tool on `ctx.tools` (closure over ctx.shell). */
+/**
+ * Register the `mint_query` tool on `ctx.tools`.
+ *
+ * The execute handler resolves the session's project directory from the tool
+ * execution (`exec.agent.session.header.cwd`) and spawns mint there directly —
+ * the plugin's own process is not confined by the session file sandbox (#18).
+ */
 export function installMintQuery(ctx: DshContext): (() => void) | undefined {
   const tools = ctx.tools;
-  const shell = ctx.shell;
-  if (!tools || !shell) {
+  if (!tools) {
     return undefined;
   }
   const definition: ToolDefinitionLike = {
@@ -159,8 +164,9 @@ export function installMintQuery(ctx: DshContext): (() => void) | undefined {
       schema: { type: 'object', additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: renderQuery(value) } satisfies ContentBlockLike],
     },
-    execute: async (rawArgs) => {
-      const result = await executeQuery(shell, rawArgs as MintQueryArgs);
+    execute: async (rawArgs, exec: ToolExecutionLike) => {
+      const cwd = exec?.agent?.session?.header?.cwd ?? process.cwd();
+      const result = await executeQuery(cwd, rawArgs as MintQueryArgs);
       if (!result.ok) {
         throw new Error(result.error ?? 'mint_query failed');
       }

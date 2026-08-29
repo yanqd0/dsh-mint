@@ -1,32 +1,17 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { registerMintContext, renderOverview } from './context.js';
+import { fetchOverview, registerMintContext, renderOverview } from './context.js';
 import { runMint } from './mint.js';
-import type { DshContext, ShellLike, ShellSpecLike } from './types.js';
+import type { DshContext } from './types.js';
 
-function makeShell(
-  script: Array<{ exitCode?: number; stdout?: string; stderr?: string }>,
-): { shell: ShellLike; calls: string[] } {
-  const calls: string[] = [];
-  const runs = [...script];
-  const shell: ShellLike = {
-    resolve: (request) => {
-      calls.push(request.command);
-      return { command: request.command, workdir: '/proj', timeoutMs: request.timeoutMs ?? 30_000 };
-    },
-    run: (_spec: ShellSpecLike) => {
-      const step = runs.shift() ?? { stdout: '{}' };
-      return Promise.resolve({
-        exitCode: step.exitCode ?? 0,
-        stdout: { text: step.stdout ?? '' },
-        stderr: { text: step.stderr ?? '' },
-      });
-    },
-  };
-  return { shell, calls };
-}
+vi.mock('./mint.js', () => ({ runMint: vi.fn() }));
+const runMintMock = vi.mocked(runMint);
 
-function makeAgentCtx(shell?: ShellLike): {
+beforeEach(() => {
+  runMintMock.mockReset();
+});
+
+function makeAgentCtx(): {
   ctx: DshContext;
   registered: Array<{ name: string; order: number; text: string | (() => string) }>;
 } {
@@ -39,10 +24,38 @@ function makeAgentCtx(shell?: ShellLike): {
         return () => {};
       },
     },
-    ...(shell ? { shell } : {}),
   };
   return { ctx, registered };
 }
+
+describe('fetchOverview', () => {
+  it('queries issues and milestones in the project directory', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [{ id: 3, title: '实现上下文注入', kind: 'requirement', status: 'dev', priority: 1, labels: ['host'] }],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
+      });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.issues).toHaveLength(1);
+    expect(overview.issues[0]?.title).toBe('实现上下文注入');
+    expect(overview.milestones[0]?.version).toBe('0.1.0');
+    expect(runMintMock).toHaveBeenNthCalledWith(1, '/proj', ['list', '--json', '--no-page']);
+    expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['milestone', 'list', '--json']);
+  });
+
+  it('throws on mint failure', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: false, error: 'mint: db not found' });
+    await expect(fetchOverview('/proj')).rejects.toThrow('mint: db not found');
+  });
+});
 
 describe('renderOverview', () => {
   it('renders active issues and running milestone', () => {
@@ -83,17 +96,20 @@ describe('renderOverview', () => {
 });
 
 describe('registerMintContext', () => {
-  it('registers the context and loads overview once (cached)', async () => {
-    const { shell, calls } = makeShell([
-      {
-        stdout: JSON.stringify({
+  it('registers the context and loads the overview once (cached)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
           items: [{ id: 3, title: '实现上下文注入', kind: 'requirement', status: 'dev', priority: 1, labels: ['host'] }],
         }),
-      },
-      { stdout: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }) },
-    ]);
-    const { ctx, registered } = makeAgentCtx(shell);
-    registerMintContext(ctx);
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
+      });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
 
     expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
     const provider = registered[0]?.text as () => string;
@@ -104,15 +120,15 @@ describe('registerMintContext', () => {
     expect(text).toContain('#3');
     expect(text).toContain('running milestones: 0.1.0');
 
-    // cache: provider returns without extra shell calls
+    // cache: provider returns without extra mint calls
     expect(provider()).toBe(text);
-    expect(calls.length).toBe(2);
+    expect(runMintMock).toHaveBeenCalledTimes(2);
   });
 
   it('degrades to empty text on mint failure', async () => {
-    const { shell } = makeShell([{ exitCode: 1, stderr: 'mint: db not found' }]);
-    const { ctx, registered } = makeAgentCtx(shell);
-    registerMintContext(ctx);
+    runMintMock.mockResolvedValueOnce({ ok: false, error: 'mint: db not found' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
     const provider = registered[0]?.text as () => string;
 
     provider();
@@ -122,22 +138,6 @@ describe('registerMintContext', () => {
 
   it('returns undefined without a systemPrompt service', () => {
     const ctx: DshContext = { on: () => () => {} };
-    expect(registerMintContext(ctx)).toBeUndefined();
-  });
-});
-
-describe('runMint', () => {
-  it('resolves nonzero exit as an error, not a rejection', async () => {
-    const { shell } = makeShell([{ exitCode: 2, stderr: 'boom' }]);
-    const result = await runMint(shell, ['list', '--json']);
-    expect(result.ok).toBe(false);
-    expect(result.error).toBe('boom');
-  });
-
-  it('returns stdout text on success', async () => {
-    const { shell } = makeShell([{ stdout: '{"items":[]}' }]);
-    const result = await runMint(shell, ['list', '--json']);
-    expect(result.ok).toBe(true);
-    expect(result.text).toBe('{"items":[]}');
+    expect(registerMintContext(ctx, '/proj')).toBeUndefined();
   });
 });

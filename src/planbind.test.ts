@@ -1,30 +1,21 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { installPlanBinding, planBindListener } from './planbind.js';
-import type { DshContext, ShellLike, ShellSpecLike, ToolExecutionLike } from './types.js';
+import { runMint } from './mint.js';
+import type { DshContext, ToolExecutionLike } from './types.js';
 
-function makeShell(
-  script: Array<{ exitCode?: number; stdout?: string; stderr?: string }>,
-): ShellLike {
-  const runs = [...script];
-  return {
-    resolve: (request) => ({ command: request.command, workdir: '/proj', timeoutMs: request.timeoutMs ?? 30_000 }),
-    run: (_spec: ShellSpecLike) => {
-      const step = runs.shift() ?? { stdout: '{}' };
-      return Promise.resolve({
-        exitCode: step.exitCode ?? 0,
-        stdout: { text: step.stdout ?? '' },
-        stderr: { text: step.stderr ?? '' },
-      });
-    },
-  };
-}
+vi.mock('./mint.js', () => ({ runMint: vi.fn() }));
+const runMintMock = vi.mocked(runMint);
 
-function makeExec(name: string, shell?: ShellLike): ToolExecutionLike {
+beforeEach(() => {
+  runMintMock.mockReset();
+});
+
+function makeExec(name: string, cwd?: string): ToolExecutionLike {
   return {
     name,
     arguments: { command: '' },
-    ...(shell ? { agent: { ctx: { shell } } } : {}),
+    ...(cwd ? { agent: { session: { header: { cwd } } } } : {}),
   };
 }
 
@@ -32,20 +23,23 @@ const next = () => Promise.resolve({ kind: 'allow' as const });
 
 describe('planBindListener', () => {
   it('denies exit_plan_mode when no active mint plan', async () => {
-    const exec = makeExec('exit_plan_mode', makeShell([{ stdout: '{"items":[]}' }]));
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
+    const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
 
     expect(decision.kind).toBe('deny');
     expect(decision.reason).toContain('mint plan create');
     expect(spy).not.toHaveBeenCalled();
+    expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json']);
   });
 
   it('allows exit_plan_mode when an active plan exists', async () => {
-    const exec = makeExec(
-      'exit_plan_mode',
-      makeShell([{ stdout: '{"items":[{"id":5,"status":"open","title":"x"}]}' }]),
-    );
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"open","title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
 
@@ -54,72 +48,48 @@ describe('planBindListener', () => {
   });
 
   it('ignores terminal plans (all done)', async () => {
-    const exec = makeExec(
-      'exit_plan_mode',
-      makeShell([{ stdout: '{"items":[{"id":1,"status":"done","title":"a"}]}' }]),
-    );
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":1,"status":"done","title":"a"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
     const decision = await planBindListener(exec, vi.fn(next));
     expect(decision.kind).toBe('deny');
   });
 
-  it('defers to next() on a non-exit tool', async () => {
-    const exec = makeExec('bash');
+  it('defers to next() on a non-exit tool without touching mint', async () => {
+    const exec = makeExec('bash', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
-  });
-
-  it('never touches the shell for non-exit tools (fail-open, #16)', async () => {
-    const exec: ToolExecutionLike = {
-      name: 'bash',
-      arguments: { command: 'echo hi' },
-      agent: {
-        ctx: {
-          get shell(): ShellLike {
-            throw new Error('cannot get property "shell" without inject');
-          },
-        },
-      },
-    };
-    const spy = vi.fn(next);
-    const decision = await planBindListener(exec, spy);
-    expect(spy).toHaveBeenCalled();
-    expect(decision).toEqual({ kind: 'allow' });
+    expect(runMintMock).not.toHaveBeenCalled();
   });
 
   it('falls through to next() on mint failure', async () => {
-    const exec = makeExec('exit_plan_mode', makeShell([{ exitCode: 1, stderr: 'boom' }]));
+    runMintMock.mockResolvedValueOnce({ ok: false, error: 'boom' });
+    const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('falls through to next() when shell access throws (fail-open, #16)', async () => {
-    const exec: ToolExecutionLike = {
-      name: 'exit_plan_mode',
-      arguments: {},
-      agent: {
-        ctx: {
-          get shell(): ShellLike {
-            throw new Error('cannot get property "shell" without inject');
-          },
-        },
-      },
-    };
+  it('falls through to next() when the mint run throws (fail-open, #16)', async () => {
+    runMintMock.mockRejectedValueOnce(new Error('spawn exploded'));
+    const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('falls through to next() without a shell', async () => {
+  it('uses process.cwd() when the session has no cwd', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
     const exec = makeExec('exit_plan_mode');
-    const spy = vi.fn(next);
-    const decision = await planBindListener(exec, spy);
-    expect(spy).toHaveBeenCalled();
-    expect(decision).toEqual({ kind: 'allow' });
+    const decision = await planBindListener(exec, vi.fn(next));
+    expect(decision.kind).toBe('deny');
+    expect(runMintMock).toHaveBeenCalledWith(process.cwd(), ['plan', 'list', '--json']);
   });
 });
 

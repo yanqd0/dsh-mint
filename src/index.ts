@@ -4,17 +4,17 @@ import { registerMintContext } from './context.js';
 import { installPlanBinding } from './planbind.js';
 import { installMintQuery } from './query.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
-import type { DshContext } from './types.js';
+import type { AgentLike, DshContext } from './types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
 export const name = 'dsh-mint';
 
 /**
- * Services this plugin consumes on its own context. `tools`/`shell` must be
+ * Services this plugin consumes on its own (root) context. `tools` must be
  * declared here or cordis refuses the access (`cannot get property ... without
  * inject`). `systemPrompt` is consumed on `agent.ctx` (host-provided), not here.
  */
-export const inject = ['tools', 'shell'];
+export const inject = ['tools'];
 
 export const Config = z.object({
   /** Reserved for mount-line config — features land in #3–#6. */
@@ -31,9 +31,11 @@ export type Config = z.infer<typeof Config>;
  * - #5 (plan binding) and #6 (mint_query tool) land here as they ship.
  */
 export function apply(ctx: DshContext, _config: Config): void {
-  ctx.on('agent/session-start', (payload: { ctx?: DshContext }) => {
-    if (payload.ctx) {
-      registerMintContext(payload.ctx);
+  ctx.on('agent/session-start', (payload: { agent?: AgentLike }) => {
+    const agent = payload.agent;
+    const cwd = agent?.session.header.cwd;
+    if (agent?.ctx && cwd) {
+      registerMintContext(agent.ctx, cwd);
     }
   });
   installCommitReminder(ctx);

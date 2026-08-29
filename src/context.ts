@@ -1,5 +1,5 @@
 import { runMint } from './mint.js';
-import type { DshContext, ShellLike } from './types.js';
+import type { DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
 const TOP_ISSUES = 8;
@@ -25,10 +25,10 @@ export interface MintOverview {
 }
 
 /** Fetch the active-issue overview + milestone state via the mint CLI. */
-export async function fetchOverview(shell: ShellLike): Promise<MintOverview> {
+export async function fetchOverview(cwd: string): Promise<MintOverview> {
   const [issuesRes, msRes] = await Promise.all([
-    runMint(shell, ['list', '--json', '--no-page']),
-    runMint(shell, ['milestone', 'list', '--json']),
+    runMint(cwd, ['list', '--json', '--no-page']),
+    runMint(cwd, ['milestone', 'list', '--json']),
   ]);
   if (!issuesRes.ok) throw new Error(issuesRes.error ?? 'mint list failed');
   if (!msRes.ok) throw new Error(msRes.error ?? 'mint milestone list failed');
@@ -68,10 +68,11 @@ export function renderOverview(overview: MintOverview): string {
  * Register a systemPrompt context on an agent-scoped context.
  *
  * The text provider loads the mint overview once per session (cached, so the
- * shell is not hit on every assembly) and degrades silently to an empty
- * string on failure — it never blocks the prompt assembly.
+ * CLI is not hit on every assembly) and degrades silently to an empty string
+ * on failure — it never blocks the prompt assembly. `cwd` is the session's
+ * workspace (project) directory, which mint uses for project lookup.
  */
-export function registerMintContext(agentCtx: DshContext): (() => void) | undefined {
+export function registerMintContext(agentCtx: DshContext, cwd: string): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
   if (!sp) return undefined;
 
@@ -79,9 +80,8 @@ export function registerMintContext(agentCtx: DshContext): (() => void) | undefi
   let started = false;
 
   const load = async (): Promise<void> => {
-    if (!agentCtx.shell) return;
     try {
-      const overview = await fetchOverview(agentCtx.shell);
+      const overview = await fetchOverview(cwd);
       cached = renderOverview(overview);
     } catch {
       cached = '';

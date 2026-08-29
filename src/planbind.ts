@@ -12,9 +12,10 @@ const DENY_REASON =
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
  * active mint plan, keeping the host plan mechanism bound to a mint plan.
  *
- * The tool name is checked BEFORE any service access, and every service access
- * and mint call sits inside the try — a mint outage or a missing shell must
- * never break an unrelated tool call (fail-open; see #16).
+ * The tool name is checked BEFORE any service access, and the mint run sits
+ * inside the try — a mint outage must never break an unrelated tool call
+ * (fail-open; see #16). The session's project directory comes from the tool
+ * execution; the plugin spawns mint directly, outside the session sandbox (#18).
  */
 export async function planBindListener(
   exec: ToolExecutionLike,
@@ -24,11 +25,8 @@ export async function planBindListener(
     return next();
   }
   try {
-    const shell = exec.agent?.ctx?.shell;
-    if (!shell) {
-      return next();
-    }
-    const result = await runMint(shell, ['plan', 'list', '--json']);
+    const cwd = exec.agent?.session?.header?.cwd ?? process.cwd();
+    const result = await runMint(cwd, ['plan', 'list', '--json']);
     if (!result.ok) {
       return next();
     }
