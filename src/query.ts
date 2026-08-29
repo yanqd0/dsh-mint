@@ -151,12 +151,12 @@ export function installMintQuery(ctx: DshContext): (() => void) | undefined {
         kind: { type: 'string', enum: ['problem', 'requirement', 'task'], description: 'Filter issues by kind.' },
         plan: { type: 'integer', description: 'Filter issues by plan id.' },
         label: { type: 'string', description: 'Filter issues by label.' },
-        limit: { type: 'integer', minimum: 1, maximum: 50, description: 'Max results (default 10).' },
+        limit: { type: 'integer', description: 'Max results (default 10, capped at 50).' },
       },
       required: ['scope'],
     },
     output: {
-      schema: { type: 'json' },
+      schema: { type: 'object', additionalProperties: true },
       render: (_args, value) => [{ type: 'text', text: renderQuery(value) } satisfies ContentBlockLike],
     },
     execute: async (rawArgs) => {
