@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { registerMintContext } from './context.js';
+import { installCommitReminder, installFailureSignal } from './reminders.js';
 import type { DshContext } from './types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
@@ -16,23 +17,19 @@ export const Config = z.object({
 
 export type Config = z.infer<typeof Config>;
 
-interface SessionStartPayload {
-  /** Agent-scoped context (host `Agent.ctx`) — agent-local registration. */
-  ctx?: DshContext;
-}
-
 /**
  * Host-face entry.
  *
- * Registers the mint overview context on every agent session start (#3).
- * Event reminders (#4), plan binding (#5) and the mint_query tool (#6) land
- * here as they ship.
+ * - #3: mint overview context on every agent session start
+ * - #4: commit reminder (`tools/post-execute`) + failure signal (`tools/result`)
+ * - #5 (plan binding) and #6 (mint_query tool) land here as they ship.
  */
 export function apply(ctx: DshContext, _config: Config): void {
-  ctx.on('agent/session-start', (payload) => {
-    const agent = payload as SessionStartPayload;
-    if (agent.ctx) {
-      registerMintContext(agent.ctx);
+  ctx.on('agent/session-start', (payload: { ctx?: DshContext }) => {
+    if (payload.ctx) {
+      registerMintContext(payload.ctx);
     }
   });
+  installCommitReminder(ctx);
+  installFailureSignal(ctx);
 }

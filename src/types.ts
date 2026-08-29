@@ -37,12 +37,49 @@ export interface SystemPromptLike {
   context(spec: { name: string; order: number; text: string | (() => string) }): () => void;
 }
 
+/** Subset of a host text content block. */
+export interface ContentBlockLike {
+  type: 'text';
+  text: string;
+}
+
+/** Subset of the host's `ToolExecution` (bash tool: name 'bash', args.command). */
+export interface ToolExecutionLike {
+  name: string;
+  arguments: { command?: string } & Record<string, unknown>;
+  agent?: { ctx?: DshContext };
+}
+
+/** Subset of the host's `ToolExecutionResult`. */
+export interface ToolResultLike {
+  isError: boolean;
+  error?: { message?: string };
+  content: ContentBlockLike[];
+}
+
+/** Subset of the host's `PostToolDecision` (enrich = accept + content). */
+export interface PostToolDecisionLike {
+  kind: 'accept' | 'block';
+  content?: ContentBlockLike[];
+  feedback?: ContentBlockLike[];
+}
+
+/** Structural listener union for the events dsh-mint consumes. */
+export type EventListener =
+  | ((payload: { ctx?: DshContext }) => void)
+  | ((
+      exec: ToolExecutionLike,
+      result: ToolResultLike,
+      next: () => Promise<PostToolDecisionLike>,
+    ) => Promise<PostToolDecisionLike>)
+  | ((exec: ToolExecutionLike, result: ToolResultLike) => void);
+
 /**
- * Agent-scoped context received by `agent/session-start` listeners
- * (host `Agent.ctx`). Registration here is agent-local and unwinds on disposal.
+ * Agent-scoped context received by event listeners (host `Agent.ctx`).
+ * Registration here is agent-local and unwinds on disposal.
  */
 export interface DshContext {
-  on(event: string, listener: (payload: unknown) => void): () => void;
+  on(event: string, listener: EventListener): () => void;
   systemPrompt?: SystemPromptLike;
   shell?: ShellLike;
 }
