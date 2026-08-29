@@ -69,6 +69,22 @@ under the `user-dsh` source.
 - For runtime host-face signatures, prefer `cordis_inspect_list` /
   `cordis_inspect_query` over hardcoded examples.
 
+## 5. Workspace-write sessions and the `mint` CLI
+
+dsh-mint's own features (context injection, `mint_query`, plan binding) spawn
+the mint CLI as a host-trusted child process, so they work in every session
+mode. The agent's *manual* `mint ...` shell commands, however, run under DSH's
+file sandbox, which allows writes only to the session workspace, `/tmp`, and
+`os.tmpdir()` in `workspace-write` mode (hardcoded — see
+`dsh-sandbox` `writableRoots`). mint's database lives outside the workspace
+(`$XDG_DATA_HOME/mint/…`), so those manual commands are denied unless one of:
+
+| Option | Setup | Effect |
+| --- | --- | --- |
+| **Project-local db (recommended)** | `MINT_DB_PATH=$PWD/.mint/mint.db mint ...` (or export `XDG_DATA_HOME` per project; gitignore the file/dir) | `mint *` works in `workspace-write`; sandbox boundary unchanged |
+| Session-wide `danger-full-access` | `/permission danger-full-access` or `DSH_PERMISSION_MODE` | Everything allowed — widest boundary, use sparingly |
+| Extra writable roots | Not expressible today: the writable-root set is hardcoded and a session's cwd always overrides the configured fallback root (`dsh-sandbox-policy` `resolve()`). Allowing two roots (workspace + mint data dir) requires an upstream `deepseek-harness` change. | — |
+
 ## Publishing
 
 npm publishes to both npmjs (`dsh-mint`) and GitHub Packages
