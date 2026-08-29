@@ -1,2 +1,5 @@
 allowBuilds:
   esbuild: true
+  mint-faa: true
+minimumReleaseAgeExclude:
+  - mint-faa@0.7.0

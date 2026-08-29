@@ -22,15 +22,22 @@
   "files": [
     "dist"
   ],
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup",
+    "build": "tsup && node scripts/build-skill.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
     "format": "prettier --write .",
     "check-types": "tsc --noEmit",
     "pack:check": "pnpm pack --dry-run"
+  },
+  "dependencies": {
+    "mint-faa": "^0.7.0",
+    "zod": "^3.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.0.0",
