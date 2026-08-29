@@ -9,8 +9,12 @@ import type { DshContext } from './types.js';
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
 export const name = 'dsh-mint';
 
-/** Services this plugin consumes (filled in by #3–#6). */
-export const inject = {};
+/**
+ * Services this plugin consumes on its own context. `tools`/`shell` must be
+ * declared here or cordis refuses the access (`cannot get property ... without
+ * inject`). `systemPrompt` is consumed on `agent.ctx` (host-provided), not here.
+ */
+export const inject = ['tools', 'shell'];
 
 export const Config = z.object({
   /** Reserved for mount-line config — features land in #3–#6. */
