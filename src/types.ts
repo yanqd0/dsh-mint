@@ -70,6 +70,22 @@ export interface PreToolDecisionLike {
   reason?: string;
 }
 
+/** Subset of the host's tool registry (`ctx.tools`). */
+export interface ToolDefinitionLike {
+  name: string;
+  description: string;
+  parameters: Record<string, unknown>;
+  output: {
+    schema: Record<string, unknown>;
+    render: (args: unknown, value: unknown) => ContentBlockLike[];
+  };
+  execute: (args: unknown) => Promise<unknown>;
+}
+
+export interface ToolsLike {
+  register(definition: ToolDefinitionLike): () => void;
+}
+
 /** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
   | ((payload: { ctx?: DshContext }) => void)
@@ -92,4 +108,5 @@ export interface DshContext {
   on(event: string, listener: EventListener): () => void;
   systemPrompt?: SystemPromptLike;
   shell?: ShellLike;
+  tools?: ToolsLike;
 }
