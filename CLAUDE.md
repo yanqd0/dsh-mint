@@ -1,0 +1,42 @@
+# CLAUDE.md: dsh-mint 项目导航
+
+> 本文档是编程 AI 的项目导航：定位、硬约束与权威信息来源。
+
+## 定位
+
+DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、事件提醒、plan 绑定、mint_query 工具；客户端面 0.2.0：`conversation.view` 注册 mint tab（issue 面板）。
+
+## 硬约束
+
+- **依赖 mint CLI**（`--json` 输出），不直读 mint db；skill 安装走 `~/.dsh/skills/mint`（文档指引，见打包形态 issue）。
+- **npm 双名发布**：npmjs `dsh-mint` + GitHub Packages `@yanqd0/dsh-mint`（发布时临时改 name，见 docs/RELEASING.md）。
+- **engines `node >=20`**；CI 统一 node 22。
+- **宿主面不得有 client 构建依赖**；client bundle 须预构建（否则 MissingClientBundleError）。
+- **小步快跑、小提交**：每个逻辑变更独立 commit（Angular 前缀）。
+- **dogfooding**：用 mint 管理 dsh-mint 自身开发。
+- **文档分工**：对外默认英文（README/CONTRIBUTING/CHANGELOG/docs/）；对内默认中文（CLAUDE.md/notes/代码注释）。
+
+## issue/计划管理（mint）
+
+- issue/plan/milestone 由 mint CLI 管理（每项目独立 db）；流程见 mint skill。
+- **改码前门禁**：改某 issue 的代码前必须 `mint issue state start <id>`（dev）；commit 后立即 `state commit <id> --sha <前7位>`；同 plan 统一测试后 `state close --test-cmd`。
+
+## 架构事实（DSH 调研结论，写码前复核）
+
+- 组合行裸包名从 **harness 自身 node_modules** 解析；相对路径 `./` 随预设目录走；绝对路径亦支持。
+- 宿主面接口：`agent/session-start` 事件、`tools/post-execute`（enrich）、`tools/pre-execute`（allow/deny/ask）、`tools/result`、`systemPrompt.context/section`、`shell` 服务、`tools` 注册。
+- 客户端面：package.json `dsh.client` 声明 + 预构建 bundle；Slot `conversation.view`（list 注册 id/order/label）；Host RPC 走 `harness.handle` / `host.call`（仅 lossless JSON）。
+
+## 常用命令（工具链落地后启用）
+
+```bash
+pnpm dev           # 开发运行（tsx）
+pnpm build         # 构建 → dist/
+pnpm test          # 测试（vitest）
+pnpm lint          # ESLint
+pnpm check-types   # tsc --noEmit
+```
+
+## 文档导航
+
+- `docs/RELEASING.md`：发布流程（0.1.0 交付）。

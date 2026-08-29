@@ -1,0 +1,27 @@
+{
+  "name": "dsh-mint",
+  "version": "0.1.0-alpha.0",
+  "description": "DSH plugin: mint issue tracking integration — session context injection, event reminders, plan binding, mint_query tool, and a session tab.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yanqd0/dsh-mint.git"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "dsh",
+    "mint",
+    "issue",
+    "tracker",
+    "plugin"
+  ],
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "pack:check": "pnpm pack --dry-run"
+  }
+}
