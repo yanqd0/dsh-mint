@@ -23,7 +23,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 
 ## 架构事实（DSH 调研结论，写码前复核）
 
-- 组合行裸包名从 **harness 自身 node_modules** 解析；相对路径 `./` 随预设目录走；绝对路径亦支持。
+- 组合行裸包名从 **harness 自身 node_modules** 解析；相对路径 `./` 随预设目录走；绝对路径须指向**文件**（ESM 不导入目录）。**新插件必须 `insert:` 列表包裹**（裸 `- id/name` 是覆盖语义，报 `patch: entry not found`）；验证用 `dsh --profile web --dump-config`。
 - 宿主面接口：`agent/session-start` 事件、`tools/post-execute`（enrich）、`tools/pre-execute`（allow/deny/ask）、`tools/result`、`systemPrompt.context/section`、`shell` 服务、`tools` 注册。
 - 客户端面：package.json `dsh.client` 声明 + 预构建 bundle；Slot `conversation.view`（list 注册 id/order/label）；Host RPC 走 `harness.handle` / `host.call`（仅 lossless JSON）。
 

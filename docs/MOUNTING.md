@@ -13,22 +13,39 @@ bundled `mint` skill. `dsh-mint` resolves the `mint` CLI from its own
 ## 1. Install the plugin
 
 ```
-npm install -g dsh-mint            # or pnpm add dsh-mint in the profile
+npm install -g dsh-mint            # published package (bare name)
 ```
+
+Or skip publishing and mount a local build directly (dogfooding) — see below.
 
 ## 2. Add the mount line
 
-Edit `~/.dsh/profiles/<profile>/cordis.patch.yml`:
+Edit `~/.dsh/profiles/<profile>/cordis.patch.yml`. A **new** plugin is an
+`insert` list — a bare `- id/name` row is a config *override* and fails with
+`patch: entry "mint" not found`:
 
 ```yaml
-- id: mint
-  name: dsh-mint
-  config:
-    debug: false
+- insert:
+    - id: mint
+      name: dsh-mint
+      config:
+        debug: false
 ```
 
-Relative (`./`) and absolute paths are also accepted instead of a bare name;
-relative resolves from the profile directory.
+For a local build, point `name` at the built entry **file** (ESM does not
+import directories; `dist/index.js` must be explicit):
+
+```yaml
+- insert:
+    - id: mint
+      name: /path/to/dsh-mint/dist/index.js
+      config:
+        debug: false
+```
+
+Relative (`./dist/index.js`) paths resolve from the profile directory. Validate
+before restarting with `dsh --profile <profile> --dump-config` — the `mint` row
+must appear and no `patch:` warnings may be emitted.
 
 ## 3. Install the skill
 
@@ -45,6 +62,8 @@ under the `user-dsh` source.
 
 ## 4. Verify
 
+- `dsh --profile <profile> --dump-config` shows the `mint` row with no
+  `patch:` warnings (pre-boot check).
 - The mount line loads without errors (`dsh` session starts).
 - `~/.dsh/skills/mint/SKILL.md` is present.
 - For runtime host-face signatures, prefer `cordis_inspect_list` /
