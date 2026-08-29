@@ -70,8 +70,44 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
+  it('never touches the shell for non-exit tools (fail-open, #16)', async () => {
+    const exec: ToolExecutionLike = {
+      name: 'bash',
+      arguments: { command: 'echo hi' },
+      agent: {
+        ctx: {
+          get shell(): ShellLike {
+            throw new Error('cannot get property "shell" without inject');
+          },
+        },
+      },
+    };
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
   it('falls through to next() on mint failure', async () => {
     const exec = makeExec('exit_plan_mode', makeShell([{ exitCode: 1, stderr: 'boom' }]));
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('falls through to next() when shell access throws (fail-open, #16)', async () => {
+    const exec: ToolExecutionLike = {
+      name: 'exit_plan_mode',
+      arguments: {},
+      agent: {
+        ctx: {
+          get shell(): ShellLike {
+            throw new Error('cannot get property "shell" without inject');
+          },
+        },
+      },
+    };
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
     expect(spy).toHaveBeenCalled();

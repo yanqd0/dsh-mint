@@ -12,18 +12,22 @@ const DENY_REASON =
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
  * active mint plan, keeping the host plan mechanism bound to a mint plan.
  *
- * On any mint failure, JSON error, or missing shell this falls through to
- * `next()` (allow) so a mint outage never traps plan-mode exit.
+ * The tool name is checked BEFORE any service access, and every service access
+ * and mint call sits inside the try — a mint outage or a missing shell must
+ * never break an unrelated tool call (fail-open; see #16).
  */
 export async function planBindListener(
   exec: ToolExecutionLike,
   next: () => Promise<PreToolDecisionLike>,
 ): Promise<PreToolDecisionLike> {
-  const shell = exec.agent?.ctx?.shell;
-  if (exec.name !== EXIT_PLAN_MODE || !shell) {
+  if (exec.name !== EXIT_PLAN_MODE) {
     return next();
   }
   try {
+    const shell = exec.agent?.ctx?.shell;
+    if (!shell) {
+      return next();
+    }
     const result = await runMint(shell, ['plan', 'list', '--json']);
     if (!result.ok) {
       return next();
