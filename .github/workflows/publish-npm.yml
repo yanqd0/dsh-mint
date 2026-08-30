@@ -1,0 +1,134 @@
+# npm 双名发布：tag vX.Y.Z 激活；gate 校验 tag 与 package.json 版本一致 + stable 判定。
+# npmjs 走 OIDC trusted publishing（permissions: id-token: write，npm publish --provenance 免 token）；
+# GitHub Packages 走 GITHUB_TOKEN + packages: write，发布时临时改 scoped name。
+# 预发布（-alpha/-beta）只跑 gate + test，不发布（covtrim 模板适配）。
+name: Publish npm
+
+on:
+  push:
+    tags: ['v*', '[0-9]*.[0-9]*.[0-9]*']
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      is_stable: ${{ steps.check.outputs.is_stable }}
+    steps:
+      - uses: actions/checkout@v5
+      - id: check
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="${GITHUB_REF_NAME#v}"
+          if [ "$TAG" != "$VERSION" ]; then
+            echo "::error::tag($TAG) != package.json($VERSION)"; exit 1
+          fi
+          case "$VERSION" in
+            *-*) echo "is_stable=false" >> "$GITHUB_OUTPUT" ;;
+            *)   echo "is_stable=true" >> "$GITHUB_OUTPUT" ;;
+          esac
+
+  test:
+    needs: gate
+    runs-on: ubuntu-latest
+    steps:
+      # mint skill 是子模块，dist/skill 的来源——发布路径必须 recursive checkout
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm check-types
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm pack:check
+
+  publish:
+    needs: [gate, test]
+    if: needs.gate.outputs.is_stable == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC 可信发布（npmjs 侧需一次性授权本仓库）
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          registry-url: 'https://registry.npmjs.org'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: npm install -g npm@11 # OIDC 发布需 npm >= 11.5.1
+      - run: npm publish --provenance --access public
+
+  publish-github:
+    # GitHub Packages：npmjs 成功后才发；scoped 包名 @yanqd0/dsh-mint（发布时临时改 name）
+    needs: [gate, test, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write # GITHUB_TOKEN 即可，无需 PAT
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.x'
+          registry-url: 'https://npm.pkg.github.com'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Publish to GitHub Packages
+        env:
+          NODE_AUTH_TOKEN: ${{ github.token }}
+        run: |
+          node -e "const p=require('./package.json');p.name='@yanqd0/dsh-mint';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))"
+          npm publish
+
+  release:
+    # GitHub Release：notes 自动提取 CHANGELOG 当前版本段落；#8 补 CHANGELOG 前走回退文案。不挂 assets。
+    needs: [gate, test, publish]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # 创建 Release（顶层 contents: read，此处覆盖）
+    steps:
+      - uses: actions/checkout@v5
+      - name: 提取 CHANGELOG 当前版本段落
+        id: notes
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if [ -f CHANGELOG.md ]; then
+            awk -v ver="$V" '$0 ~ "^## " ver "([[:space:]]|$)" {f=1; next} /^## / {f=0} f' CHANGELOG.md > /tmp/notes.md
+          fi
+          # CHANGELOG 缺当前版本条目时回退，避免空 notes Release
+          if [ ! -s /tmp/notes.md ]; then
+            echo "See git log / CHANGELOG for this release's changes." > /tmp/notes.md
+          fi
+      - name: 创建 GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release create "$GITHUB_REF_NAME" \
+              --title "$GITHUB_REF_NAME" \
+              --notes-file /tmp/notes.md
+          fi
