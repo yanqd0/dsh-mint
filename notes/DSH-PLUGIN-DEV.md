@@ -46,6 +46,25 @@
 - 升级阶梯：`read-only → workspace-write → danger-full-access`；`DSH_PERMISSION_MODE` 改部署默认。
 - 「当前目录 + ~/.local/share/mint」双根不可表达；要双根须上游 PR 加额外可写根配置。
 
+## package.json 的 dsh.* 字段与插件识别（2026-08-30 调研）
+
+**dsh.* 全集只有两个字段，且都与浏览器半边/整包应用有关**：
+
+- `dsh.client`（client 面声明，`packages/client/modules/src/index.ts` 解析）：
+  `{ platform: 'web'（必填）, inject?: string[], immediately?: boolean, external?: string[] }`；
+  client bundle 由 `exports["./client"]` 指向预构建产物（缺失 → MissingClientBundleError）。
+  `dsh.client` **不替代挂载**：client/modules 只扫描**已挂载行**里声明了它的包（双面包 = 宿主行 + 浏览器半边）。
+- `dsh.bundle.patch`（app bundle 声明，`packages/boot/app-boot/src/profile.ts`）：
+  `"dsh": { "bundle": { "patch": "./cordis.patch.yml" } }`——只有整包应用（dsh-base/dsh-acp-app）用，
+  声明自己携带的 patch 层。插件不用。
+
+**宿主面插件如何被识别**：不靠 package.json 自描述，靠**组合行挂载**——
+`cordis.patch.yml` 行 `{ id, name, config }` → classifyRowSpecifier 分类
+（package/file/builtin/preset）→ rowResolves 验证可解析 → cordis loader
+`import(name)` → 模块导出即插件契约（`apply` + 可选 `name`/`inject`/`Config`）。
+package.json 对宿主面只需 `"type": "module"` + `exports` 指向 ESM 入口，
+**无需任何 dsh 标记**；任何符合 cordis 契约的包都可被挂载（"everything is a plugin"）。
+
 ## 开发环与验证手段
 
 - `pnpm build` → 挂载绝对路径 `…/dist/index.js` → **重启 harness 生效**（HMR 理论上监听 cordis.patch.yml，实测 touch 未热应用，重启为准）。
