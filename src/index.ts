@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { installApprovalGate } from './approval-gate.js';
 import { registerMintContext } from './context.js';
+import { installSkill } from './install-skill.js';
 import { installPlanBinding } from './planbind.js';
 import { installMintQuery } from './query.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
@@ -26,6 +27,12 @@ export const Config = z.object({
    * composed approval answerers; enabling this is an explicit trust of mint.
    */
   autoApprove: z.boolean().default(false),
+  /**
+   * Sync the bundled mint skill into the DSH skill directory on plugin load
+   * (#28). Default true — this is the guaranteed install path under
+   * `pnpm add -g`, whose build-script blocking may skip the postinstall.
+   */
+  autoInstallSkill: z.boolean().default(true),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -39,8 +46,12 @@ export type Config = z.infer<typeof Config>;
  * - #6: mint_query tool
  * - #25: approval gate — once-per-session mint escalation approval, then
  *   auto-allowed mint escalations (B-v2)
+ * - #28: skill auto-install — content-syncs the bundled skill on load
  */
 export function apply(ctx: DshContext, config: Config): void {
+  if (config.autoInstallSkill !== false) {
+    installSkill();
+  }
   ctx.on('agent/session-start', (payload: { agent?: AgentLike }) => {
     const agent = payload.agent;
     const cwd = agent?.session.header.cwd;

@@ -46,7 +46,17 @@ found`：
 
 ## 3. 安装 skill
 
-`pnpm build` 产出 `dist/skill` 后：
+**发布包（pnpm -g）自动安装（#28）**：无需手工步骤——
+
+- postinstall 调用 `dist/install-skill.js`，把 `dist/skill` 同步到
+  `$DSH_HOME/skills/mint`（缺省 `~/.dsh`；内容一致则跳过，升级自动刷新）。
+- pnpm 10+ 默认拦截依赖构建脚本（本仓库 `allowBuilds` 只放行了
+  esbuild/mint-faa），全局 add 时 postinstall 可能不跑——**插件每次加载时
+  （apply）会自动补同步**，skill-filesystem 每次 collect 现扫目录，首个会话
+  即可发现。postinstall 对 npm 及放行构建脚本的 pnpm 生效。
+- 目标已是 symlink 时不覆盖（dev 流程所有权），失败只告警、不阻断安装。
+
+**dev 流程**（仓库内）：`pnpm build` 产出 `dist/skill` 后：
 
 ```sh
 scripts/install-dsh.sh          # symlink -> ~/.dsh/skills/mint（推荐）

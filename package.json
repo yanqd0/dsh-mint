@@ -28,6 +28,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsup && node scripts/build-skill.mjs",
+    "postinstall": "node dist/install-skill.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
