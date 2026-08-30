@@ -1,7 +1,7 @@
-# 挂载 dsh-mint 到 DSH（对内记录）
+# 挂载 @yanqd0/dsh-mint 到 DSH（对内记录）
 
 dsh-mint 是 DSH 宿主插件（`@deepseek-ai/dsh`，cordis 插件系统）+ 内置 `mint`
-skill。`dsh-mint` 从自己的 `mint-faa` 依赖解析 `mint` CLI——无需全局安装。
+skill。`@yanqd0/dsh-mint` 从自己的 `mint-faa` 依赖解析 `mint` CLI——无需全局安装。
 
 ## 前置条件
 
@@ -11,7 +11,7 @@ skill。`dsh-mint` 从自己的 `mint-faa` 依赖解析 `mint` CLI——无需�
 ## 1. 安装插件
 
 ```
-npm install -g dsh-mint            # 已发布包（裸包名）
+pnpm add -g @yanqd0/dsh-mint       # 已发布包（同名双注册表：npmjs + GH Packages）
 ```
 
 或直接挂本地构建（dogfooding），见下。
@@ -25,7 +25,7 @@ found`：
 ```yaml
 - insert:
     - id: mint
-      name: dsh-mint
+      name: '@yanqd0/dsh-mint'
       config:
         debug: false
 ```
@@ -99,5 +99,5 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 
 ## 发布
 
-npm 双名发布（npmjs `dsh-mint` + GitHub Packages `@yanqd0/dsh-mint`）——见
+同名双注册表发布（`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages）——见
 `docs/RELEASING.md`（#8，未来 docs 工程）。

@@ -10,10 +10,11 @@ import { fileURLToPath } from 'node:url';
  *    runs it; pnpm 10+ blocks dependency build scripts unless allow-listed, so
  *    this trigger is best-effort under pnpm).
  * 2. The host plugin calls {@link installSkill} from `apply()` on every load —
- *    the guaranteed path for `pnpm add -g dsh-mint`: the first session after
- *    installation copies the bundled skill into the DSH skill directory before
- *    the skill catalog's first collect (the filesystem provider re-reads the
- *    directory per lookup, so the skill is discovered in that same session).
+ *    the guaranteed path for `pnpm add -g @yanqd0/dsh-mint`: the first session
+ *    after installation copies the bundled skill into the DSH skill directory
+ *    before the skill catalog's first collect (the filesystem provider re-reads
+ *    the directory per lookup, so the skill is discovered in that same
+ *    session).
  *
  * Semantics are a content SYNC: a target whose `SKILL.md` already matches the
  * bundled one is left untouched (no churn on every session start); anything

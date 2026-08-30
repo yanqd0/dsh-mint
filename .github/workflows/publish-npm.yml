@@ -1,6 +1,7 @@
-# npm 双名发布：tag vX.Y.Z 激活；gate 校验 tag 与 package.json 版本一致 + stable 判定。
-# npmjs 走 OIDC trusted publishing（permissions: id-token: write，npm publish --provenance 免 token）；
-# GitHub Packages 走 GITHUB_TOKEN + packages: write，发布时临时改 scoped name。
+# npm 发布：tag vX.Y.Z 激活；gate 校验 tag 与 package.json 版本一致 + stable 判定。
+# 同名双注册表发布 @yanqd0/dsh-mint：npmjs 走 OIDC trusted publishing
+# （permissions: id-token: write，npm publish --provenance 免 token）；GitHub Packages
+# 走 GITHUB_TOKEN + packages: write，同名直接发布，无需改名。
 # 预发布（-alpha/-beta）只跑 gate + test，不发布（covtrim 模板适配）。
 name: Publish npm
 
@@ -77,7 +78,7 @@ jobs:
       - run: npm publish --provenance --access public
 
   publish-github:
-    # GitHub Packages：npmjs 成功后才发；scoped 包名 @yanqd0/dsh-mint（发布时临时改 name）
+    # GitHub Packages：npmjs 成功后才发；同名 @yanqd0/dsh-mint 直接发布（无需改名）
     needs: [gate, test, publish]
     runs-on: ubuntu-latest
     permissions:
@@ -100,9 +101,7 @@ jobs:
       - name: Publish to GitHub Packages
         env:
           NODE_AUTH_TOKEN: ${{ github.token }}
-        run: |
-          node -e "const p=require('./package.json');p.name='@yanqd0/dsh-mint';require('fs').writeFileSync('package.json',JSON.stringify(p,null,2))"
-          npm publish
+        run: npm publish
 
   release:
     # GitHub Release：notes 自动提取 CHANGELOG 当前版本段落；#8 补 CHANGELOG 前走回退文案。不挂 assets。

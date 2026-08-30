@@ -1,6 +1,6 @@
 # dsh-mint
 
-[![npm](https://img.shields.io/npm/v/dsh-mint.svg)](https://www.npmjs.com/package/dsh-mint)
+[![npm](https://img.shields.io/npm/v/@yanqd0/dsh-mint.svg)](https://www.npmjs.com/package/@yanqd0/dsh-mint)
 [![CI](https://github.com/yanqd0/dsh-mint/actions/workflows/ci.yml/badge.svg)](https://github.com/yanqd0/dsh-mint/actions)
 [![codecov](https://codecov.io/gh/yanqd0/dsh-mint/graph/badge.svg)](https://codecov.io/gh/yanqd0/dsh-mint)
 

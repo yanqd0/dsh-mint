@@ -1,5 +1,5 @@
 {
-  "name": "dsh-mint",
+  "name": "@yanqd0/dsh-mint",
   "version": "0.1.0-alpha.0",
   "description": "DSH plugin: mint issue tracking integration — session context injection, event reminders, plan binding, mint_query tool, and a session tab.",
   "type": "module",
