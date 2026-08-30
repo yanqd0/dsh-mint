@@ -1,0 +1,56 @@
+# mint 在 workspace-write 沙箱下执行放行调研
+
+> 背景 issue：#23；本调研记录 #24。源码 fork：`../../deepseek/deepseek-harness`。
+
+## 根因链
+
+1. mint 全部子命令（含只读 `list`）以**读写模式**打开 sqlite db，db 落点
+   `~/.local/share/mint/projects/<project>/mach-*.db`（`$XDG_DATA_HOME/mint`，workspace 外）。
+2. macOS 沙箱方言 = Seatbelt：profile `(allow default)(deny file-write*)` 仅放行
+   `writableRoots`（= workspaceRoot + `/tmp` + `os.tmpdir()`，硬编码）。读全放行，写只在根内。
+3. mint 的 sqlite 写落在根外 → EPERM → bash 工具附加
+   `[sandbox: file access denied under workspace-write mode]` 标记 → 模型只能逐次提权重试
+   （`approveEscalation` → `ctx.approval.request` → 用户审批）。
+4. 实验实锤：`cp ~/.local/share/mint/projects/dsh-mint/mach-*.db /tmp/mint-copy.db &&
+   MINT_DB_PATH=/tmp/mint-copy.db mint list` 同会话 exit 0——db 落点进入写放行区即无痛。
+5. 插件自身 `runMint()`（src/mint.ts，#18）直 spawn 不经沙箱、不受影响——痛点是
+   **模型手动 bash 跑 mint** 逐次要审批。
+
+## 源码位置（deepseek-harness）
+
+- 写根推导：`packages/sandbox/sandbox/src/roots.ts` `writableRoots()`；
+  策略接口 `src/index.ts` `SandboxExecutionPolicy`（仅 mode/workspaceRoot/sessionId）。
+- 策略解析：`packages/sandbox/sandbox-policy/src/index.ts` `SandboxPolicyService.resolve()`——
+  session cwd 即 workspace 边界；**无额外根配置口**。
+- Seatbelt 方言：`packages/sandbox/sandbox-local/src/profiles.ts` `seatbeltProfileArgs()`；
+  bwrap/landlock 同文件。
+- 提权编排：`packages/sandbox/sandbox/src/escalation.ts` `approveEscalation()`——
+  reason=`escalate sandbox to <mode>: <justification>`，**不带命令文本**。
+- 审批分发：`packages/interaction/user-approval/src/index.ts` `ApprovalService.decide()`——
+  `ctx.waterfall('approval/request', req, ...)`，任意插件可挂 answerer；
+  req={agent, toolName, callId, reason, signal}。
+- 工具 pipeline：`packages/core/tools/src/index.ts`——`tools/pre-execute`
+  （allow/deny/ask，无改写）；`tools/post-execute` 的 `PostToolDecision` accept 可
+  **替换 content 投影**；`ToolExecution.arguments` 含解析后参数。
+- shell env：`packages/shell/shell-env/src/index.ts`——只管理 `DSH_*` 前缀变量，
+  **无法注入 `MINT_DB_PATH`**。
+
+## 方案对比
+
+| 方案 | 做法 | 优点 | 代价/风险 |
+|---|---|---|---|
+| **A. post-execute 替换（推荐）** | dsh-mint 挂 `tools/post-execute`：bash + 严格 `^mint( \|$)` 命令 + 结果带 denial 标记 → `runMint()` 直 spawn → accept 替换 content | 零上游改动、沙箱不动、无审批弹窗、插件内闭环（复用 #18） | 命令解析必须严格（含 `;`/`&&` 等元字符不拦）；原调用 audit 仍是 denied 记录；denied 结果的 isError 语义需实载验证 |
+| B. 审批 answerer 自动放行 | 挂 `approval/request`（prepend）：`req.reason` 匹配 `^escalate sandbox to danger-full-access: mint ` → allowed-once | 代码量最小 | 每调用整体 danger-full-access；匹配靠模型 justification 文本（可伪造）；审批链被绕过 |
+| C. 上游额外写根 | deepseek-harness：`SandboxExecutionPolicy` 加 `writableRoots`，roots.ts 合并，seatbelt/bwrap/landlock/fs-fence 四处同步，composition 放行 `$XDG_DATA_HOME/mint` | 最正统：mint 原生跑在沙箱内、audit 干净、全项目受益 | 改动面大（四处方言+围栏+测试），需 fork 合并/发布；本机依赖上游版本 |
+| D. 项目内 db | 显式 `MINT_DB_PATH=$PWD/.mint/mint.db`（见 notes/MOUNTING.md §5） | 零代码、已验证可用 | 单文件模式（弃多项目目录）、数据落点改变需迁移、shell-env 无法默认注入 env → 非"无痛" |
+
+备选/排除：工具化 mint（注册专用 tool 供模型调用）——可用但需改 skill 行为、不解决 bash 直跑；
+会话级 `danger-full-access` / `ctx.shell.sandboxMode` 全局改——太宽；
+`~/.local/share/mint/...` symlink 进 workspace——逐项目手工 + 脆弱。
+
+## 结论与后续
+
+- **0.1.0 收尾选 A**：把「bash 跑 mint 被拒 → 插件代跑替换结果」做进宿主面，模型无感、用户零审批。
+- **上游贡献选 C**：在 `../../deepseek/deepseek-harness` fork 提交 extra writable roots
+  （另立 issue 跨仓库登记）；落地后 dsh-mint 可退化回「沙箱内原生执行」。
+- 选型确认后按 #23 状态机实施（plan → start → 改码 → commit --sha）。
