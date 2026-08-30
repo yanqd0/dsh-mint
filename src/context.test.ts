@@ -111,7 +111,7 @@ describe('registerMintContext', () => {
     const { ctx, registered } = makeAgentCtx();
     registerMintContext(ctx, '/proj');
 
-    expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:approval-guidance']);
     const provider = registered[0]?.text as () => string;
 
     expect(provider()).toBe('');

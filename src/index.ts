@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+import { installApprovalGate } from './approval-gate.js';
 import { registerMintContext } from './context.js';
 import { installPlanBinding } from './planbind.js';
 import { installMintQuery } from './query.js';
@@ -19,6 +20,12 @@ export const inject = ['tools'];
 export const Config = z.object({
   /** Reserved for mount-line config — features land in #3–#6. */
   debug: z.boolean().default(false),
+  /**
+   * Auto-allow mint sandbox escalations without any user prompt (B-v2, #25).
+   * Default false: the first mint escalation per session goes through the
+   * composed approval answerers; enabling this is an explicit trust of mint.
+   */
+  autoApprove: z.boolean().default(false),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -28,9 +35,12 @@ export type Config = z.infer<typeof Config>;
  *
  * - #3: mint overview context on every agent session start
  * - #4: commit reminder (`tools/post-execute`) + failure signal (`tools/result`)
- * - #5 (plan binding) and #6 (mint_query tool) land here as they ship.
+ * - #5: plan binding (exit_plan_mode ↔ mint plan)
+ * - #6: mint_query tool
+ * - #25: approval gate — once-per-session mint escalation approval, then
+ *   auto-allowed mint escalations (B-v2)
  */
-export function apply(ctx: DshContext, _config: Config): void {
+export function apply(ctx: DshContext, config: Config): void {
   ctx.on('agent/session-start', (payload: { agent?: AgentLike }) => {
     const agent = payload.agent;
     const cwd = agent?.session.header.cwd;
@@ -42,4 +52,5 @@ export function apply(ctx: DshContext, _config: Config): void {
   installFailureSignal(ctx);
   installPlanBinding(ctx);
   installMintQuery(ctx);
+  installApprovalGate(ctx, config);
 }

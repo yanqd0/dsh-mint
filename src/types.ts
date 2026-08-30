@@ -16,6 +16,8 @@ export interface ContentBlockLike {
 /** Subset of the host's `ToolExecution` (bash tool: name 'bash', args.command). */
 export interface ToolExecutionLike {
   name: string;
+  /** Opaque call identity used to correlate executions with approval asks. */
+  callId?: string;
   arguments: { command?: string } & Record<string, unknown>;
   agent?: { session?: { header?: { cwd?: string } } };
 }
@@ -67,6 +69,18 @@ export interface AgentLike {
   session: { header: { cwd?: string } };
 }
 
+/** Subset of the host's `ApprovalRequest` (approval/request waterfall). */
+export interface ApprovalRequestLike {
+  toolName: string;
+  callId?: string | undefined;
+  reason?: string | undefined;
+  agent?: unknown;
+  signal?: unknown;
+}
+
+/** Subset of the host's `ApprovalOutcome`. */
+export type ApprovalOutcomeLike = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
+
 /** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
   | ((payload: { agent?: AgentLike }) => void)
@@ -79,14 +93,18 @@ export type EventListener =
       result: ToolResultLike,
       next: () => Promise<PostToolDecisionLike>,
     ) => Promise<PostToolDecisionLike>)
-  | ((exec: ToolExecutionLike, result: ToolResultLike) => void);
+  | ((exec: ToolExecutionLike, result: ToolResultLike) => void)
+  | ((
+      req: ApprovalRequestLike,
+      next: () => Promise<ApprovalOutcomeLike>,
+    ) => Promise<ApprovalOutcomeLike>);
 
 /**
  * Agent-scoped context received by event listeners (host `Agent.ctx`).
  * Registration here is agent-local and unwinds on disposal.
  */
 export interface DshContext {
-  on(event: string, listener: EventListener): () => void;
+  on(event: string, listener: EventListener, options?: { prepend?: boolean }): () => void;
   systemPrompt?: SystemPromptLike;
   tools?: ToolsLike;
 }

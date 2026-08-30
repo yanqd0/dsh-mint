@@ -4,6 +4,20 @@ import type { DshContext } from './types.js';
 const CONTEXT_ORDER = 60;
 const TOP_ISSUES = 8;
 
+/**
+ * Static guidance for the B-v2 approval gate (#25): how the model asks for the
+ * one mint approval and then rides the gate without re-prompting. Doctrine-
+ * grounded: the preemptive escalation pattern is only sanctioned after the
+ * session already observed the same denied access, so the text teaches the
+ * normal first retry, then the preemptive pattern.
+ */
+export const MINT_APPROVAL_GUIDANCE =
+  'mint CLI 与沙箱（dsh-mint B-v2 放行 gate）：本会话首条 mint 命令可能被文件沙箱拒绝；' +
+  '此时按常规提权重试一次（sandbox_permissions: danger-full-access + justification "mint"），' +
+  '用户批准一次后，本会话后续所有 mint bash 命令可直接预置 ' +
+  'sandbox_permissions: danger-full-access 与 justification "mint"——放行 gate 会自动批准，不再弹窗。' +
+  '非 mint 命令不得预置提权，必须保持常规沙箱与审批流程。';
+
 interface OverviewIssue {
   id: number;
   title: string;
@@ -65,12 +79,13 @@ export function renderOverview(overview: MintOverview): string {
 }
 
 /**
- * Register a systemPrompt context on an agent-scoped context.
+ * Register mint systemPrompt contexts on an agent-scoped context: the active
+ * overview plus the static B-v2 approval-gate guidance.
  *
- * The text provider loads the mint overview once per session (cached, so the
- * CLI is not hit on every assembly) and degrades silently to an empty string
- * on failure — it never blocks the prompt assembly. `cwd` is the session's
- * workspace (project) directory, which mint uses for project lookup.
+ * The overview text provider loads the mint overview once per session (cached,
+ * so the CLI is not hit on every assembly) and degrades silently to an empty
+ * string on failure — it never blocks the prompt assembly. `cwd` is the
+ * session's workspace (project) directory, which mint uses for project lookup.
  */
 export function registerMintContext(agentCtx: DshContext, cwd: string): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
@@ -88,7 +103,7 @@ export function registerMintContext(agentCtx: DshContext, cwd: string): (() => v
     }
   };
 
-  return sp.context({
+  const offOverview = sp.context({
     name: 'mint:overview',
     order: CONTEXT_ORDER,
     text: () => {
@@ -99,4 +114,13 @@ export function registerMintContext(agentCtx: DshContext, cwd: string): (() => v
       return cached;
     },
   });
+  const offGuidance = sp.context({
+    name: 'mint:approval-guidance',
+    order: CONTEXT_ORDER + 1,
+    text: MINT_APPROVAL_GUIDANCE,
+  });
+  return () => {
+    offOverview();
+    offGuidance();
+  };
 }
