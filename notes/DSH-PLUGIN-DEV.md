@@ -76,3 +76,4 @@ package.json 对宿主面只需 `"type": "module"` + `exports` 指向 ESM 入口
 
 - 调研结论两处被证伪（裸 id 行可挂载新插件、绝对路径目录可导入）→ 结论必须回到源码复核（#14 修 skill，#774f688 修文档）。
 - mock 单测覆盖不了 DI 约束与真实 payload 形状 → **实机验证是 dogfooding 不可省的环节**（#7 因此抓出 4 个 bug：inject、schema 超集、planbind 顺序、session-start payload）。
+- **mint 子模块内 commit 只存在于本地 detached HEAD**；dsh-mint 指针引用未推送的 ref → CI checkout 报 `upload-pack: not our ref`。**流程**：子模块改动 → 先 push mint 仓（用户手动）→ 再 push dsh-mint（#33）。
