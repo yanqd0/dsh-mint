@@ -48,9 +48,30 @@
 会话级 `danger-full-access` / `ctx.shell.sandboxMode` 全局改——太宽；
 `~/.local/share/mint/...` symlink 进 workspace——逐项目手工 + 脆弱。
 
-## 结论与后续
+## 上游提案检索（2026-08-30，gh 核实）
 
-- **0.1.0 收尾选 A**：把「bash 跑 mint 被拒 → 插件代跑替换结果」做进宿主面，模型无感、用户零审批。
-- **上游贡献选 C**：在 `../../deepseek/deepseek-harness` fork 提交 extra writable roots
-  （另立 issue 跨仓库登记）；落地后 dsh-mint 可退化回「沙箱内原生执行」。
-- 选型确认后按 #23 状态机实施（plan → start → 改码 → commit --sha）。
+`deepseek-ai/deepseek-harness`：**issues 已禁用、PR 列表为零、discussions 无技术提案**——
+公开渠道没有任何类似提案。但仓库内 `.agents/notes/` 设计档案有直接相关记录：
+
+- `implemented/feature/2026-07-06-sandbox.md` L59/L72：**额外可写根（extra writable-root grants）
+  是上游明确考虑过、两次推迟未做的开放项**（Landlock launcher 已支持 `--rw <path>`）；
+  上游把 ad-hoc grants 定性为「escalation-scope 问题」，刻意留在核心沙箱词汇之外（ACP 的
+  `additionalDirectories` 留在桥层）。→ C 方案若提 PR，会撞上这个被搁置的 scope 设计。
+- 同 RFC L87 + approval 笔记 L90/L101：**`allow_always` 持久授权是正规 Deferred 开放项**，
+  scope 候选明列 call/path/prefix/session/time-window——「command-prefix」正是 mint 场景。
+- 同 RFC L145：**「同调用内自动重试」被明确 rejected**（"a hidden re-entry the log cannot
+  reconstruct: one tool/call would have produced two executions"）——A 方案正是该反模式的变体。
+- `proposed/feature/2026-06-30-pre-tool-input-rewrite.md`：上游对「历史/审计/呈现三者一致」
+  的原则性坚持，佐证 A 的 audit 问题非审美而是设计冲突。
+
+## 结论与后续（已定案）
+
+- **0.1.0 收尾选 B-v2（已实施，plan #6）**：dsh-mint 宿主面挂审批放行 gate——
+  每会话首条 mint 提权经用户批准一次，此后同会话 mint 命令预置提权自动放行、
+  零弹窗零拒绝往返；每次放行落 approval 审计对，无 hidden re-entry（避开 L145 反模式）。
+  `config: { autoApprove: true }` 可跨会话免批（显式信任 mint CLI）。
+- **上游贡献 B-v3/C**：`allow_always` scope 与 extra writable roots 均为上游自己的开放项，
+  在 `../../deepseek/deepseek-harness` fork 提出需先解开 scope 设计——另立 issue 跟进，
+  不在 0.1.0 阻塞路径上。
+- 子代理被 pin 到 approval `never`，B-v2 不适用；子代理跑 mint 的补充手段（项目内 db
+  或工具化）留待需要时再议。
