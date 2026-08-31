@@ -40,6 +40,10 @@ PNPM_HOME=$P DSH_HOME=$D pnpm add -g ./yanqd0-dsh-mint-<ver>.tgz
    + entry 命名映射（`'install-skill': 'src/install-skill-cli.ts'`），调用放在入口
    顶层，不要在共享模块里用 argv 守卫。
 3. **pnpm 全局 bin PATH 检查**：隔离测试必须 `PATH="$P/bin:$PATH"`，否则装不上。
+4. **postinstall 入口须有存在性守卫**：CI fresh checkout 时 `pnpm install` 先于
+   `pnpm build`，dist 尚未构建——直接 `node dist/install-skill.js` 会
+   MODULE_NOT_FOUND 挂掉整个安装。postinstall 实际指向
+   `scripts/install-skill-postinstall.mjs`：入口存在才 import，任何失败告警并退出 0（#34）。
 
 ## 关联
 

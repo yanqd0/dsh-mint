@@ -20,7 +20,8 @@
     "plugin"
   ],
   "files": [
-    "dist"
+    "dist",
+    "scripts/install-skill-postinstall.mjs"
   ],
   "exports": {
     ".": "./dist/index.js"
@@ -28,7 +29,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsup && node scripts/build-skill.mjs",
-    "postinstall": "node dist/install-skill.js",
+    "postinstall": "node scripts/install-skill-postinstall.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src",
