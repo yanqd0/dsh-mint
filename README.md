@@ -13,11 +13,35 @@ mint into DSH sessions:
 - a `mint_query` tool for the agent
 - (0.2.0) a session tab with an issue panel
 
+## Install from source (DSH web profile)
+
+For dogfooding / local development, install this checkout into the DSH `web`
+profile:
+
+```bash
+pnpm build
+dsh plugin --profile web add ./
+```
+
+`dsh plugin` runs pnpm inside `~/.dsh/profiles/web`. pnpm 11 blocks dependency
+build scripts by default and exits with `ERR_PNPM_IGNORED_BUILDS`. Approve the
+builds with pnpm itself, without editing any YAML, then re-run the install:
+
+```bash
+dsh plugin --profile web approve-builds --all
+dsh plugin --profile web add ./
+```
+
+If you prefer a single command and accept allowing all builds during install:
+
+```bash
+dsh plugin --profile web add ./ --config.dangerouslyAllowAllBuilds=true
+```
+
 ## Status
 
-Early development — milestones 0.1.0 (host face) and 0.2.0 (tab UI). Install
-and usage docs land with the first release; see [CHANGELOG](CHANGELOG.md) once
-released.
+Early development — milestones 0.1.0 (host face) and 0.2.0 (tab UI). See
+[CHANGELOG](CHANGELOG.md) once released.
 
 ## License
 

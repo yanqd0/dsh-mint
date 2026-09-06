@@ -14,7 +14,28 @@ skill。`@yanqd0/dsh-mint` 从自己的 `mint-faa` 依赖解析 `mint` CLI——
 pnpm add -g @yanqd0/dsh-mint       # 已发布包（同名双注册表：npmjs + GH Packages）
 ```
 
-或直接挂本地构建（dogfooding），见下。
+或直接挂本地构建（dogfooding）：
+
+```sh
+cd /path/to/dsh-mint
+pnpm build
+dsh plugin --profile web add ./
+```
+
+`dsh plugin` 实际在 `~/.dsh/profiles/web` 内跑 pnpm。pnpm 11 默认拦截该
+profile 依赖链的构建脚本并报 `ERR_PNPM_IGNORED_BUILDS`。不需要手工改
+`pnpm-workspace.yaml`，直接用 dsh 转发 pnpm 的批准命令：
+
+```sh
+dsh plugin --profile web approve-builds --all
+dsh plugin --profile web add ./
+```
+
+若接受安装时允许所有构建脚本，也可一步完成：
+
+```sh
+dsh plugin --profile web add ./ --config.dangerouslyAllowAllBuilds=true
+```
 
 ## 2. 挂载行
 
