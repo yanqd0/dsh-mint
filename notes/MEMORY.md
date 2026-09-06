@@ -9,3 +9,4 @@
 | [MOUNTING.md](MOUNTING.md) | dsh-mint 挂载与安装指南（含 workspace-write 下 mint 放行选项） |
 | [MINT-SANDBOX.md](MINT-SANDBOX.md) | workspace-write 下 mint 执行放行：根因链、四方案对比、上游提案检索、B-v2 定案（#23/#24） |
 | [ISOLATED-INSTALL.md](ISOLATED-INSTALL.md) | 发布包隔离实测法（PNPM_HOME/DSH_HOME）：标准步骤、检查点、三个实证坑（#30） |
+| [INSTALL-CHECK.md](INSTALL-CHECK.md) | 安装/自动使用**快速自检清单**（1 分钟）：挂载行、dist/skill 产物、mint_query/`[Mint]` 判定、workspace-write 放行验证——跑相同 dogfooding 任务前先跑它 |
