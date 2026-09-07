@@ -10,3 +10,4 @@
 | [MINT-SANDBOX.md](MINT-SANDBOX.md) | workspace-write 下 mint 执行放行：根因链、四方案对比、上游提案检索、B-v2 定案（#23/#24） |
 | [ISOLATED-INSTALL.md](ISOLATED-INSTALL.md) | 发布包隔离实测法（PNPM_HOME/DSH_HOME）：标准步骤、检查点、三个实证坑（#30） |
 | [INSTALL-CHECK.md](INSTALL-CHECK.md) | 安装/自动使用**快速自检清单**（1 分钟）：挂载行、dist/skill 产物、mint_query/`[Mint]` 判定、workspace-write 放行验证——跑相同 dogfooding 任务前先跑它 |
+| [GRAPH-MEMORY-SILENT-MECHANISM.md](GRAPH-MEMORY-SILENT-MECHANISM.md) | graph-memory 静默运行（零授权）机制调研 + dsh-mint 迁移性评估：不经 bash、插件进程内跑 CLI/直写 db 的信任边界；方案 A（宿主工具化 + skill 改走工具） |
