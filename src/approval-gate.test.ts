@@ -134,21 +134,76 @@ describe('installApprovalGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('remembers an allowed-once mint grant per agent and auto-allows after', async () => {
+  it('remembers an allowed-once mint grant per agent session and auto-allows after', async () => {
     const { ctx, listeners } = makeCtx();
     installApprovalGate(ctx, {});
     recordBash(listeners, 'call-1', 'mint list');
     recordBash(listeners, 'call-2', 'mint issue show 1');
 
-    // the host passes the same Agent object identity across asks
-    const agent = { id: 'a1' };
+    // the runtime may hand a *different* Agent object per dispatch, but the
+    // session id is stable — the grant must key on session.id, not the object
+    const agentA = { id: 'a1', session: { id: 'sess-1' } };
+    const agentB = { id: 'a1', session: { id: 'sess-1' } }; // different object, same session
+    const next = vi.fn(() => Promise.resolve('allowed-once'));
+    expect(await approval(listeners)(mintReq({ agent: agentA }), next)).toBe('allowed-once');
+    expect(next).toHaveBeenCalledTimes(1);
+
+    // second ask for the same session via a different object: immediate grant
+    expect(await approval(listeners)(mintReq({ callId: 'call-2', agent: agentB }), next)).toBe(
+      'allowed-once',
+    );
+    expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not leak a grant across different agent sessions', async () => {
+    const { ctx, listeners } = makeCtx();
+    installApprovalGate(ctx, {});
+    recordBash(listeners, 'call-1', 'mint list');
+    recordBash(listeners, 'call-2', 'mint list');
+    const next = vi.fn(() => Promise.resolve('allowed-once'));
+    expect(
+      await approval(listeners)(mintReq({ agent: { id: 'a1', session: { id: 'sess-A' } } }), next),
+    ).toBe('allowed-once');
+    expect(next).toHaveBeenCalledTimes(1);
+    // different session must still delegate
+    expect(
+      await approval(listeners)(
+        mintReq({ callId: 'call-2', agent: { id: 'a2', session: { id: 'sess-B' } } }),
+        next,
+      ),
+    ).toBe('allowed-once');
+    expect(next).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to the standardised justification when no command is correlated', async () => {
+    const { ctx, listeners } = makeCtx();
+    installApprovalGate(ctx, {});
+    // no tools/pre-execute recorded (correlation unavailable) — reason says "mint"
+    const agent = { id: 'a1', session: { id: 'sess-1' } };
     const next = vi.fn(() => Promise.resolve('allowed-once'));
     expect(await approval(listeners)(mintReq({ agent }), next)).toBe('allowed-once');
     expect(next).toHaveBeenCalledTimes(1);
-
-    // second ask for the same agent: no delegation, immediate grant
-    expect(await approval(listeners)(mintReq({ callId: 'call-2', agent }), next)).toBe('allowed-once');
+    // follow-up without correlation is auto-allowed from the grant
+    expect(
+      await approval(listeners)(mintReq({ callId: 'call-2', agent: { ...agent } }), next),
+    ).toBe('allowed-once');
     expect(next).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not auto-allow a correlated non-mint command even after a mint grant', async () => {
+    const { ctx, listeners } = makeCtx();
+    installApprovalGate(ctx, {});
+    recordBash(listeners, 'call-1', 'mint list');
+    recordBash(listeners, 'call-2', 'rm -rf ~');
+    const agent = { id: 'a1', session: { id: 'sess-1' } };
+    const next = vi.fn(() => Promise.resolve('allowed-once'));
+    expect(await approval(listeners)(mintReq({ agent }), next)).toBe('allowed-once');
+    expect(next).toHaveBeenCalledTimes(1);
+    // grant exists, but the correlated command is NOT bare mint → must delegate
+    expect(await approval(listeners)(mintReq({ callId: 'call-2', agent }), next)).toBe(
+      'allowed-once',
+    );
+    expect(next).toHaveBeenCalledTimes(2);
   });
 
   it('does not remember a rejected grant', async () => {
