@@ -35,6 +35,7 @@ interface OverviewIssue {
 }
 
 interface OverviewMilestone {
+  id: number;
   title: string;
   version: string;
   status: string;
@@ -61,6 +62,32 @@ export async function fetchOverview(cwd: string): Promise<MintOverview> {
   };
 }
 
+/** Semver-ish rank: `[major, minor, patch, stable]`; a release outranks its prereleases. */
+function versionRank(version: string): number[] {
+  const [core = '', pre = ''] = version.split('-', 2);
+  const [major = 0, minor = 0, patch = 0] = core.split('.').map((p) => Number.parseInt(p, 10) || 0);
+  return [major, minor, patch, pre ? 0 : 1];
+}
+
+/** True when `a` outranks `b` under {@link versionRank}. */
+function isNewer(a: string, b: string): boolean {
+  const [ra, rb] = [versionRank(a), versionRank(b)];
+  for (let i = 0; i < ra.length; i += 1) {
+    const diff = (ra[i] ?? 0) - (rb[i] ?? 0);
+    if (diff !== 0) return diff > 0;
+  }
+  return false;
+}
+
+/** Highest version among the project's milestones (seeds the next-version suggestion). */
+export function latestVersion(milestones: readonly OverviewMilestone[]): string {
+  let best = '';
+  for (const milestone of milestones) {
+    if (isNewer(milestone.version, best)) best = milestone.version;
+  }
+  return best;
+}
+
 /** Render the overview into compact model-facing text. */
 export function renderOverview(overview: MintOverview): string {
   const lines: string[] = [];
@@ -75,12 +102,33 @@ export function renderOverview(overview: MintOverview): string {
     }
   }
   const running = overview.milestones.filter((m) => m.status === 'running');
-  if (running.length > 0) {
+  const [current] = running;
+  if (running.length === 1 && current) {
+    // Exactly one current milestone: state the default attachment target explicitly
+    // (the skill carries the reasoning; this line is what every request can see).
+    const label = current.version || current.title;
+    lines.push(`[Mint] running milestones: ${label}`);
+    lines.push(
+      `[Mint] current milestone = ${label} (id ${current.id}) — new plans and standalone issues ` +
+        `default to it: mint({args:["milestone","attach","${current.id}","<id>"]}); ` +
+        `plan create --milestone ${current.id}`,
+    );
+  } else if (running.length >= 2) {
     const names = running.map((m) => m.version || m.title).join(', ');
     lines.push(`[Mint] running milestones: ${names}`);
-    if (running.length >= 2) {
-      lines.push('[Mint] WARNING: multiple running milestones — check milestone state');
-    }
+    lines.push('[Mint] WARNING: multiple running milestones — check milestone state');
+    lines.push(
+      '[Mint] exactly one milestone should be running: list them, ask the user, then ' +
+        'mint({args:["milestone","set","<id>","--status","open"]}) for the later one',
+    );
+  } else if (overview.milestones.length > 0) {
+    const latest = latestVersion(overview.milestones);
+    lines.push(
+      `[Mint] no running milestone (latest ${latest}) — infer the next version by semver ` +
+        '(patch for fixes/docs, minor for a new capability, major for a breaking change) and ask the user: ' +
+        'set it running with mint({args:["milestone","set","<id>","--status","running"]}) or create it; ' +
+        'do not set it yourself',
+    );
   }
   return lines.join('\n');
 }

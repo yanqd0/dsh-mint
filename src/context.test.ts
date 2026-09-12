@@ -1,6 +1,12 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { MINT_TOOL_GUIDANCE, fetchOverview, registerMintContext, renderOverview } from './context.js';
+import {
+  MINT_TOOL_GUIDANCE,
+  fetchOverview,
+  latestVersion,
+  registerMintContext,
+  renderOverview,
+} from './context.js';
 import { runMint } from './mint.js';
 import type { DshContext } from './types.js';
 
@@ -45,7 +51,9 @@ describe('fetchOverview', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
+        text: JSON.stringify({
+          items: [{ id: 1, title: '宿主面', version: '0.1.0', status: 'running' }],
+        }),
       });
 
     const overview = await fetchOverview('/proj');
@@ -76,24 +84,53 @@ describe('renderOverview', () => {
           labels: ['host'],
         },
       ],
-      milestones: [{ title: '宿主面', version: '0.1.0', status: 'running' }],
+      milestones: [{ id: 1, title: '宿主面', version: '0.1.0', status: 'running' }],
     });
     expect(text).toContain('#3');
     expect(text).toContain('[requirement]');
     expect(text).toContain('(P1, dev)');
     expect(text).toContain('[host]');
     expect(text).toContain('running milestones: 0.1.0');
+    // the single running milestone is stated as the default attachment target
+    expect(text).toContain('current milestone = 0.1.0 (id 1)');
+    expect(text).toContain('mint({args:["milestone","attach","1","<id>"]})');
+    expect(text).toContain('plan create --milestone 1');
   });
 
-  it('warns on 2+ running milestones', () => {
+  it('suggests a next version when nothing is running', () => {
     const text = renderOverview({
       issues: [],
       milestones: [
-        { title: 'a', version: '0.1.0', status: 'running' },
-        { title: 'b', version: '0.2.0', status: 'running' },
+        { id: 1, title: '宿主面', version: '0.1.0', status: 'done' },
+        { id: 2, title: '会话 tab', version: '0.2.0', status: 'open' },
+      ],
+    });
+    expect(text).toContain('no running milestone (latest 0.2.0)');
+    expect(text).toContain('infer the next version by semver');
+    expect(text).toContain('ask the user');
+    expect(text).toContain('do not set it yourself');
+  });
+
+  it('ranks a release above its prerelease and ignores non-numeric parts', () => {
+    const milestones = [
+      { id: 1, title: 'a', version: '0.1.0-alpha.3', status: 'done' },
+      { id: 2, title: 'b', version: '0.1.0', status: 'done' },
+      { id: 3, title: 'c', version: '0.0.9', status: 'done' },
+    ];
+    expect(latestVersion(milestones)).toBe('0.1.0');
+  });
+
+  it('warns on 2+ running milestones and points at the fix', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [
+        { id: 1, title: 'a', version: '0.1.0', status: 'running' },
+        { id: 2, title: 'b', version: '0.2.0', status: 'running' },
       ],
     });
     expect(text).toContain('WARNING: multiple running milestones');
+    expect(text).toContain('exactly one milestone should be running');
+    expect(text).toContain('"milestone","set","<id>","--status","open"');
   });
 
   it('renders nothing when empty', () => {
