@@ -40,7 +40,7 @@ mint({ args: ["plan", "--help"] })
 |---|---|---|
 | **issue** | 基础条目：一个问题或需求，六态生命周期 | 可执行的最小单位 |
 | **plan** | 一次开发计划，下挂若干 issue | **对应 DSH 的 plan 模式**：宿主 plan ↔ mint plan 一一对应 |
-| **milestone** | 项目功能版本（create 必带 `--version`） | 版本级目标；plan 挂 milestone |
+| **milestone** | 项目功能版本（create 必带 `--version`） | 版本级目标；**同刻仅 1 个 running**，plan 与独立 issue **默认挂它** |
 
 ## 执行流程
 
@@ -48,7 +48,7 @@ mint({ args: ["plan", "--help"] })
    - **bug / 问题** → `references/flow-bug.md`（issue → 挂载 → link solves → 修复 → commit → close）
    - **需求** → `references/flow-requirement.md`（issue → 排期 → 挂 plan）
    - **审查/复查报告** → `references/flow-review.md`（观察项/已修复 bugfix → 登记 + 挂活跃 plan）
-   - **遗留 / TODO / 观察项** → `references/flow-todo.md`（登记，可选挂载）
+   - **遗留 / TODO / 观察项** → `references/flow-todo.md`（登记 + 默认挂当前 running milestone）
    - **版本 / 计划 / 里程碑** → `references/flow-planning.md`（milestone create / plan create + 拆 issues）
    - **条件分支**（挂载规则/无测试/非 git/二选一）→ `references/flow-conditions.md`
    - **同步/推送/拉取/合并** → `references/flow-sync.md`（多机数据同步；**须走 bash + 用户确认**）
@@ -108,8 +108,12 @@ mint({ args: ["plan", "--help"] })
 2. **扫描 TODO/FIXME/XXX**：grep 项目代码标记（**这是代码扫描，用 bash 的 grep**），
    逐个转 issue（查重不重复，body 注明来源位置）。
 3. **milestone 检查与建议**：对比现有 milestone 与项目状态，发现新版本规划迹象 → **和用户确认后**创建
-   （重复则不问）。**唯一 running 约束**：同刻只应有 1 个 milestone 为 running（当前开发目标）；
-   发现 ≥2 running → 向用户列出并反问处理意见，确认后重置远期 milestone 为 open。
+   （重复则不问）。**唯一 running 约束**：同刻**有且仅有 1 个** milestone 为 running（当前开发目标）；
+   发现 ≥2 running → 向用户列出并反问，确认后把远期置回 open
+   （`mint({ args: ["milestone","set","<id>","--status","open"] })`）。
+   **无 running** → 取最大版本按 semver 推测候选（收尾修复→patch、新功能面→minor、稳定后破坏性→major、
+   已有 `-alpha.N` 线→同线递增）+ 一句理由 → **询问用户**选「置为 running」
+   （`mint({ args: ["milestone","set","<id>","--status","running"] })`）还是「新建」；**不得自行置 running**。
 4. **下一步计划建议**：按 blocks 拓扑排序（被依赖者优先），同层按 priority 升序推荐下一个应开发项，附理由。
    若存在 running 的存量 mint plan：提示「从该 plan 开始执行需先进入宿主 plan 模式」——plan 双向绑定，勿 auto 直接跑。
 5. **声明接管**：后续 session 直接描述意图即可，skill 自动走 mint 流程。
@@ -141,7 +145,8 @@ mint({ args: ["plan", "--help"] })
 - **去重已内置**：`add` 对同项目非终态 issue 做标题归一化+模糊匹配，重复自动合并（`hit_count+1`）。
 - **开发完成必须 `issue state commit <id> --sha <SHA>`**；`close` 必填 `--test-cmd`（无测试填 `not-tested`）。
 - **方案 vs 单点区分**：跨模块/多步骤方案 → 建 plan + 拆 issues；单点小改动/审查发现/观察项 → 只记 issue。
-- **挂载规则**（`references/flow-conditions.md`）：关联 plan → 无 plan 挂 milestone → 不挂（独立）；
+- **挂载规则**（`references/flow-conditions.md`）：**默认挂当前 running milestone**（属 plan 则挂 plan）；
+  无 running → 按 semver 推测候选并**询问用户**（置为 running / 新建），**勿自行置位**；
   issue 二选一（属 plan 后不能直接挂 milestone）。
 - **link**：被别的修改引入 → `link create <issue> solves <引入它的需求>`。
 - **delete 是危险/不可逆操作**：工具已拒绝；确需时让用户显式经 bash 执行。issue 优先 `state drop`。
@@ -157,7 +162,8 @@ mint({ args: ["plan", "--help"] })
 
 - **零授权**：mint 由插件进程内 spawn，不经会话文件沙箱，因此**不会弹审批**，
   本 skill 不含任何沙箱提权指示。
-- **上下文注入**：会话开始时注入 `[Mint] active issues` 概览（活跃 issue top 8 + running milestone）；
+- **上下文注入**：会话开始时注入 `[Mint] active issues` 概览（活跃 issue top 8 + running milestone，
+  含「current milestone ⇒ 新 plan/独立 issue 默认挂它」指令行；无 running 时提示按 semver 推测并询问用户）；
   另有一条「工具优先」的固定指引。
 - **plan 绑定门禁**：项目无活跃 mint plan 时，`exit_plan_mode` 会被拒绝（见上「plan 双向绑定」）。
 - **子代理同样可用**：`mint` 工具注册在全局层，子代理继承；

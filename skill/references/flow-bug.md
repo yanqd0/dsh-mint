@@ -12,10 +12,10 @@
    - 标题/body 模板：`title-templates/issue.md` + `body-templates/1.md`（≤4 字段、只记未知、不明确写 `? 待确认`）。
    - 若被别的修改引入（回归）→ 找到引入它的 issue →
      `mint({ args: ["issue","link","create","<bug_id>","solves","<引入 issue_id>"] })`。
-2. **挂载**（按 flow-conditions 决策表）：
+2. **挂载**（按 flow-conditions 决策表，**默认挂当前 running milestone**）：
    - 有关联的 plan（正在开发的计划）→ `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })`。
-   - 无 plan 但有目标版本 → `mint({ args: ["milestone","attach","<RM>","<ISSUE>"] })`。
-   - 都不确定 → 不挂（独立 issue），后续排期。
+   - 无关联 plan → `mint({ args: ["milestone","attach","<当前 running id>","<ISSUE>"] })`。
+   - 无 running milestone → 按 flow-conditions 给候选 + **询问用户**后再挂。
 3. **解决流程**：
    - `mint({ args: ["issue","state","plan","<id>"] })` →
      `mint({ args: ["issue","state","start","<id>"] })` → 修复代码 → git commit →

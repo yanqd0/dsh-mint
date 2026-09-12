@@ -11,8 +11,9 @@
    `mint({ args: ["issue","add","<标题>","--body","<说明 + 来源>","--kind","problem","--label","dev-clean:技术债"] })`，
    body 标注来源（如"code-reviewer 审查 <commit>"）。
    - 审查报告"未发现"不登记。
-2. **挂活跃 plan**：报告属于当前方案/计划 →
-   `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })`；否则不挂。
+2. **挂载**：报告属于当前方案/计划 → `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })`；
+   否则**默认**挂当前 running milestone（`mint({ args: ["milestone","attach","<当前 running id>","<ISSUE>"] })`）；
+   无 running → 按 flow-conditions 给候选 + 询问用户。
 3. **推进**：
    - 已修复 → `mint({ args: ["issue","state","commit","<id>","--sha","<修复 commit>"] })` 后 close（审计轨迹）。
    - 待办 → `mint({ args: ["issue","state","plan","<id>"] })` 排期，留待后续。

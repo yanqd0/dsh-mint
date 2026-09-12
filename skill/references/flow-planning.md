@@ -8,9 +8,10 @@
 ## 步骤
 
 1. **版本规划**（milestone = 项目功能版本）：
-   `mint({ args: ["milestone","create","<版本标题>","--version","<V>","--body","<目标+范围+验收>"] })`
-   —— `--version` 必填、语义化；登记前 `mint({ args: ["milestone","list","--all-states"] })` 按 version 查重，
-   **重复则不加、不问**。
+   - 先 `mint({ args: ["milestone","list","--all-states"] })`：**已有 running → 不新建**，新工作挂当前 running；
+     **无 running → 按 flow-conditions 推测候选 + 询问用户**（置为 running 或新建；不得自行置位）。
+   - 新建：`mint({ args: ["milestone","create","<版本标题>","--version","<V>","--body","<目标+范围+验收>"] })`
+     —— `--version` 必填、语义化；按 version 查重，**重复则不加、不问**。
 2. **执行计划**（plan = 一次开发计划，对应 DSH plan 模式）：
    `mint({ args: ["plan","create","<计划标题>","--body","<body>","--milestone","<RM>"] })`。
 3. **拆 issues**：按计划子任务逐个

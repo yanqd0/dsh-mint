@@ -15,9 +15,12 @@
    逐个与现有 issue 查重（`mint({ args: ["list","--search","<关键词>"] })` 标题模糊匹配），
    未登记的转 issue（kind 按性质：问题=problem、改进=requirement、杂务=task；body 注明 `来源: 文件:行号`）。
    **不重复创建**。
-3. **milestone 检查与建议**：对比现有 milestone 与项目当前状态，若发现新的版本规划迹象
-   （如代码里出现下一版本需求/方向）→ **向用户确认后**
-   `mint({ args: ["milestone","create",…] })`（重复则不问、不加）。
+3. **milestone 检查与建议**（细则见 flow-conditions「milestone 唯一性」）：
+   - **无 running**：取最大版本按 semver 推测候选 + 一句理由 → **询问用户**选「置为 running」
+     （`mint({ args: ["milestone","set","<id>","--status","running"] })`）还是「新建」
+     （`mint({ args: ["milestone","create",…,"--version","<V>"] })`）；**不得自行置 running**。
+   - **≥2 running**：列出并反问，确认后 `mint({ args: ["milestone","set","<远期 id>","--status","open"] })`。
+   - 发现新的版本规划迹象（代码里出现下一版本需求/方向）→ **向用户确认后** create（version 重复则不问、不加）。
 4. **下一步计划建议**：基于 milestone 规划 + open issues，推荐下一个应开发项，附理由
    （若存在 running 的存量 mint plan：提示「从该 plan 开始执行需先进入宿主 plan 模式，再逐步推进」
    —— plan 双向绑定，勿 auto 直接跑）：
