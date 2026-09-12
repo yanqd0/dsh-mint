@@ -42,7 +42,7 @@
 | **A. post-execute 替换（推荐）** | dsh-mint 挂 `tools/post-execute`：bash + 严格 `^mint( \|$)` 命令 + 结果带 denial 标记 → `runMint()` 直 spawn → accept 替换 content | 零上游改动、沙箱不动、无审批弹窗、插件内闭环（复用 #18） | 命令解析必须严格（含 `;`/`&&` 等元字符不拦）；原调用 audit 仍是 denied 记录；denied 结果的 isError 语义需实载验证 |
 | B. 审批 answerer 自动放行 | 挂 `approval/request`（prepend）：`req.reason` 匹配 `^escalate sandbox to danger-full-access: mint ` → allowed-once | 代码量最小 | 每调用整体 danger-full-access；匹配靠模型 justification 文本（可伪造）；审批链被绕过 |
 | C. 上游额外写根 | deepseek-harness：`SandboxExecutionPolicy` 加 `writableRoots`，roots.ts 合并，seatbelt/bwrap/landlock/fs-fence 四处同步，composition 放行 `$XDG_DATA_HOME/mint` | 最正统：mint 原生跑在沙箱内、audit 干净、全项目受益 | 改动面大（四处方言+围栏+测试），需 fork 合并/发布；本机依赖上游版本 |
-| D. 项目内 db | 显式 `MINT_DB_PATH=$PWD/.mint/mint.db`（见 notes/MOUNTING.md §5） | 零代码、已验证可用 | 单文件模式（弃多项目目录）、数据落点改变需迁移、shell-env 无法默认注入 env → 非"无痛" |
+| D. 项目内 db | 显式 `MINT_DB_PATH=$PWD/.mint/mint.db`（见 notes/mounting.md §5） | 零代码、已验证可用 | 单文件模式（弃多项目目录）、数据落点改变需迁移、shell-env 无法默认注入 env → 非"无痛" |
 
 备选/排除：工具化 mint（注册专用 tool 供模型调用）——可用但需改 skill 行为、不解决 bash 直跑；
 会话级 `danger-full-access` / `ctx.shell.sandboxMode` 全局改——太宽；

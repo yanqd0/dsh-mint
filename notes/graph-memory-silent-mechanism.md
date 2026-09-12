@@ -55,7 +55,7 @@ DSH 的沙箱/授权只包裹特定工具（bash/shell/file 这类会执行外�
 dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 
 - `src/mint.ts runMint()`：`spawn(process.execPath, [mint-faa/run-mint.js, ...args], {cwd})`，
-  在**插件自身进程**里直跑 mint CLI（源码注释 + `notes/MINT-SANDBOX.md` #18：插件子进程不经会话文件沙箱）。
+  在**插件自身进程**里直跑 mint CLI（源码注释 + `notes/mint-sandbox.md` #18：插件子进程不经会话文件沙箱）。
 - 已在三处复用、全部**零授权运行**：
   - `src/context.ts`：`agent/session-start` 时 `runMint(... list --json)` 注入 `[Mint]` 概览（等价 graph-memory 注入）；
   - `src/planbind.ts`：`tools/pre-execute` 对 `exit_plan_mode` 用 `runMint(plan list)` 做绑定门禁；
@@ -69,9 +69,9 @@ dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 
 **缺口二（已修复，#38/#35）：行为曾被 skill/检查清单「焊死」在 bash 上。** 自动安装的 `mint` skill
 （当时源自 `mint/` 子模块，dsh-mint 只 content-sync `dist/skill` → `~/.dsh/skills/mint`）以及
-`notes/INSTALL-CHECK.md`、`AGENTS.md` 全都指示「用 bash 跑 `mint ...`」。
+`notes/install-check.md`、`AGENTS.md` 全都指示「用 bash 跑 `mint ...`」。
 现 skill 源已迁入本仓 `skill/`（与上游子模块 git 层解耦），并重写为 DSH 单宿主、以 `mint`
-工具为唯一操作面；INSTALL-CHECK/AGENTS 口径同步过渡（#36）。
+工具为唯一操作面；install-check/AGENTS 口径同步过渡（#36）。
 
 ### 为什么 B-v2 之后「仍有授权问题」（治标）
 - mint 所有子命令都以**读写模式**打开 db，落点在 workspace 外 → 模型 bash 跑 `mint` 必被
@@ -83,7 +83,7 @@ dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
   - gate 只认**单条裸** `mint ...`（无 `;`/`&&`/引号/管道），复合命令、子代理（pin 到 approval `never`）
     都不走 gate → 仍弹窗或失败；
   - 本质仍是「bash 跑外部 CLI + 提权」的隐式通道，非零设计。
-- 早在 `notes/MINT-SANDBOX.md` 就把「**工具化 mint**」列为备选，但当时搁置，理由写的是
+- 早在 `notes/mint-sandbox.md` 就把「**工具化 mint**」列为备选，但当时搁置，理由写的是
   「可用但需改 skill 行为、**不解决 bash 直跑**」—— 这正是本案的抓手：不解决 bash 直跑，
   是因为当时没同时改掉「让它去跑 bash」的那个 skill/文档。
 
@@ -112,9 +112,9 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 
 | 方案 | 做法 | 授权体验 | 代价 / 风险 |
 |---|---|---|---|
-| **A（对齐 graph-memory，推荐；已落地为 plan #7）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 INSTALL-CHECK 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已随 #38 解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
+| **A（对齐 graph-memory，推荐；已落地为 plan #7）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 install-check 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已随 #38 解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
 | **B（现状，最小改）** | 沿用 B-v2，把挂载行 `config.autoApprove: true` 打开 | 跨会话免批、会话内自动 | 仍逐条落 ask/decided 审计；只认单条裸 mint；子代理/复合命令不管；治标 |
-| C（上游根治） | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项） | 最正统、全项目受益 | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 MINT-SANDBOX） |
+| C（上游根治） | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项） | 最正统、全项目受益 | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 mint-sandbox） |
 
 ### 迁移后仍保留的东西
 - `runMint()`、事件钩子、context 注入、planbind、reminders **全部不动** —— 只增宿主工具 + 改引导文档。
@@ -128,7 +128,7 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
    不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint-tool.ts`（#34）。
 2. ~~改 skill 说明并重新 content-sync 子模块~~ → **skill 源已迁入本仓 `skill/`**（#38 取消子模块），
    并重写为 DSH 单宿主、工具优先（#35）。
-3. `notes/INSTALL-CHECK.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」（#36）。
+3. `notes/install-check.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」（#36）。
 4. 回归：新会话不 bash、纯工具跑完整 dogfood，取证看 session JSONL（telemetry 默认关）——见 #37。
 
 ## 速查（证据位置）
@@ -136,4 +136,4 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
   事件挂接与召回注入见 `dsh.ts` 的 `session/event`/`agent/pre-step`/`compactBeforeStep`/`insertDshRecallBeforeCurrentUser`；
   运行库 `~/.dsh/graph-memory/graph-memory.db(-wal/-shm)`。
 - dsh-mint：`src/mint.ts`（runMint）、`src/query.ts`（宿主工具范式）、`src/approval-gate.ts`（B-v2 兜底）、
-  `notes/MINT-SANDBOX.md`（#23/#24 调研与四方案，本文承接其「工具化」被搁置项）。
+  `notes/mint-sandbox.md`（#23/#24 调研与四方案，本文承接其「工具化」被搁置项）。

@@ -2,7 +2,7 @@
 
 > 目的：回答「插件装了吗？挂载了吗？自动使用生效吗？mint 是否零授权？」
 > 按序跑下面的命令，预期输出如标注；**全部符合即插件安装/自动使用正常**。
-> 产生背景：本清单由一次 18 分钟的完整排查提炼而来（见 `DSH-PLUGIN-DEV.md`/`MOUNTING.md`），
+> 产生背景：本清单由一次 18 分钟的完整排查提炼而来（见 `dsh-plugin-dev.md`/`mounting.md`），
 > 后续跑相同 dogfooding 任务时**先跑本清单，不要从头排查**。
 
 ## 0. 环境锚点
@@ -20,7 +20,7 @@ ls -l ~/.dsh/profiles/web/node_modules/@yanqd0/dsh-mint        # 预期 symlink 
 ```
 
 若缺：`dsh plugin --profile web approve-builds --all && dsh plugin --profile web add ./`
-（pnpm 11 会拦构建脚本，见 `MOUNTING.md`；构建产物需要先 `pnpm build`）。
+（pnpm 11 会拦构建脚本，见 `mounting.md`；构建产物需要先 `pnpm build`）。
 
 ## 2. 挂载：cordis 组合树里有 mint 行（预期：出现 id: mint，无 patch: 警告）
 
@@ -87,6 +87,6 @@ zstdcat ~/.dsh/sessions/**/session.jsonl.zstd | grep -c '"mint"'       # 预期 
 **bash 兜底（B-v2 gate，仅例外路径）**：若工具不可用而必须 bash 跑 mint：
 - 默认 `autoApprove: false`：**每会话首条 mint bash 命令**被沙箱拒后，按常规提权重试一次
   （`sandbox_permissions: danger-full-access` + justification `mint`），用户批准后该 agent
-  同会话后续裸 `mint ...` 命令自动放行（gate 记忆，见 `notes/MINT-SANDBOX.md`）。
+  同会话后续裸 `mint ...` 命令自动放行（gate 记忆，见 `notes/mint-sandbox.md`）。
 - 只有「单条裸 `mint ...`（无 `;`/`&&`/引号/env 前缀）」才被 gate 识别；复合命令走常规提权审批。
 - gate 是**兜底**，不是设计路径；诊断价值：若工具已装却仍逐条弹窗，先回 §2/§4 查插件是否加载。

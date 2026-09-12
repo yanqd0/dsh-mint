@@ -115,7 +115,7 @@ shell 命令则受 DSH 文件沙箱约束：`workspace-write` 只允许写会话
 **bash 兜底（B-v2 审批放行 gate，仅例外）**：若工具不可用而必须用 bash 跑 mint，
 会话内首条 mint 命令被拒后按常规提权重试一次（`sandbox_permissions: danger-full-access` +
 justification `mint`），用户批准后，同会话后续 mint bash 命令预置同样提权参数
-即自动放行（详见 notes/MINT-SANDBOX.md）。挂载行 `config: { autoApprove: true }`
+即自动放行（详见 notes/mint-sandbox.md）。挂载行 `config: { autoApprove: true }`
 时首次也免批（显式信任 mint CLI）。其余情况（复合命令、子代理等）退化到下表选项：
 
 | 选项 | 配置 | 效果 |

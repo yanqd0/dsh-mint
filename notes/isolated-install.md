@@ -47,5 +47,5 @@ PNPM_HOME=$P DSH_HOME=$D pnpm add -g ./yanqd0-dsh-mint-<ver>.tgz
 
 ## 关联
 
-- `notes/MOUNTING.md` §3（安装途径与自动安装语义）。
+- `notes/mounting.md` §3（安装途径与自动安装语义）。
 - #28（skill 自动安装）、#29（发布 workflow）；mint-faa 二进制兜底待另立 issue。
