@@ -2,6 +2,10 @@
 
 触发：同步/推送/拉取/合并意图（`sync` 命令族，多机数据同步）。外部命令化：git/rsync/rclone 承担传输，mint 只导出快照 + 落地合并。
 
+> ⚠️ **`sync` 不经 `mint` 工具**：工具已拒绝 `sync` / `import` 子命令（跨机数据操作应由人显式驱动）。
+> 需要同步时，**先向用户确认**，再用 bash 执行下面带 `mint` 的命令（会走常规沙箱提权审批）。
+
+
 ## 核心概念
 
 - **落地单元**：`<db 父>/sync/snapshots/<machine_id>.sql`（每机一份 SQL 快照，`import_sql` 按 uid/LWW 幂等合并）。

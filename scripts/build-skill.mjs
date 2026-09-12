@@ -8,7 +8,7 @@
 // source is a hard error — the bundled skill is part of the package contract,
 // so the build must not silently produce a skill-less artifact.
 
-import { cp, access, mkdir } from 'node:fs/promises';
+import { cp, access, mkdir, rm } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,6 +23,10 @@ try {
   process.exit(1);
 }
 
+// Clear the target first: `cp` merges into an existing tree, so files deleted
+// from skill/ (e.g. retired references) would otherwise survive into dist/ and
+// ship in the package.
+await rm(dst, { recursive: true, force: true });
 await mkdir(dst, { recursive: true });
 await cp(src, dst, { recursive: true });
 console.log(`[build-skill] copied ${src} -> ${dst}`);
