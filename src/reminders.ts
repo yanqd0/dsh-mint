@@ -7,8 +7,13 @@ import type {
 } from './types.js';
 
 const COMMIT_REMINDER =
-  'You committed changes — remember to register it with mint: `mint issue state commit <id> --sha <sha>` ' +
-  'during dev, and `mint plan close <plan> --test-cmd ...` when a plan passes.';
+  '已提交代码——记得用 mint 工具登记：' +
+  'mint({args:["issue","state","commit","<id>","--sha","<前7位>"]})；' +
+  '同 plan 全部测试通过后 mint({args:["plan","close","<plan>","--test-cmd","<命令>"]})。';
+
+const FAILURE_HINT = (toolName: string): string =>
+  `[mint] tool ${toolName} failed — consider registering an issue: ` +
+  `mint({args:["issue","add","<标题>","--kind","problem"]})\n`;
 
 const BASH_TOOL_NAMES = new Set(['bash', 'tool:bash']);
 
@@ -51,9 +56,7 @@ export function installCommitReminder(ctx: DshContext): () => void {
 export function installFailureSignal(ctx: DshContext): () => void {
   return ctx.on('tools/result', (exec: ToolExecutionLike, result: ToolResultLike) => {
     if (result.isError) {
-      process.stderr.write(
-        `[mint] tool ${exec.name} failed — consider registering an issue: \`mint add <title> --kind problem\`\n`,
-      );
+      process.stderr.write(FAILURE_HINT(exec.name));
     }
   });
 }

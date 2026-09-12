@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { fetchOverview, registerMintContext, renderOverview } from './context.js';
+import { MINT_TOOL_GUIDANCE, fetchOverview, registerMintContext, renderOverview } from './context.js';
 import { runMint } from './mint.js';
 import type { DshContext } from './types.js';
 
@@ -14,8 +14,10 @@ beforeEach(() => {
 function makeAgentCtx(): {
   ctx: DshContext;
   registered: Array<{ name: string; order: number; text: string | (() => string) }>;
+  sections: Array<{ name: string; order: number; text: string }>;
 } {
   const registered: Array<{ name: string; order: number; text: string | (() => string) }> = [];
+  const sections: Array<{ name: string; order: number; text: string }> = [];
   const ctx: DshContext = {
     on: () => () => {},
     systemPrompt: {
@@ -23,9 +25,13 @@ function makeAgentCtx(): {
         registered.push(spec);
         return () => {};
       },
+      section: (spec) => {
+        sections.push(spec);
+        return () => {};
+      },
     },
   };
-  return { ctx, registered };
+  return { ctx, registered, sections };
 }
 
 describe('fetchOverview', () => {
@@ -108,10 +114,11 @@ describe('registerMintContext', () => {
         ok: true,
         text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
       });
-    const { ctx, registered } = makeAgentCtx();
+    const { ctx, registered, sections } = makeAgentCtx();
     registerMintContext(ctx, '/proj');
 
-    expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:approval-guidance']);
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
+    expect(sections.map((s) => s.name)).toEqual(['mint:tool-guidance']);
     const provider = registered[0]?.text as () => string;
 
     expect(provider()).toBe('');
@@ -139,5 +146,47 @@ describe('registerMintContext', () => {
   it('returns undefined without a systemPrompt service', () => {
     const ctx: DshContext = { on: () => () => {} };
     expect(registerMintContext(ctx, '/proj')).toBeUndefined();
+  });
+
+  it('falls back to a context provider when the host has no section()', () => {
+    const registered: Array<{ name: string; order: number; text: string | (() => string) }> = [];
+    const ctx: DshContext = {
+      on: () => () => {},
+      systemPrompt: {
+        context: (spec) => {
+          registered.push(spec);
+          return () => {};
+        },
+      },
+    };
+    registerMintContext(ctx, '/proj');
+
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:tool-guidance']);
+    expect(registered[1]?.text).toBe(MINT_TOOL_GUIDANCE);
+  });
+
+  it('registers the tool-first guidance with no bash-escalation prompt', () => {
+    const { ctx, sections } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
+
+    const guidance = sections[0];
+    expect(guidance?.order).toBe(110);
+    expect(guidance?.text).toContain('宿主 `mint` 工具');
+    expect(guidance?.text).toContain('不要用 bash 跑 mint');
+    expect(guidance?.text).not.toContain('danger-full-access');
+  });
+
+  it('disposes both registrations', () => {
+    const disposed: string[] = [];
+    const ctx: DshContext = {
+      on: () => () => {},
+      systemPrompt: {
+        context: () => () => disposed.push('context'),
+        section: () => () => disposed.push('section'),
+      },
+    };
+    const dispose = registerMintContext(ctx, '/proj');
+    dispose?.();
+    expect(disposed).toEqual(['context', 'section']);
   });
 });

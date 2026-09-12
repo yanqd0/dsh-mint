@@ -63,9 +63,22 @@ export interface ToolsLike {
   register(definition: ToolDefinitionLike): () => void;
 }
 
+/** A system-prompt section registration (`dsh-system-prompt`). */
+export interface SystemPromptSectionSpec {
+  name: string;
+  /** Sections render in ascending order; tool guidance belongs in 100–199. */
+  order: number;
+  text: string;
+}
+
 /** Subset of the host's `systemPrompt` service. */
 export interface SystemPromptLike {
   context(spec: { name: string; order: number; text: string | (() => string) }): () => void;
+  /**
+   * Static prompt section. Optional: older/leaner hosts may not expose it, in
+   * which case callers fall back to `context()`.
+   */
+  section?(spec: SystemPromptSectionSpec): () => void;
 }
 
 /** Subset of the host `Agent` published by `agent/session-start`. */

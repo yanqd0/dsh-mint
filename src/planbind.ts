@@ -5,8 +5,8 @@ const EXIT_PLAN_MODE = 'exit_plan_mode';
 const TERMINAL_PLAN_STATUSES = new Set(['done', 'dropped']);
 
 const DENY_REASON =
-  'No active mint plan for this project — create one first ' +
-  '(`mint plan create "<title>" --milestone <id>`) and attach issues before exiting plan mode.';
+  'No active mint plan for this project — create one first with the mint tool: ' +
+  'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach the issues, before exiting plan mode.';
 
 /**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no

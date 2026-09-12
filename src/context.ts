@@ -2,21 +2,28 @@ import { runMint } from './mint.js';
 import type { DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
+/** Tool guidance band is 100–199 (`notes/dsh/0.1.0/17-system-prompt-assembly.md`). */
+const TOOL_GUIDANCE_ORDER = 110;
+/** Fallback order when `systemPrompt.section` is unavailable and we use context(). */
+const TOOL_GUIDANCE_CONTEXT_ORDER = 61;
 const TOP_ISSUES = 8;
 
 /**
- * Static guidance for the B-v2 approval gate (#25): how the model asks for the
- * one mint approval and then rides the gate without re-prompting. Doctrine-
- * grounded: the preemptive escalation pattern is only sanctioned after the
- * session already observed the same denied access, so the text teaches the
- * normal first retry, then the preemptive pattern.
+ * Static guidance pointing the model at the `mint` host tool (#39).
+ *
+ * This replaces the B-v2 escalation script that used to be injected here: that
+ * text taught the model to preside over `sandbox_permissions: danger-full-access`
+ * for bash-run mint commands, which was the single strongest push toward the
+ * bash path. The tool executes mint inside the plugin process instead — no bash,
+ * no sandbox, no approval — so the guidance now says exactly that.
+ *
+ * Kept short on purpose: every section is repeated on each request.
  */
-export const MINT_APPROVAL_GUIDANCE =
-  'mint CLI 与沙箱（dsh-mint B-v2 放行 gate）：本会话首条 mint 命令可能被文件沙箱拒绝；' +
-  '此时按常规提权重试一次（sandbox_permissions: danger-full-access + justification "mint"），' +
-  '用户批准一次后，本会话后续所有 mint bash 命令可直接预置 ' +
-  'sandbox_permissions: danger-full-access 与 justification "mint"——放行 gate 会自动批准，不再弹窗。' +
-  '非 mint 命令不得预置提权，必须保持常规沙箱与审批流程。';
+export const MINT_TOOL_GUIDANCE =
+  'mint 操作统一走宿主 `mint` 工具（args 数组即 mint CLI 参数，如 ' +
+  'mint({args:["issue","state","start","42"]})）：它在插件进程内执行，不经 bash、不受文件沙箱约束、无需授权。' +
+  '不要用 bash 跑 mint。命令细节用 mint({args:["<子命令>","--help"]}) 查。' +
+  '仅当该工具不可用时才回退 bash，并按常规提权审批。';
 
 interface OverviewIssue {
   id: number;
@@ -79,13 +86,19 @@ export function renderOverview(overview: MintOverview): string {
 }
 
 /**
- * Register mint systemPrompt contexts on an agent-scoped context: the active
- * overview plus the static B-v2 approval-gate guidance.
+ * Register mint prompt contributions on an agent-scoped context: the active
+ * overview plus the static tool-first guidance.
  *
- * The overview text provider loads the mint overview once per session (cached,
- * so the CLI is not hit on every assembly) and degrades silently to an empty
- * string on failure — it never blocks the prompt assembly. `cwd` is the
- * session's workspace (project) directory, which mint uses for project lookup.
+ * The overview is dynamic (it reflects the live mint database), so it stays a
+ * per-assembly `context()` provider that loads once per session and degrades
+ * silently to an empty string on failure. The guidance is static and belongs to
+ * the tool-guidance band, so it is registered as a `section()` — a stable
+ * prefix, which is far friendlier to KV-cache reuse than a runtime-context
+ * snapshot repeated on every request. Hosts without `section` fall back to
+ * `context()` with the same text.
+ *
+ * `cwd` is the session's workspace (project) directory, which mint uses for
+ * project lookup.
  */
 export function registerMintContext(agentCtx: DshContext, cwd: string): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
@@ -114,11 +127,16 @@ export function registerMintContext(agentCtx: DshContext, cwd: string): (() => v
       return cached;
     },
   });
-  const offGuidance = sp.context({
-    name: 'mint:approval-guidance',
-    order: CONTEXT_ORDER + 1,
-    text: MINT_APPROVAL_GUIDANCE,
-  });
+
+  const offGuidance =
+    typeof sp.section === 'function'
+      ? sp.section({ name: 'mint:tool-guidance', order: TOOL_GUIDANCE_ORDER, text: MINT_TOOL_GUIDANCE })
+      : sp.context({
+          name: 'mint:tool-guidance',
+          order: TOOL_GUIDANCE_CONTEXT_ORDER,
+          text: MINT_TOOL_GUIDANCE,
+        });
+
   return () => {
     offOverview();
     offGuidance();

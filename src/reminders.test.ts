@@ -47,7 +47,7 @@ describe('commitReminderListener', () => {
     expect(decision.kind).toBe('accept');
     expect(decision.content).toHaveLength(2);
     expect(decision.content?.[1]?.type).toBe('text');
-    expect(decision.content?.[1]?.text).toContain('state commit');
+    expect(decision.content?.[1]?.text).toContain('mint({args:["issue","state","commit"');
     expect(decision.content?.[0]).toBe(successResult.content[0]);
     expect(next).not.toHaveBeenCalled();
   });
@@ -87,7 +87,7 @@ describe('installFailureSignal', () => {
     listener({ name: 'bash', arguments: {} }, { isError: true, error: { message: 'boom' }, content: [] });
 
     expect(write).toHaveBeenCalledWith(expect.stringContaining('[mint] tool bash failed'));
-    expect(write).toHaveBeenCalledWith(expect.stringContaining('mint add'));
+    expect(write).toHaveBeenCalledWith(expect.stringContaining('mint({args:["issue","add"'));
   });
 
   it('stays silent on a successful tool result', () => {

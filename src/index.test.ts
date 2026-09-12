@@ -87,7 +87,7 @@ describe('dsh-mint plugin', () => {
       agent: { ctx: agentCtx, session: { header: { cwd: '/proj' } } },
     });
 
-    expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:approval-guidance']);
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:tool-guidance']);
   });
 
   it('skips registration without an agent payload', () => {

@@ -29,7 +29,7 @@ describe('planBindListener', () => {
     const decision = await planBindListener(exec, spy);
 
     expect(decision.kind).toBe('deny');
-    expect(decision.reason).toContain('mint plan create');
+    expect(decision.reason).toContain('mint({args:["plan","create"');
     expect(spy).not.toHaveBeenCalled();
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json']);
   });
