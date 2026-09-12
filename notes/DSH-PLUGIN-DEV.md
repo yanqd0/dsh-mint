@@ -68,7 +68,7 @@ package.json 对宿主面只需 `"type": "module"` + `exports` 指向 ESM 入口
 ## 开发环与验证手段
 
 - `pnpm build` → 挂载绝对路径 `…/dist/index.js` → **重启 harness 生效**（HMR 理论上监听 cordis.patch.yml，实测 touch 未热应用，重启为准）。
-- 判定插件是否加载：会话工具列表出现 `mint_query`；上下文注入看 systemPrompt 是否含 `[Mint]` 块。
+- 判定插件是否加载：会话工具列表出现 `mint`；上下文注入看 systemPrompt 是否含 `[Mint]` 块与工具优先指引。
 - 取证：`~/.dsh/sessions/<proj>/<id>/session.jsonl.zstd`（zstd 解压看事件/工具/系统提示）；`~/.dsh/profiles/web/cordis.yml` 是 loader 写回产物；`dsh --profile web --dump-config` 验证组合。
 - 挂载失败回滚：`cordis.patch.yml` 改回 `[]` + 重启。
 
@@ -76,4 +76,4 @@ package.json 对宿主面只需 `"type": "module"` + `exports` 指向 ESM 入口
 
 - 调研结论两处被证伪（裸 id 行可挂载新插件、绝对路径目录可导入）→ 结论必须回到源码复核（#14 修 skill，#774f688 修文档）。
 - mock 单测覆盖不了 DI 约束与真实 payload 形状 → **实机验证是 dogfooding 不可省的环节**（#7 因此抓出 4 个 bug：inject、schema 超集、planbind 顺序、session-start payload）。
-- **mint 子模块内 commit 只存在于本地 detached HEAD**；dsh-mint 指针引用未推送的 ref → CI checkout 报 `upload-pack: not our ref`。**流程**：子模块改动 → 先 push mint 仓（用户手动）→ 再 push dsh-mint（#33）。
+- ~~mint 子模块~~ **（已废弃，#38）**：dsh-mint 曾以 `mint/` 子模块承载 skill 源，带来「子模块内 commit 只存在于本地 detached HEAD → CI checkout 报 not our ref」的流程约束。现已取消子模块，skill 源迁入本仓 `skill/`，二者 git 层完全解耦。

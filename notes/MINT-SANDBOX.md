@@ -70,8 +70,24 @@
   每会话首条 mint 提权经用户批准一次，此后同会话 mint 命令预置提权自动放行、
   零弹窗零拒绝往返；每次放行落 approval 审计对，无 hidden re-entry（避开 L145 反模式）。
   `config: { autoApprove: true }` 可跨会话免批（显式信任 mint CLI）。
+- **0.1.0 终局：宿主工具化（plan #7，已实施）** —— 见下「#38/#34/#39 之后的现状」。
+  B-v2 gate **降为 bash 偶发兜底**（保留原样，不再承担零授权职责）。
 - **上游贡献 B-v3/C**：`allow_always` scope 与 extra writable roots 均为上游自己的开放项，
   在 `../../deepseek/deepseek-harness` fork 提出需先解开 scope 设计——另立 issue 跟进，
   不在 0.1.0 阻塞路径上。
-- 子代理被 pin 到 approval `never`，B-v2 不适用；子代理跑 mint 的补充手段（项目内 db
-  或工具化）留待需要时再议。
+
+## #38/#34/#39 之后的现状（2026-09）
+
+模型日常 mint 操作改走宿主工具 **`mint`**（`src/mint-tool.ts`）：execute 内经 `runMint` 在
+**插件进程内** spawn mint CLI，不经 bash、不进会话文件沙箱 → **设计上零授权**。
+skill 与模型可见文案全部改为工具形态（`src/context.ts` 的提权话术已删除并换成工具优先指引）。
+引导走本仓 `skill/`（#38 起与 mint 子模块 git 层解耦），不再依赖上游 skill。
+
+**修正旧结论「子代理被 pin 到 approval `never`，B-v2 不适用 ⇒ 子代理跑 mint 无解」**：
+`mint` 工具注册在 root ctx（global layer），子代理一并继承；正因为子代理不能提权，
+**工具路径是子代理唯一的可用路径**，缺口由此关闭。
+
+上游设计张力仍然成立且本方案正面回应：上游 rejected 的「同调用内自动重试」（hidden re-entry）
+是 post-execute 替换方案的形态；**注册宿主工具是显式能力**，模型直接调用，durable
+`tool/call` + `tool/result` 审计完整（`notes/dsh/0.1.0/07`）——「零授权」来自换设计
+（工具即能力、不进沙箱），不是绕过审批。

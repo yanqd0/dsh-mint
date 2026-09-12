@@ -10,7 +10,8 @@ mint into DSH sessions:
 - session context injection (active issue overview + milestone check)
 - event reminders (git commit → `state commit`, failure signals)
 - plan-mode binding (no mint plan → no plan-mode exit)
-- a `mint_query` tool for the agent
+- a `mint` tool for the agent: the whole mint CLI executed inside the plugin
+  process, so it needs no bash, no sandbox write access and no approval
 - (0.2.0) a session tab with an issue panel
 
 ## Install from source (DSH web profile)

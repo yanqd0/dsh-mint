@@ -4,7 +4,7 @@
 
 ## 定位
 
-DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、事件提醒、plan 绑定、mint_query 工具；客户端面 0.2.0：`conversation.view` 注册 mint tab（issue 面板）。
+DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、事件提醒、plan 绑定、`mint` 工具（mint CLI 全命令面，插件进程内执行、零授权）；客户端面 0.2.0：`conversation.view` 注册 mint tab（issue 面板）。
 
 ## 硬约束
 
@@ -21,12 +21,17 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 ## issue/计划管理（mint）
 
 - issue/plan/milestone 由 mint CLI 管理（每项目独立 db）；流程见 mint skill。
-- **改码前门禁**：改某 issue 的代码前必须 `mint issue state start <id>`（dev）；commit 后立即 `state commit <id> --sha <前7位>`；同 plan 统一测试后 `state close --test-cmd`。
+- **在 DSH 会话里一律走宿主 `mint` 工具**（`mint({args:["issue","state","start","3"]})`）：插件进程内执行，
+  不经 bash、不进沙箱、零授权。**不要用 bash 跑 mint** —— 那会触发沙箱拒绝与提权审批。
+- **改码前门禁**：改某 issue 的代码前必须 `state start <id>`（dev）；commit 后立即 `state commit <id> --sha <前7位>`；
+  同 plan 统一测试后 `plan close <plan> --test-cmd "<命令>"`。
 
 ## 架构事实（DSH 调研结论，写码前复核）
 
 - 组合行裸包名从 **harness 自身 node_modules** 解析；相对路径 `./` 随预设目录走；绝对路径须指向**文件**（ESM 不导入目录）。**新插件必须 `insert:` 列表包裹**（裸 `- id/name` 是覆盖语义，报 `patch: entry not found`）；验证用 `dsh --profile web --dump-config`。
 - 宿主面接口：`agent/session-start` 事件、`tools/post-execute`（enrich）、`tools/pre-execute`（allow/deny/ask）、`tools/result`、`systemPrompt.context/section`、`shell` 服务、`tools` 注册。
+- **`mint` 工具注册在 root ctx（global layer）**：所有 agent 继承，子代理也继承（子代理 approval 被 pin `never`，bash 路径对它们不可用）。工具 execute 内经 `runMint` spawn mint，插件进程不受会话沙箱约束 → 零授权。
+- 模型可见文案一律工具形态：动态概览用 `systemPrompt.context()`，静态工具指引用 `systemPrompt.section()`（order 110，落在 100–199 tool guidance band，KV cache 友好）。
 - 客户端面：package.json `dsh.client` 声明 + 预构建 bundle；Slot `conversation.view`（list 注册 id/order/label）；Host RPC 走 `harness.handle` / `host.call`（仅 lossless JSON）。
 
 ## 常用命令（工具链落地后启用）

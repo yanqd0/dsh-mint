@@ -59,15 +59,19 @@ dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 - 已在三处复用、全部**零授权运行**：
   - `src/context.ts`：`agent/session-start` 时 `runMint(... list --json)` 注入 `[Mint]` 概览（等价 graph-memory 注入）；
   - `src/planbind.ts`：`tools/pre-execute` 对 `exit_plan_mode` 用 `runMint(plan list)` 做绑定门禁；
-  - `src/query.ts`：注册宿主工具 `mint_query`，execute 内 `runMint`（注释：plugin 进程不被会话沙箱约束）。
+  - `src/mint-tool.ts`：注册宿主工具 `mint`（args 透传全命令面），execute 内 `runMint`
+    （注释：plugin 进程不被会话沙箱约束）。
 
-**缺口一：宿主工具只有 `mint_query` 一个只读工具。** 其余 model 日常要跑的
-`issue add / state start|commit|close / plan create / plan attach / milestone create / sync ...`
+**缺口一（已修复，#34）：宿主工具曾只有 `mint_query` 一个只读工具。** 其余 model 日常要跑的
+`issue add / state start|commit|close / plan create / plan attach / milestone create ...`
 等状态操作没有任何宿主工具 → 模型只能退回 bash 跑 `mint <子命令>`。
+现由 `mint` 工具覆盖全命令面（危险子命令白名单拒绝）。
 
-**缺口二：行为被 skill/检查清单「焊死」在 bash 上。** 自动安装的 `mint` skill
-（源自 `mint/` 子模块，dsh-mint 只 content-sync `dist/skill` → `~/.dsh/skills/mint`）以及
+**缺口二（已修复，#38/#35）：行为曾被 skill/检查清单「焊死」在 bash 上。** 自动安装的 `mint` skill
+（当时源自 `mint/` 子模块，dsh-mint 只 content-sync `dist/skill` → `~/.dsh/skills/mint`）以及
 `notes/INSTALL-CHECK.md`、`AGENTS.md` 全都指示「用 bash 跑 `mint ...`」。
+现 skill 源已迁入本仓 `skill/`（与上游子模块 git 层解耦），并重写为 DSH 单宿主、以 `mint`
+工具为唯一操作面；INSTALL-CHECK/AGENTS 口径同步过渡（#36）。
 
 ### 为什么 B-v2 之后「仍有授权问题」（治标）
 - mint 所有子命令都以**读写模式**打开 db，落点在 workspace 外 → 模型 bash 跑 `mint` 必被
@@ -97,13 +101,18 @@ graph-memory 的做法对 mint 不能字面照搬：mint 项目硬约束是**依
 
 因此 dsh-mint 对齐 graph-memory 的落地 = **把 model 日常要跑的 mint 子命令全部注册成宿主工具
 （execute 内 `runMint`），并让 skill / 检查清单改走工具而不是 bash**。工具一经注册就由 agent loop
-在宿主内执行、不进沙箱、**零授权** —— `mint_query` 已是活证据。
+在宿主内执行、不进沙箱、**零授权**。**（已落地，#34 起为 `mint` 工具——单个 argv 透传工具覆盖
+mint 全命令面，取代原先只读的 `mint_query`。）**
+
+> 落地实况（2026-09）：`mint` 工具为**薄透传**——不注入也不改写任何 flag，输出即 mint 原生
+> TSV（`list` 默认每页 5 条），`--help` 经同一工具自发现；白名单拒绝 `delete`/`import`/`sync`/
+> `export`/`tui` 与 `--db`/`--project`。零格式逻辑使其对未来输出格式演进（如 TOON）天然兼容。
 
 ### 对比三方案
 
 | 方案 | 做法 | 授权体验 | 代价 / 风险 |
 |---|---|---|---|
-| **A（对齐 graph-memory，推荐）** | 补宿主工具：读（现 `mint_query`）+ 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 INSTALL-CHECK 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（skill 在 `mint/` 子模块，需改上游或本地覆盖）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
+| **A（对齐 graph-memory，推荐；已落地为 plan #7）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 INSTALL-CHECK 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已随 #38 解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
 | **B（现状，最小改）** | 沿用 B-v2，把挂载行 `config.autoApprove: true` 打开 | 跨会话免批、会话内自动 | 仍逐条落 ask/decided 审计；只认单条裸 mint；子代理/复合命令不管；治标 |
 | C（上游根治） | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项） | 最正统、全项目受益 | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 MINT-SANDBOX） |
 
@@ -113,15 +122,14 @@ graph-memory 的做法对 mint 不能字面照搬：mint 项目硬约束是**依
 
 ---
 
-## 5. 建议下一步（若采纳方案 A）
+## 5. 落地记录（方案 A 已实施，plan #7）
 
-1. 抽一个通用宿主工具（如 `mint`/`mint_exec`，参数 = argv 数组）由 `runMint` 兜底执行，
-   与若干**类型化高频工具**（issue add / state / plan create / attach / milestone）二选一或并用；
-   参考 `query.ts` 的 definition + `ctx.tools.register` 模板（含 zod/JSON schema、`exec.agent.session.header.cwd` 取项目目录）。
-2. 把 `dist/skill` 的 mint skill 说明改为「优先调用工具、避免 bash 直跑」，同步到
-   `mint/` 子模块（或本地覆盖源）并重新 content-sync。
-3. 同步改 `notes/INSTALL-CHECK.md` §5 与相关记录：从「bash 放行验证」过渡到「工具零授权验证」。
-4. 回归：新会话不 bash、纯工具跑一遍完整 dogfood（issue→plan→commit→close），确认无任何授权事件。
+1. ~~抽通用宿主工具 + 类型化高频工具二选一~~ → **已定案：单一 `mint` 工具、argv 透传**，
+   不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint-tool.ts`（#34）。
+2. ~~改 skill 说明并重新 content-sync 子模块~~ → **skill 源已迁入本仓 `skill/`**（#38 取消子模块），
+   并重写为 DSH 单宿主、工具优先（#35）。
+3. `notes/INSTALL-CHECK.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」（#36）。
+4. 回归：新会话不 bash、纯工具跑完整 dogfood，取证看 session JSONL（telemetry 默认关）——见 #37。
 
 ## 速查（证据位置）
 - graph-memory 入口：`~/.dsh/profiles/web/node_modules/graph-memory/{dsh.ts,index.ts}`（dsh.ts=DSH 适配）；

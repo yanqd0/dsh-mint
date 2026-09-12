@@ -67,6 +67,10 @@ found`：
 
 ## 3. 安装 skill
 
+> skill 单一真源是**本仓 `skill/`**（#38 起与 mint 子模块 git 层解耦）：`pnpm build` 把它拷进
+> `dist/skill`，再由下面两条路径同步到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的
+> `~/.agents/skills`）。
+
 **发布包（pnpm -g）自动安装（#28）**：无需手工步骤——
 
 - postinstall 调用 `dist/install-skill.js`，把 `dist/skill` 同步到
@@ -98,22 +102,26 @@ scripts/install-dsh.sh --uninstall
 
 ## 5. workspace-write 会话与 mint CLI
 
-dsh-mint 自身功能（上下文注入、`mint_query`、plan 绑定）以宿主信任子进程
+dsh-mint 自身功能（上下文注入、**`mint` 工具**、plan 绑定）以宿主信任子进程
 方式直接 spawn mint CLI，任何会话模式都可用。模型**手动**跑 `mint ...` 的
 shell 命令则受 DSH 文件沙箱约束：`workspace-write` 只允许写会话 workspace、
 `/tmp` 与 `os.tmpdir()`（硬编码，见 `dsh-sandbox` `writableRoots`）。mint 的
 数据库在 workspace 外（`$XDG_DATA_HOME/mint/…`），手动命令会被拒。
 
-**0.1.0 起内置 B-v2 审批放行 gate（默认生效，无需配置）**：会话内首条 mint
-命令被拒后按常规提权重试一次（`sandbox_permissions: danger-full-access` +
+**0.1.0 默认路径 = 宿主 `mint` 工具（零授权）**：模型把 mint 参数数组交给
+`mint({args:[...]})`，工具在插件进程内 spawn mint CLI → 不经 bash、不进沙箱、
+无审批往返。skill 与注入指引均按此引导，正常情况下**不需要任何沙箱放行配置**。
+
+**bash 兜底（B-v2 审批放行 gate，仅例外）**：若工具不可用而必须用 bash 跑 mint，
+会话内首条 mint 命令被拒后按常规提权重试一次（`sandbox_permissions: danger-full-access` +
 justification `mint`），用户批准后，同会话后续 mint bash 命令预置同样提权参数
-即自动放行——零弹窗、零拒绝往返（详见 notes/MINT-SANDBOX.md）。挂载行
-`config: { autoApprove: true }` 时首次也免批（显式信任 mint CLI）。其余情况
-（复合命令、子代理等）退化到下表选项：
+即自动放行（详见 notes/MINT-SANDBOX.md）。挂载行 `config: { autoApprove: true }`
+时首次也免批（显式信任 mint CLI）。其余情况（复合命令、子代理等）退化到下表选项：
 
 | 选项 | 配置 | 效果 |
 | --- | --- | --- |
-| **B-v2 放行 gate（默认）** | 无需配置；可选 `config: { autoApprove: true }` | 每会话一次批准后 mint 提权自动放行（见上） |
+| **`mint` 工具（默认，无需配置）** | 无 | 模型经工具跑 mint：不经 bash、不进沙箱、零授权 |
+| bash 兜底 B-v2 gate | 无需配置；可选 `config: { autoApprove: true }` | 每会话一次批准后 mint 提权自动放行（见上；仅 bash 例外路径） |
 | **项目内 db（推荐兜底）** | `MINT_DB_PATH=$PWD/.mint/mint.db mint ...`（或按项目 export `XDG_DATA_HOME`；gitignore 该文件/目录） | `mint *` 在 workspace-write 可用；沙箱边界不变 |
 | 会话级 `danger-full-access` | `/permission danger-full-access` 或 `DSH_PERMISSION_MODE` | 全放开——边界最宽，谨慎用 |
 | 额外可写根 | 目前无法表达：可写根集合硬编码，且会话 cwd 恒覆盖配置 fallback 根（`dsh-sandbox-policy` `resolve()`）。双根（workspace + mint 数据目录）需上游 `deepseek-harness` 改动（上游已记为 deferred 开放项） | — |
