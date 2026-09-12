@@ -20,6 +20,11 @@ export interface ToolExecutionLike {
   callId?: string;
   arguments: { command?: string } & Record<string, unknown>;
   agent?: { session?: { header?: { cwd?: string } } };
+  /**
+   * Cooperative cancellation. Tool bodies are expected to observe and forward
+   * it; the host only signals (`notes/dsh/0.1.0/06,20`).
+   */
+  signal?: AbortSignal;
 }
 
 /** Subset of the host's `ToolExecutionResult`. */

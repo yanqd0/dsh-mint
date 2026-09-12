@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import type { ChildProcess } from 'node:child_process';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -16,10 +17,24 @@ export function resolveMintEntry(): string {
   return require.resolve('mint-faa/run-mint.js');
 }
 
+export interface MintRunOptions {
+  /** Wall-clock limit for the CLI process (default {@link MINT_TIMEOUT_MS}). */
+  timeoutMs?: number;
+  /**
+   * Cooperative cancellation. Tool executions carry `exec.signal`, and a tool
+   * body is expected to observe and forward it; aborting kills the child.
+   */
+  signal?: AbortSignal;
+}
+
 export interface MintRunResult {
   ok: boolean;
   text?: string;
   error?: string;
+  /** Process exit code when the CLI ran and failed; absent on abort/timeout. */
+  exitCode?: number;
+  /** True when the run was cancelled through `options.signal`. */
+  aborted?: boolean;
 }
 
 /**
@@ -35,19 +50,44 @@ export interface MintRunResult {
 export function runMint(
   cwd: string,
   args: readonly string[],
-  timeoutMs: number = MINT_TIMEOUT_MS,
+  options: MintRunOptions = {},
 ): Promise<MintRunResult> {
+  const timeoutMs = options.timeoutMs ?? MINT_TIMEOUT_MS;
+  const { signal } = options;
+
   return new Promise((resolvePromise) => {
     let settled = false;
     let stdout = '';
     let stderr = '';
+    let aborted = signal?.aborted === true;
+    let child: ChildProcess | undefined;
+
     const settle = (result: MintRunResult): void => {
       if (settled) return;
       settled = true;
+      cleanup();
       resolvePromise(result);
     };
 
-    let child;
+    function onAbort(): void {
+      aborted = true;
+      try {
+        child?.kill('SIGTERM');
+      } catch {
+        // already gone — the close handler settles
+      }
+      settle({ ok: false, aborted: true, error: 'aborted' });
+    }
+
+    function cleanup(): void {
+      signal?.removeEventListener('abort', onAbort);
+    }
+
+    if (aborted) {
+      settle({ ok: false, aborted: true, error: 'aborted' });
+      return;
+    }
+
     try {
       child = spawn(process.execPath, [resolveMintEntry(), ...args], {
         cwd,
@@ -59,18 +99,31 @@ export function runMint(
       return;
     }
 
-    child.stdout.on('data', (chunk) => {
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    child.stdout?.on('data', (chunk) => {
       stdout += String(chunk);
     });
-    child.stderr.on('data', (chunk) => {
+    child.stderr?.on('data', (chunk) => {
       stderr += String(chunk);
     });
     child.on('error', (error) => {
       settle({ ok: false, error: error.message });
     });
     child.on('close', (code) => {
-      if (code === 0) settle({ ok: true, text: stdout });
-      else settle({ ok: false, error: stderr.trim() || `exit ${code ?? 'timeout'}` });
+      if (aborted) {
+        settle({ ok: false, aborted: true, error: 'aborted' });
+        return;
+      }
+      if (code === 0) {
+        settle({ ok: true, text: stdout });
+        return;
+      }
+      if (code === null) {
+        settle({ ok: false, error: 'exit timeout' });
+        return;
+      }
+      settle({ ok: false, exitCode: code, error: stderr.trim() || `exit ${code}` });
     });
   });
 }

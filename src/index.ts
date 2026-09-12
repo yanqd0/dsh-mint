@@ -3,8 +3,8 @@ import { z } from 'zod';
 import { installApprovalGate } from './approval-gate.js';
 import { registerMintContext } from './context.js';
 import { installSkill } from './install-skill.js';
+import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
-import { installMintQuery } from './query.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
 import type { AgentLike, DshContext } from './types.js';
 
@@ -43,7 +43,7 @@ export type Config = z.infer<typeof Config>;
  * - #3: mint overview context on every agent session start
  * - #4: commit reminder (`tools/post-execute`) + failure signal (`tools/result`)
  * - #5: plan binding (exit_plan_mode ↔ mint plan)
- * - #6: mint_query tool
+ * - #6/#34: `mint` tool — the whole mint CLI in-process, zero approval
  * - #25: approval gate — once-per-session mint escalation approval, then
  *   auto-allowed mint escalations (B-v2)
  * - #28: skill auto-install — content-syncs the bundled skill on load
@@ -62,6 +62,6 @@ export function apply(ctx: DshContext, config: Config): void {
   installCommitReminder(ctx);
   installFailureSignal(ctx);
   installPlanBinding(ctx);
-  installMintQuery(ctx);
+  installMintTool(ctx);
   installApprovalGate(ctx, config);
 }
