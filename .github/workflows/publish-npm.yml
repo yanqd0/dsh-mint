@@ -35,10 +35,8 @@ jobs:
     needs: gate
     runs-on: ubuntu-latest
     steps:
-      # mint skill 是子模块，dist/skill 的来源——发布路径必须 recursive checkout
+      # mint skill 是本仓 `skill/` 目录（#38 起与 mint 子模块解耦），无需子模块 checkout
       - uses: actions/checkout@v5
-        with:
-          submodules: recursive
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -62,8 +60,6 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
-        with:
-          submodules: recursive
       - uses: pnpm/action-setup@v4
         with:
           version: 11
@@ -86,8 +82,6 @@ jobs:
       packages: write # GITHUB_TOKEN 即可，无需 PAT
     steps:
       - uses: actions/checkout@v5
-        with:
-          submodules: recursive
       - uses: pnpm/action-setup@v4
         with:
           version: 11

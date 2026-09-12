@@ -8,10 +8,10 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 
 ## 硬约束
 
-- **依赖 mint CLI**（`--json` 输出），不直读 mint db；skill 安装走 `~/.dsh/skills/mint`（文档指引，见打包形态 issue）。
+- **依赖 mint CLI**（经 `mint-faa` 依赖解析入口执行），不直读 mint db；skill 安装走 `~/.dsh/skills/mint`（插件自有产物，rank 400 遮蔽其它用户级 skill）。
+- **skill 单一真源 = 本仓 `skill/`**：构建时拷入 `dist/skill`，插件加载/安装时 content-sync 到 `~/.dsh/skills/mint`。**本仓与 mint 上游仓已 git 层解耦**（无子模块），skill 在本仓独立演进。
 - **npm 同名双注册表发布**：`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages（scoped 名，GH Packages 天然要求 scope，无需发布时改名；见 docs/RELEASING.md）。
 - **本仓本地安装进 DSH profile 用 dsh/pnpm 命令放行构建脚本**：`dsh plugin --profile web add ./` 会在 `~/.dsh/profiles/web` 下跑 pnpm，pnpm 11 默认报 `ERR_PNPM_IGNORED_BUILDS`。不要要求用户手工改 `pnpm-workspace.yaml`；应先用 `dsh plugin --profile web approve-builds --all`，再重跑 add；或直接 `dsh plugin --profile web add ./ --config.dangerouslyAllowAllBuilds=true`。
-- **子模块提交流程（#33）**：`mint/` 子模块内 commit 后，须**先 push mint 仓（用户手动）再 push dsh-mint**，否则 CI checkout 报 `not our ref` 全红。
 - **engines `node >=20`**；CI 统一 node 22。
 - **宿主面不得有 client 构建依赖**；client bundle 须预构建（否则 MissingClientBundleError）。
 - **小步快跑、小提交**：每个逻辑变更独立 commit（Angular 前缀）。

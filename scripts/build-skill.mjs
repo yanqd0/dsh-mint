@@ -1,23 +1,26 @@
 #!/usr/bin/env node
-// Copy the mint skill from the `mint` submodule into dist/skill so the npm
-// package ships it (files: ["dist"]). tsup does not copy non-TS assets.
+// Copy the mint skill from this repo's tracked `skill/` directory into
+// `dist/skill`, so the npm package ships it (files: ["dist"]). tsup does not
+// copy non-TS assets.
 //
-// If the submodule is not initialized (fresh clone without submodule update),
-// warn and skip — the package still builds, just without the bundled skill.
+// `skill/` is the single source of truth and is owned by this repo: the mint
+// skill was decoupled from the upstream `mint` submodule (#38). A missing
+// source is a hard error — the bundled skill is part of the package contract,
+// so the build must not silently produce a skill-less artifact.
 
 import { cp, access, mkdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = dirname(fileURLToPath(import.meta.url)) + '/..';
-const src = join(root, 'mint', 'claude-plugin', 'mint-faa-cn', 'skills', 'mint');
+const src = join(root, 'skill');
 const dst = join(root, 'dist', 'skill');
 
 try {
-  await access(src);
+  await access(join(src, 'SKILL.md'));
 } catch {
-  console.warn('[build-skill] submodule `mint` not initialized — skipping skill copy');
-  process.exit(0);
+  console.error(`[build-skill] skill source missing: ${src}/SKILL.md`);
+  process.exit(1);
 }
 
 await mkdir(dst, { recursive: true });
