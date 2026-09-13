@@ -37,7 +37,7 @@ jobs:
     steps:
       # mint skill 是本仓 `skill/` 目录（#38 起与 mint 子模块解耦），无需子模块 checkout
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5 # v5 起运行时 node24；v4 为 node20，已被 GitHub 弃用
         with:
           version: 11
       - uses: actions/setup-node@v5
@@ -60,7 +60,7 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5 # v5 起运行时 node24；v4 为 node20，已被 GitHub 弃用
         with:
           version: 11
       - uses: actions/setup-node@v5
@@ -82,7 +82,7 @@ jobs:
       packages: write # GITHUB_TOKEN 即可，无需 PAT
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5 # v5 起运行时 node24；v4 为 node20，已被 GitHub 弃用
         with:
           version: 11
       - uses: actions/setup-node@v5
@@ -98,7 +98,7 @@ jobs:
         run: npm publish
 
   release:
-    # GitHub Release：notes 自动提取 CHANGELOG 当前版本段落；#8 补 CHANGELOG 前走回退文案。不挂 assets。
+    # GitHub Release：notes 自动提取 CHANGELOG 当前版本段落，缺条目时回退文案。不挂 assets。
     needs: [gate, test, publish]
     runs-on: ubuntu-latest
     permissions:

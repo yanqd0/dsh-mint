@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v5 # v5 起运行时 node24；v4 为 node20，已被 GitHub 弃用
         with:
           version: 11
       - uses: actions/setup-node@v5
@@ -26,7 +26,7 @@ jobs:
       - run: pnpm check-types
       - run: pnpm test:coverage
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7 # v6 起内置 actions/github-script@v8（node24）；v5 内嵌 v7.0.1（node20）
         with:
           files: coverage/lcov.info
           fail_ci_if_error: false # 上传失败（如 token 未配）不阻塞 CI
