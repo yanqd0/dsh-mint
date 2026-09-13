@@ -1,4 +1,5 @@
 import { runMint } from './mint.js';
+import type { MintRunResult } from './mint.js';
 import type { DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
@@ -47,10 +48,14 @@ export interface MintOverview {
 }
 
 /** Fetch the active-issue overview + milestone state via the mint CLI. */
-export async function fetchOverview(cwd: string): Promise<MintOverview> {
+export async function fetchOverview(cwd: string, entry?: string): Promise<MintOverview> {
+  // Keep the no-override call shape at two arguments: the default path stays
+  // exactly what it was before `mintEntry` existed.
+  const run = (args: string[]): Promise<MintRunResult> =>
+    entry === undefined ? runMint(cwd, args) : runMint(cwd, args, { entry });
   const [issuesRes, msRes] = await Promise.all([
-    runMint(cwd, ['list', '--json', '--no-page']),
-    runMint(cwd, ['milestone', 'list', '--json']),
+    run(['list', '--json', '--no-page']),
+    run(['milestone', 'list', '--json']),
   ]);
   if (!issuesRes.ok) throw new Error(issuesRes.error ?? 'mint list failed');
   if (!msRes.ok) throw new Error(msRes.error ?? 'mint milestone list failed');
@@ -97,7 +102,7 @@ export function renderOverview(overview: MintOverview): string {
     for (const issue of issues) {
       const labels = issue.labels.length > 0 ? ` [${issue.labels.join(',')}]` : '';
       lines.push(
-        `- #${issue.id} [${issue.kind}] ${issue.title} (P${issue.priority}, ${issue.status})${labels}`,
+        `- #${issue.id} [${issue.kind}] ${issue.title} (P${issue.priority}, ${issue.status})${labels}`
       );
     }
   }
@@ -111,7 +116,7 @@ export function renderOverview(overview: MintOverview): string {
     lines.push(
       `[Mint] current milestone = ${label} (id ${current.id}) — new plans and standalone issues ` +
         `default to it: mint({args:["milestone","attach","${current.id}","<id>"]}); ` +
-        `plan create --milestone ${current.id}`,
+        `plan create --milestone ${current.id}`
     );
   } else if (running.length >= 2) {
     const names = running.map((m) => m.version || m.title).join(', ');
@@ -119,7 +124,7 @@ export function renderOverview(overview: MintOverview): string {
     lines.push('[Mint] WARNING: multiple running milestones — check milestone state');
     lines.push(
       '[Mint] exactly one milestone should be running: list them, ask the user, then ' +
-        'mint({args:["milestone","set","<id>","--status","open"]}) for the later one',
+        'mint({args:["milestone","set","<id>","--status","open"]}) for the later one'
     );
   } else if (overview.milestones.length > 0) {
     const latest = latestVersion(overview.milestones);
@@ -127,7 +132,7 @@ export function renderOverview(overview: MintOverview): string {
       `[Mint] no running milestone (latest ${latest}) — infer the next version by semver ` +
         '(patch for fixes/docs, minor for a new capability, major for a breaking change) and ask the user: ' +
         'set it running with mint({args:["milestone","set","<id>","--status","running"]}) or create it; ' +
-        'do not set it yourself',
+        'do not set it yourself'
     );
   }
   return lines.join('\n');
@@ -148,7 +153,11 @@ export function renderOverview(overview: MintOverview): string {
  * `cwd` is the session's workspace (project) directory, which mint uses for
  * project lookup.
  */
-export function registerMintContext(agentCtx: DshContext, cwd: string): (() => void) | undefined {
+export function registerMintContext(
+  agentCtx: DshContext,
+  cwd: string,
+  entry?: string
+): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
   if (!sp) return undefined;
 
@@ -157,7 +166,7 @@ export function registerMintContext(agentCtx: DshContext, cwd: string): (() => v
 
   const load = async (): Promise<void> => {
     try {
-      const overview = await fetchOverview(cwd);
+      const overview = await fetchOverview(cwd, entry);
       cached = renderOverview(overview);
     } catch {
       cached = '';
@@ -178,7 +187,11 @@ export function registerMintContext(agentCtx: DshContext, cwd: string): (() => v
 
   const offGuidance =
     typeof sp.section === 'function'
-      ? sp.section({ name: 'mint:tool-guidance', order: TOOL_GUIDANCE_ORDER, text: MINT_TOOL_GUIDANCE })
+      ? sp.section({
+          name: 'mint:tool-guidance',
+          order: TOOL_GUIDANCE_ORDER,
+          text: MINT_TOOL_GUIDANCE,
+        })
       : sp.context({
           name: 'mint:tool-guidance',
           order: TOOL_GUIDANCE_CONTEXT_ORDER,

@@ -1,8 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { MINT_TIMEOUT_MS, resolveMintEntry, runMint } from './mint.js';
+import { MINT_TIMEOUT_MS, mintCommand, resolveMintEntry, runMint } from './mint.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 const spawnMock = vi.mocked(spawn);
@@ -13,7 +13,12 @@ interface FakeChild extends EventEmitter {
   kill: ReturnType<typeof vi.fn>;
 }
 
-function fakeChild(script: { exitCode?: number | null; stdout?: string; stderr?: string; error?: Error }): FakeChild {
+function fakeChild(script: {
+  exitCode?: number | null;
+  stdout?: string;
+  stderr?: string;
+  error?: Error;
+}): FakeChild {
   const child = new EventEmitter() as FakeChild;
   child.stdout = new EventEmitter();
   child.stderr = new EventEmitter();
@@ -39,9 +44,37 @@ describe('resolveMintEntry', () => {
   });
 });
 
+describe('mint entry override', () => {
+  afterEach(() => {
+    delete process.env.MINT_ENTRY;
+  });
+
+  it('prefers MINT_ENTRY over the mint-faa dependency', () => {
+    process.env.MINT_ENTRY = '/opt/mint/run-mint.js';
+    expect(resolveMintEntry()).toBe('/opt/mint/run-mint.js');
+  });
+
+  it('ignores a blank MINT_ENTRY', () => {
+    process.env.MINT_ENTRY = '   ';
+    expect(resolveMintEntry()).toMatch(/run-mint\.js$/);
+  });
+
+  it('runs a js entry through node and any other path directly', () => {
+    expect(mintCommand('/pkg/run-mint.js')).toEqual({
+      command: process.execPath,
+      prefix: ['/pkg/run-mint.js'],
+    });
+    expect(mintCommand('/repo/target/debug/mint')).toEqual({
+      command: '/repo/target/debug/mint',
+      prefix: [],
+    });
+  });
+});
+
 describe('runMint', () => {
   beforeEach(() => {
     spawnMock.mockReset();
+    delete process.env.MINT_ENTRY;
   });
 
   it('spawns node with the mint entry, args, cwd and timeout', async () => {
@@ -54,6 +87,24 @@ describe('runMint', () => {
     expect(argv?.[0]).toContain('run-mint.js');
     expect(argv).toEqual([resolveMintEntry(), 'list', '--json']);
     expect(options).toMatchObject({ cwd: '/proj', timeout: MINT_TIMEOUT_MS });
+  });
+
+  it('spawns an explicit entry override directly when it is a native binary', async () => {
+    fakeChild({ stdout: 'ok' });
+    await runMint('/proj', ['list', '--json'], { entry: '/repo/target/debug/mint' });
+
+    const [cmd, argv] = spawnMock.mock.calls[0] ?? [];
+    expect(cmd).toBe('/repo/target/debug/mint');
+    expect(argv).toEqual(['list', '--json']);
+  });
+
+  it('routes a js entry override through node', async () => {
+    fakeChild({ stdout: 'ok' });
+    await runMint('/proj', ['list'], { entry: '/opt/mint/run-mint.js' });
+
+    const [cmd, argv] = spawnMock.mock.calls[0] ?? [];
+    expect(cmd).toBe(process.execPath);
+    expect(argv).toEqual(['/opt/mint/run-mint.js', 'list']);
   });
 
   it('honours a custom timeout', async () => {

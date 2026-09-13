@@ -1,5 +1,11 @@
 import { runMint } from './mint.js';
-import type { ContentBlockLike, DshContext, ToolDefinitionLike, ToolExecutionLike } from './types.js';
+import type { MintRunOptions } from './mint.js';
+import type {
+  ContentBlockLike,
+  DshContext,
+  ToolDefinitionLike,
+  ToolExecutionLike,
+} from './types.js';
 
 /**
  * The `mint` host tool (#34).
@@ -131,12 +137,17 @@ export async function executeMintTool(
   cwd: string,
   argv: unknown,
   signal?: AbortSignal,
+  entry?: string
 ): Promise<MintToolOutcome> {
   const problem = validateMintArgs(argv);
   if (problem !== undefined) {
     return { ok: false, exitCode: 1, stderr: problem };
   }
-  const result = await runMint(cwd, argv as string[], signal === undefined ? {} : { signal });
+  const options: MintRunOptions = signal === undefined ? {} : { signal };
+  if (entry !== undefined) {
+    options.entry = entry;
+  }
+  const result = await runMint(cwd, argv as string[], options);
   if (result.ok) {
     return { ok: true, exitCode: 0, stdout: truncate(result.text ?? '') };
   }
@@ -164,7 +175,7 @@ export function renderMintOutcome(outcome: MintToolOutcome): string {
  * The execute handler resolves the project directory from the tool execution
  * (`exec.agent.session.header.cwd`) and spawns mint there directly.
  */
-export function installMintTool(ctx: DshContext): (() => void) | undefined {
+export function installMintTool(ctx: DshContext, entry?: string): (() => void) | undefined {
   const tools = ctx.tools;
   if (!tools) {
     return undefined;
@@ -199,13 +210,16 @@ export function installMintTool(ctx: DshContext): (() => void) | undefined {
         additionalProperties: false,
       },
       render: (_args, value) => [
-        { type: 'text', text: renderMintOutcome(value as MintToolOutcome) } satisfies ContentBlockLike,
+        {
+          type: 'text',
+          text: renderMintOutcome(value as MintToolOutcome),
+        } satisfies ContentBlockLike,
       ],
     },
     execute: async (rawArgs, exec: ToolExecutionLike) => {
       const cwd = exec?.agent?.session?.header?.cwd ?? process.cwd();
       const argv = (rawArgs as MintToolArgs | undefined)?.args;
-      return executeMintTool(cwd, argv, exec?.signal);
+      return executeMintTool(cwd, argv, exec?.signal, entry);
     },
   };
   return tools.register(definition);

@@ -33,6 +33,13 @@ export const Config = z.object({
    * `pnpm add -g`, whose build-script blocking may skip the postinstall.
    */
   autoInstallSkill: z.boolean().default(true),
+  /**
+   * Mint CLI entry the tool runs: a `run-mint.js` path or a native mint binary.
+   * Default: the `mint-faa` dependency. Point it at a locally built mint to
+   * dogfood an unreleased version — the published package lags the mint repo, so
+   * newer subcommands are otherwise unreachable from the tool.
+   */
+  mintEntry: z.string().optional(),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -47,21 +54,23 @@ export type Config = z.infer<typeof Config>;
  * - #25: approval gate — once-per-session mint escalation approval, then
  *   auto-allowed mint escalations (B-v2)
  * - #28: skill auto-install — content-syncs the bundled skill on load
+ * - `mintEntry` — run a locally built mint instead of the published dependency
  */
 export function apply(ctx: DshContext, config: Config): void {
   if (config.autoInstallSkill !== false) {
     installSkill();
   }
+  const mintEntry = config.mintEntry;
   ctx.on('agent/session-start', (payload: { agent?: AgentLike }) => {
     const agent = payload.agent;
     const cwd = agent?.session.header.cwd;
     if (agent?.ctx && cwd) {
-      registerMintContext(agent.ctx, cwd);
+      registerMintContext(agent.ctx, cwd, mintEntry);
     }
   });
   installCommitReminder(ctx);
   installFailureSignal(ctx);
-  installPlanBinding(ctx);
-  installMintTool(ctx);
+  installPlanBinding(ctx, mintEntry);
+  installMintTool(ctx, mintEntry);
   installApprovalGate(ctx, config);
 }

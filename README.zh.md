@@ -119,11 +119,12 @@ issue → plan → milestone 的流程教给 agent。日常用自然语言说需
 
 ## 配置
 
-| 选项               | 默认值  | 作用                                                                  |
-| ------------------ | ------- | --------------------------------------------------------------------- |
-| `autoApprove`      | `false` | mint 沙箱提权（bash 兜底路径）不再询问——显式信任 mint CLI。           |
-| `autoInstallSkill` | `true`  | 插件加载时把内置 mint skill content-sync 到 `$DSH_HOME/skills/mint`。 |
-| `debug`            | `false` | 预留给插件的详细诊断输出。                                            |
+| 选项               | 默认值                    | 作用                                                                                      |
+| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------- |
+| `autoApprove`      | `false`                   | mint 沙箱提权（bash 兜底路径）不再询问——显式信任 mint CLI。                               |
+| `autoInstallSkill` | `true`                    | 插件加载时把内置 mint skill content-sync 到 `$DSH_HOME/skills/mint`。                     |
+| `debug`            | `false`                   | 预留给插件的详细诊断输出。                                                                |
+| `mintEntry`        | mint-faa 的 `run-mint.js` | 要运行的 mint CLI：`run-mint.js` 路径或原生 mint 二进制。指向本地构建即可用未发布子命令。 |
 
 在 profile 自己的 patch 层（`~/.dsh/profiles/<profile>/cordis.patch.yml`）覆盖。
 同 id 的条目**修补**已挂载的那一行，而不是再挂一次——没写的选项保持默认：
@@ -132,7 +133,11 @@ issue → plan → milestone 的流程教给 agent。日常用自然语言说需
 - id: mint
   config:
     autoApprove: true
+    # 用本地构建的 mint 做 dogfooding，而不是已发布的依赖：
+    mintEntry: /path/to/mint/target/debug/mint
 ```
+
+环境变量 `MINT_ENTRY` 有同样效果、无需改 profile（两者同时存在时以 `mintEntry` 为准）。
 
 ## 路线图
 

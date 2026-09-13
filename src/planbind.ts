@@ -20,19 +20,23 @@ const DENY_REASON =
 export async function planBindListener(
   exec: ToolExecutionLike,
   next: () => Promise<PreToolDecisionLike>,
+  entry?: string
 ): Promise<PreToolDecisionLike> {
   if (exec.name !== EXIT_PLAN_MODE) {
     return next();
   }
   try {
     const cwd = exec.agent?.session?.header?.cwd ?? process.cwd();
-    const result = await runMint(cwd, ['plan', 'list', '--json']);
+    const result =
+      entry === undefined
+        ? await runMint(cwd, ['plan', 'list', '--json'])
+        : await runMint(cwd, ['plan', 'list', '--json'], { entry });
     if (!result.ok) {
       return next();
     }
     const plans = JSON.parse(result.text ?? '{}') as { items?: Array<{ status?: string }> };
     const active = (plans.items ?? []).some(
-      (plan) => !TERMINAL_PLAN_STATUSES.has(plan.status ?? ''),
+      (plan) => !TERMINAL_PLAN_STATUSES.has(plan.status ?? '')
     );
     if (!active) {
       return { kind: 'deny', reason: DENY_REASON };
@@ -44,6 +48,10 @@ export async function planBindListener(
 }
 
 /** Register the plan-binding check on `tools/pre-execute`. */
-export function installPlanBinding(ctx: DshContext): () => void {
-  return ctx.on('tools/pre-execute', planBindListener);
+export function installPlanBinding(ctx: DshContext, entry?: string): () => void {
+  return ctx.on(
+    'tools/pre-execute',
+    (exec: ToolExecutionLike, next: () => Promise<PreToolDecisionLike>) =>
+      planBindListener(exec, next, entry)
+  );
 }

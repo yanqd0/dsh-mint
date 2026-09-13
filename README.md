@@ -130,11 +130,12 @@ the mint help verbatim.
 
 ## Configuration
 
-| Option             | Default | Effect                                                                                                      |
-| ------------------ | ------- | ----------------------------------------------------------------------------------------------------------- |
-| `autoApprove`      | `false` | Auto-allow mint sandbox escalations (bash fallback) without any prompt — an explicit trust of the mint CLI. |
-| `autoInstallSkill` | `true`  | Content-sync the bundled mint skill into `$DSH_HOME/skills/mint` on plugin load.                            |
-| `debug`            | `false` | Reserved for verbose plugin diagnostics.                                                                    |
+| Option             | Default                  | Effect                                                                                                                         |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `autoApprove`      | `false`                  | Auto-allow mint sandbox escalations (bash fallback) without any prompt — an explicit trust of the mint CLI.                    |
+| `autoInstallSkill` | `true`                   | Content-sync the bundled mint skill into `$DSH_HOME/skills/mint` on plugin load.                                               |
+| `debug`            | `false`                  | Reserved for verbose plugin diagnostics.                                                                                       |
+| `mintEntry`        | mint-faa's `run-mint.js` | Mint CLI to run: a `run-mint.js` path or a native mint binary. Point it at a locally built mint to use unreleased subcommands. |
 
 Override them in the profile's own patch layer (`~/.dsh/profiles/<profile>/cordis.patch.yml`).
 An entry with the same id _patches_ the mounted row instead of mounting a second
@@ -144,7 +145,12 @@ one — the option you omit keeps its default:
 - id: mint
   config:
     autoApprove: true
+    # Dogfood a locally built mint instead of the published dependency:
+    mintEntry: /path/to/mint/target/debug/mint
 ```
+
+The environment variable `MINT_ENTRY` does the same without touching the profile
+(the mount-line `mintEntry` wins when both are set).
 
 ## Roadmap
 

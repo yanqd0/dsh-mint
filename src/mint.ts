@@ -6,20 +6,53 @@ const require = createRequire(import.meta.url);
 
 export const MINT_TIMEOUT_MS = 30_000;
 
+/** Environment override for the mint entry, consulted before the mint-faa default. */
+export const MINT_ENTRY_ENV = 'MINT_ENTRY';
+
+/** Entries matching this are Node scripts; anything else is a native binary. */
+const NODE_ENTRY = /\.(cjs|mjs|js)$/i;
+
 /**
- * Resolve the mint CLI entry (mint-faa's run-mint.js) without relying on PATH.
+ * Resolve the mint CLI entry without relying on PATH.
  *
- * `mint-faa` is a runtime dependency; its postinstall downloads the platform
- * binary. `createRequire` resolves through this package's own dependencies, so
- * it works under pnpm's isolated node_modules.
+ * Default: `mint-faa`'s `run-mint.js` — a runtime dependency whose postinstall
+ * downloads the platform binary; `createRequire` resolves it through this
+ * package's own dependencies, so it works under pnpm's isolated node_modules.
+ *
+ * `MINT_ENTRY` overrides it, and the mount-line `mintEntry` config wins over the
+ * environment. Both exist because the published `mint-faa` lags the mint repo:
+ * a session that needs an unreleased subcommand points at a locally built mint.
  */
 export function resolveMintEntry(): string {
+  const override = process.env[MINT_ENTRY_ENV];
+  if (override !== undefined && override.trim().length > 0) {
+    return override.trim();
+  }
   return require.resolve('mint-faa/run-mint.js');
+}
+
+/**
+ * Build the spawn argv for a resolved entry.
+ *
+ * A `.js`/`.mjs`/`.cjs` entry is a Node script (the `mint-faa` default) and runs
+ * under the host Node binary; any other path is a native mint executable and
+ * spawns directly — that is what lets a session dogfood a locally built Rust
+ * binary instead of the published one.
+ */
+export function mintCommand(entry: string): { command: string; prefix: string[] } {
+  return NODE_ENTRY.test(entry)
+    ? { command: process.execPath, prefix: [entry] }
+    : { command: entry, prefix: [] };
 }
 
 export interface MintRunOptions {
   /** Wall-clock limit for the CLI process (default {@link MINT_TIMEOUT_MS}). */
   timeoutMs?: number;
+  /**
+   * Mint CLI entry override: a `run-mint.js` path or a native mint binary.
+   * Defaults to {@link resolveMintEntry} (`MINT_ENTRY`, else `mint-faa`).
+   */
+  entry?: string;
   /**
    * Cooperative cancellation. Tool executions carry `exec.signal`, and a tool
    * body is expected to observe and forward it; aborting kills the child.
@@ -50,7 +83,7 @@ export interface MintRunResult {
 export function runMint(
   cwd: string,
   args: readonly string[],
-  options: MintRunOptions = {},
+  options: MintRunOptions = {}
 ): Promise<MintRunResult> {
   const timeoutMs = options.timeoutMs ?? MINT_TIMEOUT_MS;
   const { signal } = options;
@@ -89,7 +122,8 @@ export function runMint(
     }
 
     try {
-      child = spawn(process.execPath, [resolveMintEntry(), ...args], {
+      const { command, prefix } = mintCommand(options.entry ?? resolveMintEntry());
+      child = spawn(command, [...prefix, ...args], {
         cwd,
         timeout: timeoutMs,
         stdio: ['ignore', 'pipe', 'pipe'],

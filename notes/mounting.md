@@ -173,6 +173,23 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 | 会话级 `danger-full-access`       | `/permission danger-full-access` 或 `DSH_PERMISSION_MODE`                                                                                                                                            | 全放开——边界最宽，谨慎用                                     |
 | 额外可写根                        | 目前无法表达：可写根集合硬编码，且会话 cwd 恒覆盖配置 fallback 根（`dsh-sandbox-policy` `resolve()`）。双根（workspace + mint 数据目录）需上游 `deepseek-harness` 改动（上游已记为 deferred 开放项） | —                                                            |
 
+## 5.1 用本地构建的 mint（`mintEntry` / `MINT_ENTRY`）
+
+默认入口是依赖 `mint-faa` 的 `run-mint.js`（postinstall 下载的**已发布**二进制）。已发布版本落后于
+mint 仓库，仓库 HEAD 的新子命令（如 `plan drop`）经工具执行会报 `unrecognized subcommand` —— 工具跑的是
+「插件依赖的 mint」，而不是「你在开发的 mint」。
+
+挂载行 `config: { mintEntry: <path> }` 或环境变量 `MINT_ENTRY` 可替换入口（配置优先于环境变量）：
+`.js`/`.mjs`/`.cjs` 走 `node` 执行，其余路径按**原生二进制**直接 spawn，因此可指向本地构建：
+
+```yaml
+- id: mint
+  config:
+    mintEntry: /path/to/mint/target/debug/mint
+```
+
+注意：宿主面插件无 HMR，改 `dist/` 后需**重启 DSH 服务**才生效；只改入口路径（配置文件）同样在挂载时读取。
+
 ## 发布
 
 同名双注册表发布（`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages）——见
