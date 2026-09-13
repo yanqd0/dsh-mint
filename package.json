@@ -21,10 +21,16 @@
   ],
   "files": [
     "dist",
+    "cordis.patch.yml",
     "scripts/install-skill-postinstall.mjs"
   ],
   "exports": {
     ".": "./dist/index.js"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
   },
   "scripts": {
     "dev": "tsx src/index.ts",

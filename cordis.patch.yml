@@ -1,0 +1,25 @@
+# ============================================================================
+# dsh-mint —— DSH bundle patch（插件自带的挂载声明）
+# ============================================================================
+# 这是插件的"挂载声明"。DSH 启动时按层栈叠加各 bundle 的 patch，本文件把
+# dsh-mint 插入 profile 的配置树。
+#
+# 安装方式（无需手工编辑 profile 的 cordis.patch.yml）：
+#   dsh plugin --profile web add @yanqd0/dsh-mint
+# 本地开发安装：
+#   dsh plugin --profile web add ./
+#
+# `config` 必须显式给（哪怕为空对象）：插件导出的 Config 是 zod object，
+# 宿主对缺省 config 的校验会失败（`invalid config: - Required (at )`），
+# 空对象则全部走 zod 默认值。
+#
+# 本文件必须随包发布（package.json 的 files 项）：dsh 从已安装包的目录读它。
+# 注意：若 profile 的 cordis.patch.yml 里另有手写的 `id: mint` insert 行，
+# 会与本文件重复挂载（`duplicate loader entry id: mint`，profile 无法启动）——
+# 两者只能留其一。
+# ============================================================================
+
+- insert:
+    - id: mint
+      name: '@yanqd0/dsh-mint'
+      config: {}
