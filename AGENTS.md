@@ -17,7 +17,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - **宿主面不得有 client 构建依赖**；client bundle 须预构建（否则 MissingClientBundleError）。
 - **小步快跑、小提交**：每个逻辑变更独立 commit（Angular 前缀）。
 - **dogfooding**：用 mint 管理 dsh-mint 自身开发。
-- **文档分工**：对外英文文档放 `docs/`（未来 i18n 工程，**暂不做**）；对内中文记录放 `notes/`（索引 `notes/memory.md`，新会话先读）；README/CONTRIBUTING/CHANGELOG 维持英文。
+- **文档分工**：`README.md`（英）与 `README.zh.md`（中）是**必须同步的双语对**——改一侧即改另一侧，两侧同结构、同小节顺序、顶部各带语言切换相对链接；对外英文文档放 `docs/`（未来 i18n 工程，**暂不做**）；对内中文记录放 `notes/`（索引 `notes/memory.md`，新会话先读）；CONTRIBUTING/CHANGELOG 维持英文。
 
 ## issue/计划管理（mint）
 
