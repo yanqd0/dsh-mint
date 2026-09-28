@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { runMint } from './mint.js';
 import {
+  ALLOWED_ROOT_FLAGS,
   ALLOWED_SUBCOMMANDS,
   MINT_TOOL_DESCRIPTION,
   TOOL_NAME,
@@ -51,6 +52,18 @@ describe('validateMintArgs', () => {
 
   it('rejects unknown root subcommands', () => {
     expect(validateMintArgs(['frobnicate'])).toContain('不支持的 mint 子命令');
+  });
+
+  it('accepts pure-output root flags: --help-llm and -V (#57)', () => {
+    for (const root of ALLOWED_ROOT_FLAGS) {
+      expect(validateMintArgs([root])).toBeUndefined();
+    }
+    expect(validateMintArgs(['--help-llm'])).toBeUndefined();
+    expect(validateMintArgs(['-V'])).toBeUndefined();
+  });
+
+  it('rejects other root flags as unsupported options', () => {
+    expect(validateMintArgs(['--frobnicate'])).toContain('不支持的 mint 顶层参数');
   });
 
   it('rejects flags that escape the session project context', () => {
@@ -214,6 +227,7 @@ describe('tool description', () => {
   it('states the zero-approval property and points at --help', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('不经 bash');
     expect(MINT_TOOL_DESCRIPTION).toContain('--help');
+    expect(MINT_TOOL_DESCRIPTION).toContain('--help-llm');
     expect(MINT_TOOL_DESCRIPTION).toContain('TSV');
   });
 });

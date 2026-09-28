@@ -54,6 +54,14 @@ export const DENIED_SUBCOMMANDS: Readonly<Record<string, string>> = {
   tui: 'tui 是交互式界面，工具通道不适用',
 };
 
+/**
+ * Root-level flags that mint handles without a subcommand. Both are pure
+ * output with zero side effects, so the tool passes them through (#57):
+ * `--help-llm` loads the whole CLI reference in one call instead of one
+ * `--help` round trip per subcommand, and `-V` reports the running version.
+ */
+export const ALLOWED_ROOT_FLAGS: readonly string[] = ['-V', '--version', '--help-llm'];
+
 /** Flags that would escape the session's project context or database. */
 export const DENIED_FLAGS: readonly string[] = ['--db', '-p', '--project'];
 
@@ -63,7 +71,7 @@ export const MINT_TOOL_DESCRIPTION = [
   '用法：args 是 mint CLI 参数数组（不含 `mint` 本身），原样透传。',
   '- 登记/查询：["issue","add",…]、["list","--status","open"]、["search","关键词"]',
   '- 流程推进：["issue","state","start","42"]、["issue","state","commit","42","--sha","abc1234"]、["plan","close","7","--test-cmd","pnpm test"]',
-  '- 查详情：任意子命令加 --help，如 ["plan","--help"]',
+  '- 查详情：["--help-llm"] 一次装载全量 CLI 参考，或任意子命令加 --help，如 ["plan","--help"]；版本 ["-V"]',
   '输出是 mint 原生 TSV；list 默认每页 5 条（用 --page / --page-size / --no-page 调整），末行 `--- Page … ---` 页脚给出总数、出现页脚即说明被分页。不要用 bash 跑 mint。',
   '不可用：delete / import / sync / export / tui，以及 --db / --project（这些需用户显式操作）。',
 ].join('\n');
@@ -112,10 +120,13 @@ export function validateMintArgs(argv: unknown): string | undefined {
   if (denied !== undefined) {
     return `不允许的子命令：${denied}`;
   }
-  if (!ALLOWED_SUBCOMMANDS.includes(root)) {
-    return `不支持的 mint 子命令：${root}（可用：${ALLOWED_SUBCOMMANDS.join(' ')}）`;
+  if (ALLOWED_SUBCOMMANDS.includes(root) || ALLOWED_ROOT_FLAGS.includes(root)) {
+    return undefined;
   }
-  return undefined;
+  if (root.startsWith('-')) {
+    return `不支持的 mint 顶层参数：${root}（可用：${ALLOWED_ROOT_FLAGS.join(' ')}）`;
+  }
+  return `不支持的 mint 子命令：${root}（可用：${ALLOWED_SUBCOMMANDS.join(' ')}）`;
 }
 
 function truncate(text: string): string {
