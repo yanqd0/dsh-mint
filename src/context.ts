@@ -7,7 +7,12 @@ const CONTEXT_ORDER = 60;
 const TOOL_GUIDANCE_ORDER = 110;
 /** Fallback order when `systemPrompt.section` is unavailable and we use context(). */
 const TOOL_GUIDANCE_CONTEXT_ORDER = 61;
-const TOP_ISSUES = 8;
+/**
+ * How many active issues the overview carries. Five matches mint's default
+ * page size, and the header states the real total — the overview must never
+ * look like the whole backlog (#61).
+ */
+const TOP_ISSUES = 5;
 
 /**
  * Static guidance pointing the model at the `mint` host tool (#39).
@@ -16,14 +21,15 @@ const TOP_ISSUES = 8;
  * text taught the model to preside over `sandbox_permissions: danger-full-access`
  * for bash-run mint commands, which was the single strongest push toward the
  * bash path. The tool executes mint inside the plugin process instead — no bash,
- * no sandbox, no approval — so the guidance now says exactly that.
+ * no sandbox, no approval — so the guidance says exactly that.
  *
- * Kept short on purpose: every section is repeated on each request.
+ * This is the **single source** of the tool-first policy (#62): the tool
+ * description documents the mechanism, `skill/SKILL.md` documents the workflow,
+ * and neither restates this. Kept to one sentence on purpose — it is repeated on
+ * every request.
  */
 export const MINT_TOOL_GUIDANCE =
-  'mint 操作统一走宿主 `mint` 工具（args 数组即 mint CLI 参数，如 ' +
-  'mint({args:["issue","state","start","42"]})）：它在插件进程内执行，不经 bash、不受文件沙箱约束、无需授权。' +
-  '不要用 bash 跑 mint。命令细节用 mint({args:["<子命令>","--help"]}) 查。' +
+  'mint 操作一律走宿主 mint 工具（插件进程内执行：不经 bash、无需授权）；' +
   '仅当该工具不可用时才回退 bash，并按常规提权审批。';
 
 interface OverviewIssue {
@@ -137,13 +143,19 @@ export function renderOverview(overview: MintOverview): string {
     const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
     lines.push(`[Mint] mint ${overview.cliVersion}${via}`);
   }
-  const issues = overview.issues.slice(0, TOP_ISSUES);
+  // Top-N by (priority, id) — explicit so the "top" claim does not depend on
+  // mint's default ordering. Labels are deliberately left out: they are a tool
+  // call away, and they cost the most bytes per line (#61).
+  const issues = [...overview.issues]
+    .sort((a, b) => a.priority - b.priority || a.id - b.id)
+    .slice(0, TOP_ISSUES);
   if (issues.length > 0) {
-    lines.push(`[Mint] active issues (top ${TOP_ISSUES}):`);
+    const total = overview.issues.length;
+    const shown = total > TOP_ISSUES ? `top ${TOP_ISSUES} of ${total}` : `${total}`;
+    lines.push(`[Mint] issues (${shown}):`);
     for (const issue of issues) {
-      const labels = issue.labels.length > 0 ? ` [${issue.labels.join(',')}]` : '';
       lines.push(
-        `- #${issue.id} [${issue.kind}] ${issue.title} (P${issue.priority}, ${issue.status})${labels}`
+        `- #${issue.id} [${issue.kind}] ${issue.title} (P${issue.priority}, ${issue.status})`
       );
     }
   }
@@ -153,27 +165,23 @@ export function renderOverview(overview: MintOverview): string {
     // Exactly one current milestone: state the default attachment target explicitly
     // (the skill carries the reasoning; this line is what every request can see).
     const label = current.version || current.title;
-    lines.push(`[Mint] running milestones: ${label}`);
     lines.push(
-      `[Mint] current milestone = ${label} (id ${current.id}) — new plans and standalone issues ` +
-        `default to it: mint({args:["milestone","attach","${current.id}","<id>"]}); ` +
+      `[Mint] milestone ${label} (id ${current.id}) running — new plans/standalone issues ` +
+        `attach to it: mint({args:["milestone","attach","${current.id}","<id>"]}); ` +
         `plan create --milestone ${current.id}`
     );
   } else if (running.length >= 2) {
     const names = running.map((m) => m.version || m.title).join(', ');
-    lines.push(`[Mint] running milestones: ${names}`);
-    lines.push('[Mint] WARNING: multiple running milestones — check milestone state');
     lines.push(
-      '[Mint] exactly one milestone should be running: list them, ask the user, then ' +
-        'mint({args:["milestone","set","<id>","--status","open"]}) for the later one'
+      `[Mint] WARNING: ${running.length} running milestones (${names}) — keep exactly one; ` +
+        'ask the user, then reopen the later one: mint({args:["milestone","set","<id>","--status","open"]})'
     );
   } else if (overview.milestones.length > 0) {
     const latest = latestVersion(overview.milestones);
     lines.push(
       `[Mint] no running milestone (latest ${latest}) — infer the next version by semver ` +
-        '(patch for fixes/docs, minor for a new capability, major for a breaking change) and ask the user: ' +
-        'set it running with mint({args:["milestone","set","<id>","--status","running"]}) or create it; ' +
-        'do not set it yourself'
+        '(patch for fixes/docs, minor for a new capability, major for a breaking change) and ' +
+        'ASK the user to set it running or create it; do not set it yourself'
     );
   }
   return lines.join('\n');

@@ -65,15 +65,19 @@ export const ALLOWED_ROOT_FLAGS: readonly string[] = ['-V', '--version', '--help
 /** Flags that would escape the session's project context or database. */
 export const DENIED_FLAGS: readonly string[] = ['--db', '-p', '--project'];
 
+/**
+ * Model-facing tool description.
+ *
+ * Documents the **mechanism** (args semantics, output shape, what is available)
+ * and nothing else: the tool-first policy lives in `MINT_TOOL_GUIDANCE` and the
+ * workflow in `skill/SKILL.md` (#62). Every byte here ships on every request, so
+ * the three-line examples are the whole cheat sheet (#61).
+ */
 export const MINT_TOOL_DESCRIPTION = [
-  '在当前会话所属项目上运行 mint（issue/plan/milestone 三层管理）。命令在 DSH 宿主进程内执行：不经 bash、不受文件沙箱限制、无需任何授权。',
-  '分层：issue 是基础条目；plan 对应一次开发计划（与 DSH plan 模式绑定）；milestone 对应项目功能版本。',
-  '用法：args 是 mint CLI 参数数组（不含 `mint` 本身），原样透传。',
-  '- 登记/查询：["issue","add",…]、["list","--status","open"]、["search","关键词"]',
-  '- 流程推进：["issue","state","start","42"]、["issue","state","commit","42","--sha","abc1234"]、["plan","close","7","--test-cmd","pnpm test"]',
-  '- 查详情：["--help-llm"] 一次装载全量 CLI 参考，或任意子命令加 --help，如 ["plan","--help"]；版本 ["-V"]',
-  '输出是 mint 原生 TSV；list 默认每页 5 条（用 --page / --page-size / --no-page 调整），末行 `--- Page … ---` 页脚给出总数、出现页脚即说明被分页。不要用 bash 跑 mint。',
-  '不可用：delete / import / sync / export / tui，以及 --db / --project（这些需用户显式操作）。',
+  '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，命令在插件进程内执行，零授权。',
+  '例：["list","--status","open"]、["issue","state","start","42"]、["plan","close","7","--test-cmd","pnpm test"]',
+  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `--- Page … ---` 页脚给总数。全量参考 ["--help-llm"]，子命令帮助加 --help，版本 ["-V"]。',
+  '不可用：delete/import/sync/export/tui、--db/--project（需用户显式操作）。',
 ].join('\n');
 
 export interface MintToolArgs {

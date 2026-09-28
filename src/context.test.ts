@@ -118,12 +118,26 @@ describe('renderOverview', () => {
     expect(text).toContain('#3');
     expect(text).toContain('[requirement]');
     expect(text).toContain('(P1, dev)');
-    expect(text).toContain('[host]');
-    expect(text).toContain('running milestones: 0.1.0');
-    // the single running milestone is stated as the default attachment target
-    expect(text).toContain('current milestone = 0.1.0 (id 1)');
+    // labels are deliberately not injected (#61) — they cost the most per line
+    // and are one `mint list`/`show` call away
+    expect(text).not.toContain('[host]');
+    expect(text).toContain('milestone 0.1.0 (id 1) running');
     expect(text).toContain('mint({args:["milestone","attach","1","<id>"]})');
     expect(text).toContain('plan create --milestone 1');
+  });
+
+  it('caps the issue list at five and states the real total (#61)', () => {
+    const issues = Array.from({ length: 9 }, (_, index) => ({
+      id: index + 1,
+      title: `issue ${index + 1}`,
+      kind: 'requirement',
+      status: 'open',
+      priority: 1,
+      labels: [],
+    }));
+    const text = renderOverview({ issues, milestones: [] });
+    expect(text).toContain('[Mint] issues (top 5 of 9):');
+    expect(text.split('\n').filter((line) => line.startsWith('- #'))).toHaveLength(5);
   });
 
   it('suggests a next version when nothing is running', () => {
@@ -136,7 +150,7 @@ describe('renderOverview', () => {
     });
     expect(text).toContain('no running milestone (latest 0.2.0)');
     expect(text).toContain('infer the next version by semver');
-    expect(text).toContain('ask the user');
+    expect(text).toContain('ASK the user');
     expect(text).toContain('do not set it yourself');
   });
 
@@ -157,8 +171,8 @@ describe('renderOverview', () => {
         { id: 2, title: 'b', version: '0.2.0', status: 'running' },
       ],
     });
-    expect(text).toContain('WARNING: multiple running milestones');
-    expect(text).toContain('exactly one milestone should be running');
+    expect(text).toContain('WARNING: 2 running milestones');
+    expect(text).toContain('keep exactly one');
     expect(text).toContain('"milestone","set","<id>","--status","open"');
   });
 
@@ -202,7 +216,9 @@ describe('registerMintContext', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
-        text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
+        text: JSON.stringify({
+          items: [{ id: 1, title: '宿主面', version: '0.1.0', status: 'running' }],
+        }),
       })
       .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
     const { ctx, registered, sections } = makeAgentCtx();
@@ -216,7 +232,7 @@ describe('registerMintContext', () => {
     await vi.waitFor(() => expect(provider()).not.toBe(''));
     const text = provider();
     expect(text).toContain('#3');
-    expect(text).toContain('running milestones: 0.1.0');
+    expect(text).toContain('milestone 0.1.0 (id 1) running');
 
     // cache: provider returns without extra mint calls
     expect(provider()).toBe(text);
@@ -262,8 +278,9 @@ describe('registerMintContext', () => {
 
     const guidance = sections[0];
     expect(guidance?.order).toBe(110);
-    expect(guidance?.text).toContain('宿主 `mint` 工具');
-    expect(guidance?.text).toContain('不要用 bash 跑 mint');
+    // the tool-first policy lives here and only here (#62)
+    expect(guidance?.text).toContain('一律走宿主 mint 工具');
+    expect(guidance?.text).toContain('不经 bash');
     expect(guidance?.text).not.toContain('danger-full-access');
   });
 

@@ -252,10 +252,13 @@ describe('installMintTool', () => {
 });
 
 describe('tool description', () => {
-  it('states the zero-approval property and points at --help', () => {
-    expect(MINT_TOOL_DESCRIPTION).toContain('不经 bash');
+  it('documents the mechanism, and leaves the tool-first policy to the guidance (#62)', () => {
+    expect(MINT_TOOL_DESCRIPTION).toContain('零授权');
     expect(MINT_TOOL_DESCRIPTION).toContain('--help');
     expect(MINT_TOOL_DESCRIPTION).toContain('--help-llm');
     expect(MINT_TOOL_DESCRIPTION).toContain('TSV');
+    // the policy sentence lives in MINT_TOOL_GUIDANCE only — not restated here
+    expect(MINT_TOOL_DESCRIPTION).not.toContain('不要用 bash');
+    expect(MINT_TOOL_DESCRIPTION).not.toContain('不经 bash');
   });
 });
