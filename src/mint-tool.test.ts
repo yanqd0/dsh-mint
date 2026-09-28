@@ -41,7 +41,9 @@ describe('validateMintArgs', () => {
     expect(validateMintArgs(['list', '--status', 'open', '--page', '2'])).toBeUndefined();
     expect(validateMintArgs(['list', '--json'])).toBeUndefined();
     expect(validateMintArgs(['plan', '--help'])).toBeUndefined();
-    expect(validateMintArgs(['issue', 'state', 'commit', '42', '--sha', 'abc1234'])).toBeUndefined();
+    expect(
+      validateMintArgs(['issue', 'state', 'commit', '42', '--sha', 'abc1234'])
+    ).toBeUndefined();
   });
 
   it('rejects dangerous root subcommands with a readable reason', () => {
@@ -159,7 +161,31 @@ describe('renderMintOutcome', () => {
   });
 
   it('renders failures with the exit code', () => {
-    expect(renderMintOutcome({ ok: false, exitCode: 2, stderr: 'boom' })).toBe('[mint] exit 2: boom');
+    expect(renderMintOutcome({ ok: false, exitCode: 2, stderr: 'boom' })).toBe(
+      '[mint] exit 2: boom'
+    );
+  });
+
+  it('adds a version-skew hint for unknown subcommands/arguments (#58)', () => {
+    const clap = renderMintOutcome({
+      ok: false,
+      exitCode: 2,
+      stderr: "error: unexpected argument '--help-llm' found",
+    });
+    expect(clap).toContain("[mint] exit 2: error: unexpected argument '--help-llm' found");
+    expect(clap).toContain('版本偏斜');
+    expect(clap).toContain('mintEntry');
+    expect(clap).toContain('MINT_ENTRY');
+
+    expect(
+      renderMintOutcome({ ok: false, exitCode: 2, stderr: "error: unrecognized subcommand 'x'" })
+    ).toContain('版本偏斜');
+  });
+
+  it('leaves unrelated failures without the skew hint', () => {
+    expect(
+      renderMintOutcome({ ok: false, exitCode: 1, stderr: 'invalid transition: open -> dev' })
+    ).not.toContain('版本偏斜');
   });
 });
 
@@ -204,7 +230,9 @@ describe('installMintTool', () => {
     const controller = new AbortController();
     await registered[0]?.execute({ args: ['list'] }, makeExec('/session/proj', controller.signal));
 
-    expect(runMintMock).toHaveBeenCalledWith('/session/proj', ['list'], { signal: controller.signal });
+    expect(runMintMock).toHaveBeenCalledWith('/session/proj', ['list'], {
+      signal: controller.signal,
+    });
   });
 
   it('falls back to process.cwd() when the execution carries no session', async () => {

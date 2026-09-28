@@ -10,7 +10,12 @@ import {
 import { runMint } from './mint.js';
 import type { DshContext } from './types.js';
 
-vi.mock('./mint.js', () => ({ runMint: vi.fn() }));
+vi.mock('./mint.js', () => ({
+  runMint: vi.fn(),
+  resolveMintEntry: vi.fn(() => '/pkg/node_modules/mint-faa/run-mint.js'),
+  describeMintEntry: vi.fn(() => 'mint-faa@0.7.0'),
+  parseMintVersion: (text: string | undefined) => /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '')?.[1],
+}));
 const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
@@ -46,7 +51,16 @@ describe('fetchOverview', () => {
       .mockResolvedValueOnce({
         ok: true,
         text: JSON.stringify({
-          items: [{ id: 3, title: '实现上下文注入', kind: 'requirement', status: 'dev', priority: 1, labels: ['host'] }],
+          items: [
+            {
+              id: 3,
+              title: '实现上下文注入',
+              kind: 'requirement',
+              status: 'dev',
+              priority: 1,
+              labels: ['host'],
+            },
+          ],
         }),
       })
       .mockResolvedValueOnce({
@@ -54,15 +68,30 @@ describe('fetchOverview', () => {
         text: JSON.stringify({
           items: [{ id: 1, title: '宿主面', version: '0.1.0', status: 'running' }],
         }),
-      });
+      })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
 
     const overview = await fetchOverview('/proj');
 
     expect(overview.issues).toHaveLength(1);
     expect(overview.issues[0]?.title).toBe('实现上下文注入');
     expect(overview.milestones[0]?.version).toBe('0.1.0');
+    expect(overview.cliVersion).toBe('0.8.0-alpha.1');
+    expect(overview.cliEntry).toBe('mint-faa@0.7.0');
     expect(runMintMock).toHaveBeenNthCalledWith(1, '/proj', ['list', '--json', '--no-page']);
     expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['milestone', 'list', '--json']);
+    expect(runMintMock).toHaveBeenNthCalledWith(3, '/proj', ['-V']);
+  });
+
+  it('keeps the overview when the -V probe fails (#58)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'unexpected argument' });
+
+    const overview = await fetchOverview('/proj');
+    expect(overview.cliVersion).toBeUndefined();
+    expect(overview.issues).toEqual([]);
   });
 
   it('throws on mint failure', async () => {
@@ -136,6 +165,21 @@ describe('renderOverview', () => {
   it('renders nothing when empty', () => {
     expect(renderOverview({ issues: [], milestones: [] })).toBe('');
   });
+
+  it('renders the running mint version and entry label first (#58)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      cliVersion: '0.8.0-alpha.1',
+      cliEntry: '…/target/debug/mint',
+    });
+    expect(text.split('\n')[0]).toBe('[Mint] mint 0.8.0-alpha.1 via …/target/debug/mint');
+  });
+
+  it('omits the entry label when the probe could not name it (#58)', () => {
+    const text = renderOverview({ issues: [], milestones: [], cliVersion: '0.8.0-alpha.1' });
+    expect(text).toBe('[Mint] mint 0.8.0-alpha.1');
+  });
 });
 
 describe('registerMintContext', () => {
@@ -144,13 +188,23 @@ describe('registerMintContext', () => {
       .mockResolvedValueOnce({
         ok: true,
         text: JSON.stringify({
-          items: [{ id: 3, title: '实现上下文注入', kind: 'requirement', status: 'dev', priority: 1, labels: ['host'] }],
+          items: [
+            {
+              id: 3,
+              title: '实现上下文注入',
+              kind: 'requirement',
+              status: 'dev',
+              priority: 1,
+              labels: ['host'],
+            },
+          ],
         }),
       })
       .mockResolvedValueOnce({
         ok: true,
         text: JSON.stringify({ items: [{ title: '宿主面', version: '0.1.0', status: 'running' }] }),
-      });
+      })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
     const { ctx, registered, sections } = makeAgentCtx();
     registerMintContext(ctx, '/proj');
 
@@ -166,7 +220,7 @@ describe('registerMintContext', () => {
 
     // cache: provider returns without extra mint calls
     expect(provider()).toBe(text);
-    expect(runMintMock).toHaveBeenCalledTimes(2);
+    expect(runMintMock).toHaveBeenCalledTimes(3);
   });
 
   it('degrades to empty text on mint failure', async () => {

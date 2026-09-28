@@ -45,6 +45,25 @@ export function mintCommand(entry: string): { command: string; prefix: string[] 
     : { command: entry, prefix: [] };
 }
 
+/**
+ * Shorten an entry path into something a session can afford to see on every
+ * request (#58). `-V` reads the same for a debug and a release build, so the
+ * entry — not just the version — is what tells the two apart.
+ */
+export function describeMintEntry(entry: string): string {
+  // The pnpm store path is long and version-tagged: keep the interesting part.
+  const faa = /mint-faa@([^/\\]+)/.exec(entry);
+  if (faa?.[1] !== undefined) return `mint-faa@${faa[1]}`;
+  const parts = entry.split(/[/\\]+/).filter((part) => part.length > 0);
+  return parts.length <= 3 ? entry : `…/${parts.slice(-3).join('/')}`;
+}
+
+/** Extract the version out of `mint -V` output (`mint 0.8.0-alpha.1`). */
+export function parseMintVersion(text: string | undefined): string | undefined {
+  const match = /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '');
+  return match?.[1];
+}
+
 export interface MintRunOptions {
   /** Wall-clock limit for the CLI process (default {@link MINT_TIMEOUT_MS}). */
   timeoutMs?: number;

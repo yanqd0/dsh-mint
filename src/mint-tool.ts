@@ -88,6 +88,20 @@ export interface MintToolOutcome {
 }
 
 /**
+ * clap wording for a subcommand/flag the running build does not know. The
+ * published `mint-faa` lags the mint repo, so `--help-llm` (present in a local
+ * debug build) comes back as `unexpected argument` — a version problem that
+ * reads like a typo unless it is called out (#58).
+ */
+const SKEW_ERROR_PATTERN = /unrecognized subcommand|unexpected argument|invalid subcommand/i;
+
+/** Actionable follow-up appended to a version-skew failure (#58). */
+export const MINT_SKEW_HINT =
+  '提示：该子命令/参数不被当前 mint 识别，可能是版本偏斜（实跑的 mint 落后于该命令）。' +
+  '先用 mint({args:["-V"]}) 确认版本；再用挂载行 mintEntry 或环境变量 MINT_ENTRY 指向更新的 mint' +
+  '（如本地构建的 target/debug/mint）。';
+
+/**
  * Reject argv the tool refuses to run. Returns a model-readable reason, or
  * `undefined` when the argv is acceptable.
  *
@@ -188,7 +202,8 @@ export function renderMintOutcome(outcome: MintToolOutcome): string {
       .filter((part) => part.length > 0);
     return parts.length > 0 ? parts.join('\n') : '(mint 无输出)';
   }
-  return `[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`;
+  const message = `[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`;
+  return SKEW_ERROR_PATTERN.test(outcome.stderr ?? '') ? `${message}\n${MINT_SKEW_HINT}` : message;
 }
 
 /**

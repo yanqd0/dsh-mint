@@ -1,4 +1,4 @@
-import { runMint } from './mint.js';
+import { describeMintEntry, parseMintVersion, resolveMintEntry, runMint } from './mint.js';
 import type { MintRunResult } from './mint.js';
 import type { DshContext } from './types.js';
 
@@ -45,6 +45,34 @@ interface OverviewMilestone {
 export interface MintOverview {
   issues: OverviewIssue[];
   milestones: OverviewMilestone[];
+  /** Version the resolved entry reported through `-V`; absent when the probe failed. */
+  cliVersion?: string;
+  /** Short label for the entry that answered `-V` (build skew: debug vs release). */
+  cliEntry?: string;
+}
+
+/**
+ * Ask the entry for its version. Advisory only (#58): the overview is worth
+ * rendering even when `-V` is unavailable, so every failure degrades to
+ * `undefined` instead of failing {@link fetchOverview}.
+ */
+async function probeCliVersion(
+  run: (args: string[]) => Promise<MintRunResult>,
+  entry: string | undefined
+): Promise<{ version: string; entry?: string } | undefined> {
+  try {
+    const result = await run(['-V']);
+    if (result?.ok !== true) return undefined;
+    const version = parseMintVersion(result.text);
+    if (version === undefined) return undefined;
+    try {
+      return { version, entry: describeMintEntry(entry ?? resolveMintEntry()) };
+    } catch {
+      return { version };
+    }
+  } catch {
+    return undefined;
+  }
 }
 
 /** Fetch the active-issue overview + milestone state via the mint CLI. */
@@ -53,18 +81,24 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   // exactly what it was before `mintEntry` existed.
   const run = (args: string[]): Promise<MintRunResult> =>
     entry === undefined ? runMint(cwd, args) : runMint(cwd, args, { entry });
-  const [issuesRes, msRes] = await Promise.all([
+  const [issuesRes, msRes, cli] = await Promise.all([
     run(['list', '--json', '--no-page']),
     run(['milestone', 'list', '--json']),
+    probeCliVersion(run, entry),
   ]);
   if (!issuesRes.ok) throw new Error(issuesRes.error ?? 'mint list failed');
   if (!msRes.ok) throw new Error(msRes.error ?? 'mint milestone list failed');
   const issues = JSON.parse(issuesRes.text ?? '{}') as { items?: OverviewIssue[] };
   const milestones = JSON.parse(msRes.text ?? '{}') as { items?: OverviewMilestone[] };
-  return {
+  const overview: MintOverview = {
     issues: Array.isArray(issues.items) ? issues.items : [],
     milestones: Array.isArray(milestones.items) ? milestones.items : [],
   };
+  if (cli !== undefined) {
+    overview.cliVersion = cli.version;
+    if (cli.entry !== undefined) overview.cliEntry = cli.entry;
+  }
+  return overview;
 }
 
 /** Semver-ish rank: `[major, minor, patch, stable]`; a release outranks its prereleases. */
@@ -96,6 +130,13 @@ export function latestVersion(milestones: readonly OverviewMilestone[]): string 
 /** Render the overview into compact model-facing text. */
 export function renderOverview(overview: MintOverview): string {
   const lines: string[] = [];
+  if (overview.cliVersion !== undefined) {
+    // One short line, first: a command that the running build does not know
+    // ("unrecognized subcommand") is otherwise indistinguishable from a typo,
+    // and `-V` alone cannot tell a debug build from a release one (#58).
+    const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
+    lines.push(`[Mint] mint ${overview.cliVersion}${via}`);
+  }
   const issues = overview.issues.slice(0, TOP_ISSUES);
   if (issues.length > 0) {
     lines.push(`[Mint] active issues (top ${TOP_ISSUES}):`);

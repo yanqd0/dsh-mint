@@ -2,7 +2,14 @@ import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { MINT_TIMEOUT_MS, mintCommand, resolveMintEntry, runMint } from './mint.js';
+import {
+  MINT_TIMEOUT_MS,
+  describeMintEntry,
+  mintCommand,
+  parseMintVersion,
+  resolveMintEntry,
+  runMint,
+} from './mint.js';
 
 vi.mock('node:child_process', () => ({ spawn: vi.fn() }));
 const spawnMock = vi.mocked(spawn);
@@ -41,6 +48,35 @@ describe('resolveMintEntry', () => {
     const entry = resolveMintEntry();
     expect(entry).toContain('mint-faa');
     expect(entry).toMatch(/run-mint\.js$/);
+  });
+});
+
+describe('describeMintEntry', () => {
+  it('labels the pnpm-resolved mint-faa entry with its version', () => {
+    expect(
+      describeMintEntry('/p/node_modules/.pnpm/mint-faa@0.7.0/node_modules/mint-faa/run-mint.js')
+    ).toBe('mint-faa@0.7.0');
+  });
+
+  it('keeps the last segments of a local build path — debug vs release (#58)', () => {
+    expect(describeMintEntry('/repo/target/debug/mint')).toBe('…/target/debug/mint');
+    expect(describeMintEntry('/repo/target/release/mint')).toBe('…/target/release/mint');
+  });
+
+  it('leaves short paths alone', () => {
+    expect(describeMintEntry('target/debug/mint')).toBe('target/debug/mint');
+  });
+});
+
+describe('parseMintVersion', () => {
+  it('extracts the version from -V output', () => {
+    expect(parseMintVersion('mint 0.8.0-alpha.1\n')).toBe('0.8.0-alpha.1');
+  });
+
+  it('returns undefined for empty or unversioned output', () => {
+    expect(parseMintVersion(undefined)).toBeUndefined();
+    expect(parseMintVersion('')).toBeUndefined();
+    expect(parseMintVersion('mint unknown\n')).toBeUndefined();
   });
 });
 
@@ -123,7 +159,10 @@ describe('runMint', () => {
   });
 
   it('keeps stderr on success — mint writes the pagination footer there (#56)', async () => {
-    fakeChild({ stdout: 'ID\tSTATUS\n1\topen\n', stderr: '--- Page 1/1 (5 per page, 1 total) ---\n' });
+    fakeChild({
+      stdout: 'ID\tSTATUS\n1\topen\n',
+      stderr: '--- Page 1/1 (5 per page, 1 total) ---\n',
+    });
     const result = await runMint('/proj', ['list']);
     expect(result.ok).toBe(true);
     expect(result.stderr).toContain('1 total');
