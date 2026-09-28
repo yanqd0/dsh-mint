@@ -64,7 +64,7 @@ export const MINT_TOOL_DESCRIPTION = [
   '- 登记/查询：["issue","add",…]、["list","--status","open"]、["search","关键词"]',
   '- 流程推进：["issue","state","start","42"]、["issue","state","commit","42","--sha","abc1234"]、["plan","close","7","--test-cmd","pnpm test"]',
   '- 查详情：任意子命令加 --help，如 ["plan","--help"]',
-  '输出是 mint 原生 TSV；list 默认每页 5 条（用 --page / --page-size / --no-page 调整）。不要用 bash 跑 mint。',
+  '输出是 mint 原生 TSV；list 默认每页 5 条（用 --page / --page-size / --no-page 调整），末行 `--- Page … ---` 页脚给出总数、出现页脚即说明被分页。不要用 bash 跑 mint。',
   '不可用：delete / import / sync / export / tui，以及 --db / --project（这些需用户显式操作）。',
 ].join('\n');
 
@@ -149,17 +149,33 @@ export async function executeMintTool(
   }
   const result = await runMint(cwd, argv as string[], options);
   if (result.ok) {
-    return { ok: true, exitCode: 0, stdout: truncate(result.text ?? '') };
+    // mint writes the pagination footer / totals to stderr even on success
+    // (#56); pass it through so a paged `list` is visibly incomplete.
+    const outcome: MintToolOutcome = {
+      ok: true,
+      exitCode: 0,
+      stdout: truncate(result.text ?? ''),
+    };
+    const advisory = (result.stderr ?? '').trim();
+    if (advisory.length > 0) {
+      outcome.stderr = truncate(advisory);
+    }
+    return outcome;
   }
   const exitCode = result.exitCode ?? (result.aborted === true ? 130 : 1);
   return { ok: false, exitCode, stderr: result.error ?? 'mint 执行失败' };
 }
 
-/** Render a tool outcome into model-facing text (stdout verbatim). */
+/**
+ * Render a tool outcome into model-facing text: stdout verbatim, then the
+ * advisory stderr (mint's pagination footer / totals) on its own line.
+ */
 export function renderMintOutcome(outcome: MintToolOutcome): string {
   if (outcome.ok) {
-    const text = (outcome.stdout ?? '').trimEnd();
-    return text.length > 0 ? text : '(mint 无输出)';
+    const parts = [outcome.stdout ?? '', outcome.stderr ?? '']
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0);
+    return parts.length > 0 ? parts.join('\n') : '(mint 无输出)';
   }
   return `[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`;
 }

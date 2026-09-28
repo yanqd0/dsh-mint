@@ -81,7 +81,7 @@ describe('runMint', () => {
     fakeChild({ stdout: '{"items":[]}' });
     const result = await runMint('/proj', ['list', '--json']);
 
-    expect(result).toEqual({ ok: true, text: '{"items":[]}' });
+    expect(result).toEqual({ ok: true, text: '{"items":[]}', stderr: '' });
     const [cmd, argv, options] = spawnMock.mock.calls[0] ?? [];
     expect(cmd).toBe(process.execPath);
     expect(argv?.[0]).toContain('run-mint.js');
@@ -120,6 +120,13 @@ describe('runMint', () => {
     expect(result.ok).toBe(false);
     expect(result.error).toBe('boom');
     expect(result.exitCode).toBe(2);
+  });
+
+  it('keeps stderr on success — mint writes the pagination footer there (#56)', async () => {
+    fakeChild({ stdout: 'ID\tSTATUS\n1\topen\n', stderr: '--- Page 1/1 (5 per page, 1 total) ---\n' });
+    const result = await runMint('/proj', ['list']);
+    expect(result.ok).toBe(true);
+    expect(result.stderr).toContain('1 total');
   });
 
   it('resolves spawn failures as an error', async () => {

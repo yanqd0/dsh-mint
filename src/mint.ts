@@ -63,6 +63,14 @@ export interface MintRunOptions {
 export interface MintRunResult {
   ok: boolean;
   text?: string;
+  /**
+   * Raw stderr. On success this is *not* an error channel: mint writes
+   * advisory lines there (e.g. the `list` pagination footer
+   * `--- Page 1/1 (5 per page, 12 total) ---`), and dropping them makes a
+   * paged listing look complete (#56). On failure the message also lands in
+   * {@link MintRunResult.error}.
+   */
+  stderr?: string;
   error?: string;
   /** Process exit code when the CLI ran and failed; absent on abort/timeout. */
   exitCode?: number;
@@ -150,7 +158,7 @@ export function runMint(
         return;
       }
       if (code === 0) {
-        settle({ ok: true, text: stdout });
+        settle({ ok: true, text: stdout, stderr });
         return;
       }
       if (code === null) {
