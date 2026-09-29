@@ -173,20 +173,41 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 | 会话级 `danger-full-access`       | `/permission danger-full-access` 或 `DSH_PERMISSION_MODE`                                                                                                                                            | 全放开——边界最宽，谨慎用                                     |
 | 额外可写根                        | 目前无法表达：可写根集合硬编码，且会话 cwd 恒覆盖配置 fallback 根（`dsh-sandbox-policy` `resolve()`）。双根（workspace + mint 数据目录）需上游 `deepseek-harness` 改动（上游已记为 deferred 开放项） | —                                                            |
 
-## 5.1 用本地构建的 mint（`mintEntry` / `MINT_ENTRY`）
+## 5.1 两种运行方式（`mintEntry` / `MINT_ENTRY`）
 
-默认入口是依赖 `mint-faa` 的 `run-mint.js`（postinstall 下载的**已发布**二进制）。依赖区间为
-`>=0.8.0 <1.0.0`：用户升级/新装即可取到区间内的新 `mint-faa`，无需本插件跟发；但 mint 仓库 HEAD 的
-新子命令（尚未发布）经工具执行仍会报 `unrecognized subcommand` —— 工具跑的是「插件依赖的 mint」，而不是
-「你在开发的 mint」。
+插件有两种入口，用一个旋钮二选一：挂载行 `config: { mintEntry: <值> }`（优先）或环境变量
+`MINT_ENTRY`；两者都在启动时读取。
 
-挂载行 `config: { mintEntry: <path> }` 或环境变量 `MINT_ENTRY` 可替换入口（配置优先于环境变量）：
-`.js`/`.mjs`/`.cjs` 走 `node` 执行，其余路径按**原生二进制**直接 spawn，因此可指向本地构建：
+| 模式 | 写法 | 实际跑什么 |
+| --- | --- | --- |
+| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 会按需下载，可能超 30 s 工具超时 = #45） |
+| 本地构建 | `mintEntry: ~/bin/mint`、绝对路径、或裸名 `mint`（走 `PATH`） | 直接 spawn 该可执行程序 |
+
+- `dependency` 是哨兵：任一旋钮写了它都强制走依赖链，即使另一个旋钮有路径（开发 profile 钉在本地构建、
+  仍要验证用户链时用）。
+- `~` 会按 `os.homedir()` 展开（YAML 不过 shell）；裸名按原生二进制 spawn，由 `PATH` 解析。
+- 依赖区间 `>=0.8.0 <1.0.0`：用户升级/新装即可取到区间内的新 `mint-faa`，无需本插件跟发；但 mint 仓库
+  HEAD 的新子命令（尚未发布）经工具执行仍报 `unrecognized subcommand`——默认跑的是「插件依赖的 mint」，
+  不是「你在开发的 mint」。
 
 ```yaml
 - id: mint
   config:
-    mintEntry: /path/to/mint/target/debug/mint
+    mintEntry: ~/bin/mint      # 本地构建 dogfood
+    # mintEntry: dependency    # 反例：强制已发布的 mint-faa 链路
+```
+
+**解析口径（#66 起）**：插件先探测**自身包根**下的 `node_modules/mint-faa/run-mint.js`，再回落
+`require.resolve('mint-faa/run-mint.js')`。原因是 DSH 下插件的裸包名由 harness/profile 解析作用域决定
+（见 `dsh-plugin-dev.md`），`link:` 安装又不会把被 link 包的依赖装进 profile——只靠 `require.resolve`
+曾导致工具直接报 `Cannot find module 'mint-faa/run-mint.js'`。探测失败时报错带可行动指引，`[Mint]` 概览
+显示 `WARNING` 行。
+
+无 DSH 也能自检两条链：
+
+```sh
+node dist/check-mint-entry.js --mode dependency
+node dist/check-mint-entry.js --mode local --entry ~/bin/mint
 ```
 
 注意：宿主面插件无 HMR，改 `dist/` 后需**重启 DSH 服务**才生效；只改入口路径（配置文件）同样在挂载时读取。

@@ -21,6 +21,7 @@
 - `name` 模块解析（`vendor/cordis` loader import()）：`cordis:` 内置 → 以 `.` 开头按 profile baseUrl 解析 → **其余直接 `import(name)`**：
   - 目录 specifier 报 `ERR_UNSUPPORTED_DIR_IMPORT`——绝对/相对路径必须指向**文件**（如 `dist/index.js`）
   - 裸包名走 harness internal loader（从 harness 自身 node_modules 解析）
+  - **教训（#66）**：`@deepseek-ai/dsh-app-boot` 的 profile-resolution bootstrap 会把插件（profiles 树内或 linked root）的**裸包名解析**路由到 harness/profile 的包表（harness 自带 `zod` 能解析，插件自己的 `mint-faa` 不能）。所以**插件运行时的自身依赖不能只靠 `require.resolve`**：要么 bundling 进 dist，要么按 `import.meta.url` 推出包根做文件系统探测（`node_modules/<pkg>/…`，pnpm isolated/hoisted 与 npm 都成立）。本仓 `src/mint.ts` 的 `resolveDependencyEntry()` 即此模式，`require.resolve` 只作兜底。
 - 验证：`dsh --profile web --dump-config`（组合树 + 补丁警告一次看清）；`--dump-default-config` 不含用户层。
 
 ## inject 与 DI（cordis）

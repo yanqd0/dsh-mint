@@ -17,6 +17,14 @@
 # 注意：若 profile 的 cordis.patch.yml 里另有手写的 `id: mint` insert 行，
 # 会与本文件重复挂载（`duplicate loader entry id: mint`，profile 无法启动）——
 # 两者只能留其一。
+#
+# 选择 mint 入口（默认走 mint-faa 依赖链；本地构建可覆盖，见 README「选择 mint 入口」）。
+# 在 profile 的 cordis.patch.yml 加覆盖行（裸 `- id/name` 即覆盖语义）：
+#   - id: mint
+#     config:
+#       mintEntry: ~/bin/mint     # 本地构建；也可写绝对路径 …/target/release/mint
+#       # mintEntry: dependency   # 显式强制依赖链（忽略环境里的 MINT_ENTRY）
+# 改完需重启 harness（插件配置与 profile 解析表都在启动时确定）。
 # ============================================================================
 
 - insert:

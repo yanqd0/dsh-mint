@@ -9,8 +9,13 @@
 
 - GUI/会话运行的 profile：`~/.dsh/profiles/web`（`dsh web`）；session cwd 即插件挂载生效范围。
 - 插件本地源：`/home/user/yanqd0/dsh-mint`（profile 里是 `link:` 指向本仓库）。
-- mint CLI：由插件经 `mint-faa` 依赖解析入口 spawn（`src/mint.ts`），**不依赖 PATH**；
-  mint-faa 内嵌二进制走 GitHub release postinstall，失败可忽略（工具走 node 入口）。
+- mint CLI：入口优先级 = 挂载行 `mintEntry` > `MINT_ENTRY` > 依赖链；依赖链**先探测插件包根**
+  的 `node_modules/mint-faa/run-mint.js`，再回落 `require.resolve`（`src/mint.ts`，不依赖 PATH）。
+  为什么不能只靠 `require.resolve`：#66——DSH 下插件裸包名由 harness/profile 作用域解析，
+  `link:` 安装不把被 link 包的依赖装进 profile，曾直接报 `Cannot find module 'mint-faa/run-mint.js'`。
+  两条链各一条命令自检：`node dist/check-mint-entry.js --mode dependency` /
+  `node dist/check-mint-entry.js --mode local --entry ~/bin/mint`。
+  mint-faa 内嵌二进制走 GitHub release postinstall，失败可忽略（首次运行会按需下载，可能超 30s）。
 
 ## 1. 安装：包在 profile 依赖里（预期：link 行）
 
@@ -59,6 +64,8 @@ diff -rq ~/.dsh/skills/mint /home/user/yanqd0/dsh-mint/dist/skill >/dev/null && 
 
 - 会话工具列表出现 **`mint`**（宿主面 #34；旧的 `mint_query` 已删除）。
 - systemPrompt 注入 `[Mint]` 概览块（宿主面 #3）+ 一条「工具优先」指引段落（#39）。
+- 概览里出现 `[Mint] WARNING: mint 入口解析失败…` = 入口不可解析（修复见 §0 与 `mounting.md`
+  §5.1），**不是**「项目里没有 issue」；概览首行的 `via …` 标签直接告诉你跑的是哪个 mint。
 - 会话日志取证：`~/.dsh/sessions/<proj>/<id>/session.jsonl.zstd` 里查工具调用与上下文。
 
 判定别只看日志文本里 grep 到 `mint`（本仓库文档/推理里会大量出现，易误判）。

@@ -35,37 +35,49 @@ plan。
 - DSH（`@deepseek-ai/dsh`）；宿主接口按 `0.1.1-rc.2` 验证
 - Node.js >= 20
 - 无需全局安装 mint：插件经自身的 `mint-faa` 依赖解析 mint CLI
-  （`>=0.8.0 <1.0.0`）。1.0.0 以前的任意 `mint-faa` 版本都被信任，升级
-  `mint-faa` 无需本插件跟发；未发布的本地构建用 `mintEntry`/`MINT_ENTRY` 指定
+  （`>=0.8.0 <1.0.0`）——见[选择 mint 入口](#选择-mint-入口)。1.0.0 以前的任意
+  `mint-faa` 版本都被信任，升级 `mint-faa` 无需本插件跟发；未发布的本地构建
+  用 `mintEntry`/`MINT_ENTRY` 指定
 
 ## 安装
 
 装进 profile 即完成挂载。本包自带 DSH bundle 声明（`dsh.bundle.patch`），
 `dsh plugin` 会按已装状态重算 profile 的层栈——**没有任何 YAML 需要手工编辑**。
-装完重启 DSH 生效。
+装完重启 DSH 生效：插件配置与 profile 的包解析表都在启动时确定。
+
+从源码安装（`dsh plugin --profile web add ./`）是 link 目录而非复制，pnpm
+**不会**把被 link 包自己的依赖装进 profile。插件会先探测自身包根下的
+`mint-faa`，所以仓库里改过依赖后要先 `pnpm install`（再重启）依赖链才可用——
+或者直接选本地构建。
 
 ### 从 npm 安装
 
 ```sh
-dsh plugin --profile web add @yanqd0/dsh-mint
+dsh plugin --profile web add @yanqd0/dsh-mint \
+  --allow-build=@yanqd0/dsh-mint --allow-build=mint-faa
 ```
 
 `web` 是 `dsh web` 用的 profile，换成其它 profile 名同理。
 
-`dsh plugin` 实际在 `~/.dsh/profiles/web` 内跑 pnpm。pnpm 11 默认拦截依赖的
-构建脚本并报 `ERR_PNPM_IGNORED_BUILDS`——用 pnpm 自己的批准命令放行（不必改
-任何 YAML），再重跑安装：
+`dsh plugin` 实际在 `~/.dsh/profiles/web` 内跑 pnpm。pnpm 默认拦截依赖的构建
+脚本，而这次安装有两个：插件的 skill 同步、`mint-faa` 下载 mint 二进制。不带
+`--allow-build` 时报 `ERR_PNPM_IGNORED_BUILDS`——**而且依赖已经写进 profile
+清单**，所以单纯重跑不会再重算 profile 的 bundle 列表。若已经踩到，用下面这组
+命令恢复：
 
 ```sh
-dsh plugin --profile web approve-builds --all
-dsh plugin --profile web add @yanqd0/dsh-mint
+dsh plugin --profile web approve-builds --all      # 批准并跑掉被拦的脚本
+dsh plugin --profile web remove @yanqd0/dsh-mint   # 已记录的依赖要删掉后
+dsh plugin --profile web add @yanqd0/dsh-mint      # 重新 add 才会写入挂载行
 ```
 
-若接受安装时允许所有构建脚本，也可一步完成：
+从未请求过本包的 profile 上跑 `approve-builds` 只会输出
+"There are no packages awaiting approval"，什么都没批准。pnpm 12 的一次性放行
+写法是 `--allow-build=<pkg>`；pnpm 10/11 是
+`--config.dangerouslyAllowAllBuilds=true`。
 
-```sh
-dsh plugin --profile web add @yanqd0/dsh-mint --config.dangerouslyAllowAllBuilds=true
-```
+安装失败时插件**完全没挂载**：`dsh --profile web --dump-config` 不会打印
+`id: mint`。装完按下节验证。
 
 ### 从 GitHub Packages 安装
 
@@ -78,10 +90,11 @@ dsh plugin --profile web add @yanqd0/dsh-mint --config.dangerouslyAllowAllBuilds
 //npm.pkg.github.com/:_authToken=${GITHUB_TOKEN}
 ```
 
-之后同样一条命令安装：
+之后同样一条命令安装——npm 那节的构建脚本步骤在这里同样适用：
 
 ```sh
-dsh plugin --profile web add @yanqd0/dsh-mint
+dsh plugin --profile web add @yanqd0/dsh-mint \
+  --allow-build=@yanqd0/dsh-mint --allow-build=mint-faa
 ```
 
 ### 从源码安装（开发）
@@ -93,6 +106,9 @@ pnpm install && pnpm build
 dsh plugin --profile web add ./
 ```
 
+link 目录不需要构建脚本批准（pnpm 不为 `link:` 依赖跑生命周期脚本），所以挂载行
+会立即写入；内置 skill 在插件加载时同步。
+
 ### 验证
 
 ```sh
@@ -102,6 +118,39 @@ dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
 `id: mint` 恰好出现一次、且没有 `patch:` 警告，即为挂载成功。重复挂载（profile
 里手写的 `insert` 行与 bundle 声明并存）会显示为 2 次，并在启动时报
 `duplicate loader entry id: mint`。
+
+### 选择 mint 入口
+
+插件需要一个 mint 可执行程序：已发布的 `mint-faa` 薄封装（默认，跑它对应版本的
+官方二进制）或本地构建的 mint。用一个旋钮二选一——挂载行的 `mintEntry` 选项，或
+环境变量 `MINT_ENTRY`；两者同时存在时以挂载行为准。
+
+| 模式            | 怎么选                                                                                                     | 实际跑什么                                                                                     |
+| --------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
+| 依赖链（默认）  | 不写，或 `mintEntry: dependency`                                                                            | 已安装插件包内 `mint-faa` 的 `run-mint.js`，它执行该 `mint-faa` 版本对应的官方 release 二进制 |
+| 本地构建        | `mintEntry: ~/bin/mint`、绝对路径（如 `/path/to/mint/target/release/mint`）、或裸名 `mint`（走 `PATH` 查找） | 直接执行该可执行程序                                                                           |
+
+任一旋钮写 `dependency` 都是**哨兵**：即使另一个旋钮写了路径，也强制走依赖链——
+开发 profile 固定成本地构建、但仍要验证已发布链路时很有用。
+
+```sh
+# 会话实际会跑哪个 mint？（不需要 DSH）
+node node_modules/@yanqd0/dsh-mint/dist/check-mint-entry.js --mode dependency
+node node_modules/@yanqd0/dsh-mint/dist/check-mint-entry.js --mode local --entry ~/bin/mint
+```
+
+两条都会打印模式、入口标签（`mint-faa@<版本>`、`PATH:mint` 或解析后的构建路径）
+和 `-V` 输出；入口跑不起来时以非零退出。注入的 `[Mint]` 行用的是同一个入口标签
+（`…/target/release/mint`），因此 debug 与 release 构建可区分（#58）。
+
+改完任一旋钮都要重启 DSH。依赖链首次调用时若安装没跑构建脚本（pnpm 默认拦截，
+见「安装」），会先下载 mint 二进制——这一次可能超过 30 s 工具超时。
+
+若 `mint` 工具报 `Cannot find module 'mint-faa/run-mint.js'`：说明 profile 里没有可用
+的 `mint-faa`——要么它的构建脚本从未被批准（见「从 npm 安装」），要么在源码 link
+安装下该依赖是上次 `pnpm install` 之后才加的。按上面重新安装并重启，或在仓库里跑
+`pnpm install`；也可以直接把 `mintEntry` 指向本地构建。同样的故障会在 `[Mint]` 概览
+里显示为 `WARNING` 行，而不是伪装成"项目里没有 issue"。
 
 ## 用法
 
@@ -126,7 +175,7 @@ issue → plan → milestone 的流程教给 agent。日常用自然语言说需
 | `autoApprove`      | `false`                   | mint 沙箱提权（bash 兜底路径）不再询问——显式信任 mint CLI。                               |
 | `autoInstallSkill` | `true`                    | 插件加载时把内置 mint skill content-sync 到 `$DSH_HOME/skills/mint`。                     |
 | `debug`            | `false`                   | 预留给插件的详细诊断输出。                                                                |
-| `mintEntry`        | mint-faa 的 `run-mint.js` | 要运行的 mint CLI：`run-mint.js` 路径或原生 mint 二进制。指向本地构建即可用未发布子命令。 |
+| `mintEntry`        | mint-faa 的 `run-mint.js` | 要运行的 mint CLI：`run-mint.js` 路径、原生 mint 二进制、`~/` 前缀路径、裸名（走 `PATH`），或 `dependency` 哨兵。见[选择 mint 入口](#选择-mint-入口)。 |
 
 在 profile 自己的 patch 层（`~/.dsh/profiles/<profile>/cordis.patch.yml`）覆盖。
 同 id 的条目**修补**已挂载的那一行，而不是再挂一次——没写的选项保持默认：
@@ -135,11 +184,14 @@ issue → plan → milestone 的流程教给 agent。日常用自然语言说需
 - id: mint
   config:
     autoApprove: true
-    # 用本地构建的 mint 做 dogfooding，而不是已发布的依赖：
-    mintEntry: /path/to/mint/target/debug/mint
+    # 用本地构建的 mint 做 dogfooding，而不是已发布的依赖
+    # （`~` 会展开；裸名 `mint` 走 PATH 查找）：
+    mintEntry: ~/bin/mint
+    # mintEntry: dependency   # 反过来强制走已发布的 mint-faa 链路
 ```
 
 环境变量 `MINT_ENTRY` 有同样效果、无需改 profile（两者同时存在时以 `mintEntry` 为准）。
+两者都在启动时读取，改完任一都要重启 DSH。
 
 ## 路线图
 
