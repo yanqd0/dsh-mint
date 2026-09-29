@@ -92,4 +92,10 @@ describe('skill layout (#71)', () => {
       expect(named.has(file), `${file} is not referenced from SKILL.md`).toBe(true);
     }
   });
+
+  it('documents the kebab link value the CLI accepts (#73)', () => {
+    const commands = read('references/commands.md');
+    expect(commands).toContain('"blocked-by"');
+    expect(commands).not.toContain('"blocked_by"');
+  });
 });

@@ -93,15 +93,16 @@ mint({ args: ["issue","label","attach","42","docs"] })     // label 不存在则
 mint({ args: ["issue","label","attach","42","agent:dsh"] })// 参与者：agent: 前缀
 mint({ args: ["issue","label","detach","42","docs"] })     // 摘除（不删 label 本体）
 
-mint({ args: ["issue","link","create","42","solves","10"] })     // 42 解决了 10
-mint({ args: ["issue","link","create","42","blocked_by","55"] })  // 42 被 55 阻塞
+mint({ args: ["issue","link","create","42","solves","10"] })      // 42 解决了 10
+mint({ args: ["issue","link","create","42","blocked-by","55"] })  // 42 被 55 阻塞
 mint({ args: ["issue","link","create","42","related","30"] })
 mint({ args: ["issue","link","list","42"] })
 mint({ args: ["issue","link","remove","42","related","10"] })
 ```
 
-link 类型：`related` / `solves` / `duplicates` / `blocked_by` / `blocks`。
-blocked_by ↔ blocks 互逆；库中归一化为 blocks 存储，查询时自动派生反向。
+link 类型（**CLI 取值一律 kebab**）：`related` / `solves` / `duplicates` / `blocked-by` / `blocks`；
+`blocked_by` 只出现在输出侧（JSON `rel`），**不能当参数**（传了报 exit 2 `invalid value`）。
+blocked-by ↔ blocks 互逆；库中归一化为 blocks 存储，查询时自动派生反向。
 
 ## plan / milestone
 
