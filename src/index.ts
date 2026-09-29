@@ -34,7 +34,9 @@ export const Config = z.object({
    */
   autoInstallSkill: z.boolean().default(true),
   /**
-   * Mint CLI entry the tool runs: a `run-mint.js` path or a native mint binary.
+   * Mint CLI entry the tool runs: a `run-mint.js` path, a native mint binary,
+   * a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel
+   * (force the `mint-faa` chain even when `MINT_ENTRY` is set).
    * Default: the `mint-faa` dependency (range `>=0.8.0 <1.0.0`, so any pre-1.0
    * release is picked up without a plugin update). Point it at a locally built
    * mint to dogfood an unreleased version.

@@ -1,4 +1,10 @@
-import { describeMintEntry, parseMintVersion, resolveMintEntry, runMint } from './mint.js';
+import {
+  MINT_ENTRY_WARNING,
+  describeMintEntry,
+  parseMintVersion,
+  resolveMintEntry,
+  runMint,
+} from './mint.js';
 import type { MintRunResult } from './mint.js';
 import type { DshContext } from './types.js';
 
@@ -299,8 +305,18 @@ export function registerMintContext(
   let started = false;
 
   const load = async (): Promise<void> => {
+    // Resolve first, separately: an unresolvable entry is a plugin-side outage
+    // the session can act on (#66), not an empty project — staying silent here
+    // made `Cannot find module` look like "no issues".
+    let resolved: string;
     try {
-      const overview = await fetchOverview(cwd, entry);
+      resolved = entry === undefined ? resolveMintEntry() : resolveMintEntry({ entry });
+    } catch {
+      cached = `[Mint] WARNING: ${MINT_ENTRY_WARNING}`;
+      return;
+    }
+    try {
+      const overview = await fetchOverview(cwd, resolved);
       cached = renderOverview(overview);
     } catch {
       cached = '';

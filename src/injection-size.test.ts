@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, renderOverview } from './context.js';
+import { MINT_ENTRY_WARNING } from './mint.js';
 import { MINT_TOOL_DESCRIPTION } from './mint-tool.js';
 
 /**
@@ -119,6 +120,10 @@ describe('per-request injection budget (#61)', () => {
 
   it('keeps the tool description under 550 bytes', () => {
     expect(bytes(MINT_TOOL_DESCRIPTION)).toBeLessThanOrEqual(550);
+  });
+
+  it('keeps the entry-failure warning small — it only shows when mint is broken (#66)', () => {
+    expect(bytes(`[Mint] WARNING: ${MINT_ENTRY_WARNING}`)).toBeLessThanOrEqual(200);
   });
 
   it('keeps the whole fixed injection under 1500 bytes', () => {

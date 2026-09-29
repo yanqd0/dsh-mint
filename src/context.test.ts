@@ -7,13 +7,15 @@ import {
   registerMintContext,
   renderOverview,
 } from './context.js';
-import { runMint } from './mint.js';
+import { MINT_ENTRY_WARNING, resolveMintEntry, runMint } from './mint.js';
 import type { DshContext } from './types.js';
 
 vi.mock('./mint.js', () => ({
   runMint: vi.fn(),
   resolveMintEntry: vi.fn(() => '/pkg/node_modules/mint-faa/run-mint.js'),
   describeMintEntry: vi.fn(() => 'mint-faa@0.8.0'),
+  MINT_ENTRY_WARNING:
+    'mint 入口解析失败（mint-faa 不可见）→ 挂载行 mintEntry 或 MINT_ENTRY，改后重启 harness',
   parseMintVersion: (text: string | undefined) => /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '')?.[1],
 }));
 const runMintMock = vi.mocked(runMint);
@@ -303,6 +305,20 @@ describe('registerMintContext', () => {
     provider();
     await vi.waitFor(() => expect(provider()).toBe(''));
     expect(provider()).toBe('');
+  });
+
+  it('surfaces an unresolvable entry instead of reading as an empty project (#66)', async () => {
+    vi.mocked(resolveMintEntry).mockImplementationOnce(() => {
+      throw new Error('mint-faa missing');
+    });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
+    const provider = registered[0]?.text as () => string;
+
+    provider();
+    await vi.waitFor(() => expect(provider()).toContain('[Mint] WARNING'));
+    expect(provider()).toBe(`[Mint] WARNING: ${MINT_ENTRY_WARNING}`);
+    expect(runMintMock).not.toHaveBeenCalled();
   });
 
   it('returns undefined without a systemPrompt service', () => {
