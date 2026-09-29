@@ -44,7 +44,7 @@
     "pack:check": "pnpm pack --dry-run"
   },
   "dependencies": {
-    "mint-faa": "^0.7.0",
+    "mint-faa": ">=0.8.0 <1.0.0",
     "zod": "^3.0.0"
   },
   "devDependencies": {

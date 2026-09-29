@@ -94,7 +94,7 @@ function sampleOverview(): string {
     issues: SAMPLE_ISSUES,
     milestones: SAMPLE_MILESTONES,
     cliVersion: '0.8.0-alpha.1',
-    cliEntry: 'mint-faa@0.7.0',
+    cliEntry: 'mint-faa@0.8.0',
   });
 }
 

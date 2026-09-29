@@ -175,9 +175,10 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 
 ## 5.1 用本地构建的 mint（`mintEntry` / `MINT_ENTRY`）
 
-默认入口是依赖 `mint-faa` 的 `run-mint.js`（postinstall 下载的**已发布**二进制）。已发布版本落后于
-mint 仓库，仓库 HEAD 的新子命令（如 `plan drop`）经工具执行会报 `unrecognized subcommand` —— 工具跑的是
-「插件依赖的 mint」，而不是「你在开发的 mint」。
+默认入口是依赖 `mint-faa` 的 `run-mint.js`（postinstall 下载的**已发布**二进制）。依赖区间为
+`>=0.8.0 <1.0.0`：用户升级/新装即可取到区间内的新 `mint-faa`，无需本插件跟发；但 mint 仓库 HEAD 的
+新子命令（尚未发布）经工具执行仍会报 `unrecognized subcommand` —— 工具跑的是「插件依赖的 mint」，而不是
+「你在开发的 mint」。
 
 挂载行 `config: { mintEntry: <path> }` 或环境变量 `MINT_ENTRY` 可替换入口（配置优先于环境变量）：
 `.js`/`.mjs`/`.cjs` 走 `node` 执行，其余路径按**原生二进制**直接 spawn，因此可指向本地构建：

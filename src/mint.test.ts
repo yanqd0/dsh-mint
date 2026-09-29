@@ -54,8 +54,8 @@ describe('resolveMintEntry', () => {
 describe('describeMintEntry', () => {
   it('labels the pnpm-resolved mint-faa entry with its version', () => {
     expect(
-      describeMintEntry('/p/node_modules/.pnpm/mint-faa@0.7.0/node_modules/mint-faa/run-mint.js')
-    ).toBe('mint-faa@0.7.0');
+      describeMintEntry('/p/node_modules/.pnpm/mint-faa@0.8.0/node_modules/mint-faa/run-mint.js')
+    ).toBe('mint-faa@0.8.0');
   });
 
   it('keeps the last segments of a local build path — debug vs release (#58)', () => {

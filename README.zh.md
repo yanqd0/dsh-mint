@@ -35,6 +35,8 @@ plan。
 - DSH（`@deepseek-ai/dsh`）；宿主接口按 `0.1.1-rc.2` 验证
 - Node.js >= 20
 - 无需全局安装 mint：插件经自身的 `mint-faa` 依赖解析 mint CLI
+  （`>=0.8.0 <1.0.0`）。1.0.0 以前的任意 `mint-faa` 版本都被信任，升级
+  `mint-faa` 无需本插件跟发；未发布的本地构建用 `mintEntry`/`MINT_ENTRY` 指定
 
 ## 安装
 

@@ -92,10 +92,10 @@ export interface MintToolOutcome {
 }
 
 /**
- * clap wording for a subcommand/flag the running build does not know. The
- * published `mint-faa` lags the mint repo, so `--help-llm` (present in a local
- * debug build) comes back as `unexpected argument` — a version problem that
- * reads like a typo unless it is called out (#58).
+ * clap wording for a subcommand/flag the running build does not know. Version
+ * skew still happens with a local/older entry (or a CLI that dropped a flag), so
+ * it comes back as `unexpected argument` — a version problem that reads like a
+ * typo unless it is called out (#58).
  */
 const SKEW_ERROR_PATTERN = /unrecognized subcommand|unexpected argument|invalid subcommand/i;
 

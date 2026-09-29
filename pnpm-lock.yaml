@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       mint-faa:
-        specifier: ^0.7.0
-        version: 0.7.0
+        specifier: '>=0.8.0 <1.0.0'
+        version: 0.8.0
       zod:
         specifier: ^3.0.0
         version: 3.25.76
@@ -1126,8 +1126,8 @@ packages:
     resolution: {integrity: sha512-tEBHqDnIoM/1rXME1zgka9g6Q2lcoCkxHLuc7ODJ5BxbP5d4c2Z5cGgtXAku59200Cx7diuHTOYfSBD8n6mm8A==}
     engines: {node: '>=16 || 14 >=14.17'}
 
-  mint-faa@0.7.0:
-    resolution: {integrity: sha512-5A/DIxMq7ZCRmJ4OVLropYGobNUe5GhN5NQHzvvEu/PqRHKPWfRR6MDFgSfJzMbMiHSO0qRv5eZ1aC1VdTuO3g==}
+  mint-faa@0.8.0:
+    resolution: {integrity: sha512-ejen+ZdlO5MH/Cvb0pg5raqWta/bz1Od0VMH/Fz4lDNJ69aqW8tXasqklKC9JWqKd8LlhwANVyMvG+R7wzlM6w==}
     engines: {node: '>=14.14', npm: '>=6'}
     hasBin: true
 
@@ -2462,7 +2462,7 @@ snapshots:
 
   minipass@7.1.3: {}
 
-  mint-faa@0.7.0:
+  mint-faa@0.8.0:
     dependencies:
       detect-libc: 2.1.2
 

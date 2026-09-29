@@ -48,6 +48,77 @@ interface OverviewMilestone {
   status: string;
 }
 
+/** True for a JSON object (not `null`, not an array). */
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Validate one `list --json` item against the fields the overview reads. */
+function isOverviewIssue(value: unknown): value is OverviewIssue {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'number' &&
+    typeof value.title === 'string' &&
+    typeof value.kind === 'string' &&
+    typeof value.status === 'string' &&
+    typeof value.priority === 'number' &&
+    Array.isArray(value.labels) &&
+    value.labels.every((label) => typeof label === 'string')
+  );
+}
+
+/** Validate one `milestone list --json` item against the fields the overview reads. */
+function isOverviewMilestone(value: unknown): value is OverviewMilestone {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.id === 'number' &&
+    typeof value.title === 'string' &&
+    typeof value.version === 'string' &&
+    typeof value.status === 'string'
+  );
+}
+
+interface ParsedItems<T> {
+  items: T[];
+  warning?: string;
+}
+
+/**
+ * Parse a `{ items: [...] }` CLI response, validating every item (#65).
+ *
+ * Mirrors the command-level failure contract: never throws, but never lets a
+ * shape mismatch pass as real data either. Items that fail validation are
+ * dropped and the caller surfaces a warning, so a renamed field degrades to a
+ * visible "overview suppressed" note rather than a silent empty list.
+ */
+function parseItems<T>(
+  source: string,
+  text: string | undefined,
+  isItem: (value: unknown) => value is T
+): ParsedItems<T> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text ?? '{}');
+  } catch {
+    return { items: [], warning: `${source}: response was not JSON — overview unavailable` };
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.items)) {
+    return {
+      items: [],
+      warning: `${source}: no "items" array (mint JSON shape changed?) — overview unavailable`,
+    };
+  }
+  const items = parsed.items.filter(isItem);
+  const dropped = parsed.items.length - items.length;
+  if (dropped > 0) {
+    return {
+      items,
+      warning: `${source}: ${dropped}/${parsed.items.length} items missing required fields (mint JSON shape changed?) — hidden`,
+    };
+  }
+  return { items };
+}
+
 export interface MintOverview {
   issues: OverviewIssue[];
   milestones: OverviewMilestone[];
@@ -55,6 +126,15 @@ export interface MintOverview {
   cliVersion?: string;
   /** Short label for the entry that answered `-V` (build skew: debug vs release). */
   cliEntry?: string;
+  /**
+   * Notes about CLI answers that did not match the expected JSON shape (#65).
+   *
+   * The dependency is a subprocess CLI, so a `mint-faa` bump can rename a field
+   * without any import failing. Without these, the shrunken item list would
+   * render as a plausible-but-empty overview; the warning makes the skew
+   * visible instead of silent.
+   */
+  warnings?: string[];
 }
 
 /**
@@ -94,12 +174,13 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   ]);
   if (!issuesRes.ok) throw new Error(issuesRes.error ?? 'mint list failed');
   if (!msRes.ok) throw new Error(msRes.error ?? 'mint milestone list failed');
-  const issues = JSON.parse(issuesRes.text ?? '{}') as { items?: OverviewIssue[] };
-  const milestones = JSON.parse(msRes.text ?? '{}') as { items?: OverviewMilestone[] };
-  const overview: MintOverview = {
-    issues: Array.isArray(issues.items) ? issues.items : [],
-    milestones: Array.isArray(milestones.items) ? milestones.items : [],
-  };
+  const issues = parseItems('list --json', issuesRes.text, isOverviewIssue);
+  const milestones = parseItems('milestone list --json', msRes.text, isOverviewMilestone);
+  const overview: MintOverview = { issues: issues.items, milestones: milestones.items };
+  const warnings = [issues.warning, milestones.warning].filter(
+    (warning): warning is string => warning !== undefined
+  );
+  if (warnings.length > 0) overview.warnings = warnings;
   if (cli !== undefined) {
     overview.cliVersion = cli.version;
     if (cli.entry !== undefined) overview.cliEntry = cli.entry;
@@ -142,6 +223,10 @@ export function renderOverview(overview: MintOverview): string {
     // and `-V` alone cannot tell a debug build from a release one (#58).
     const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
     lines.push(`[Mint] mint ${overview.cliVersion}${via}`);
+  }
+  // Surface a CLI shape mismatch instead of letting it read as "no issues" (#65).
+  for (const warning of overview.warnings ?? []) {
+    lines.push(`[Mint] WARNING: ${warning}`);
   }
   // Top-N by (priority, id) — explicit so the "top" claim does not depend on
   // mint's default ordering. Labels are deliberately left out: they are a tool

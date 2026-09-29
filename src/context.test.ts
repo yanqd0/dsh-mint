@@ -13,7 +13,7 @@ import type { DshContext } from './types.js';
 vi.mock('./mint.js', () => ({
   runMint: vi.fn(),
   resolveMintEntry: vi.fn(() => '/pkg/node_modules/mint-faa/run-mint.js'),
-  describeMintEntry: vi.fn(() => 'mint-faa@0.7.0'),
+  describeMintEntry: vi.fn(() => 'mint-faa@0.8.0'),
   parseMintVersion: (text: string | undefined) => /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '')?.[1],
 }));
 const runMintMock = vi.mocked(runMint);
@@ -77,10 +77,52 @@ describe('fetchOverview', () => {
     expect(overview.issues[0]?.title).toBe('实现上下文注入');
     expect(overview.milestones[0]?.version).toBe('0.1.0');
     expect(overview.cliVersion).toBe('0.8.0-alpha.1');
-    expect(overview.cliEntry).toBe('mint-faa@0.7.0');
+    expect(overview.cliEntry).toBe('mint-faa@0.8.0');
     expect(runMintMock).toHaveBeenNthCalledWith(1, '/proj', ['list', '--json', '--no-page']);
     expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['milestone', 'list', '--json']);
     expect(runMintMock).toHaveBeenNthCalledWith(3, '/proj', ['-V']);
+  });
+
+  it('flags an unrecognized list shape instead of reporting an empty backlog (#65)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ data: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'unexpected argument' });
+
+    const overview = await fetchOverview('/proj');
+    expect(overview.issues).toEqual([]);
+    expect(overview.warnings?.[0]).toContain('list --json');
+    expect(overview.warnings?.[0]).toContain('no "items" array');
+  });
+
+  it('drops items missing required fields and counts them (#65)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [
+            { id: 1, title: 'ok', kind: 'task', status: 'open', priority: 2, labels: [] },
+            // `priority` renamed away — must not render as a plausible issue
+            { id: 2, title: 'skewed', kind: 'task', status: 'open', labels: [] },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'nope' });
+
+    const overview = await fetchOverview('/proj');
+    expect(overview.issues).toHaveLength(1);
+    expect(overview.warnings?.[0]).toContain('1/2 items missing required fields');
+  });
+
+  it('keeps a valid empty list warning-free', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'nope' });
+
+    const overview = await fetchOverview('/proj');
+    expect(overview.warnings).toBeUndefined();
   });
 
   it('keeps the overview when the -V probe fails (#58)', async () => {
@@ -178,6 +220,19 @@ describe('renderOverview', () => {
 
   it('renders nothing when empty', () => {
     expect(renderOverview({ issues: [], milestones: [] })).toBe('');
+  });
+
+  it('renders shape-skew warnings (#65)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      cliVersion: '0.8.0',
+      warnings: ['list --json: no "items" array — overview unavailable'],
+    });
+    expect(text.split('\n')).toEqual([
+      '[Mint] mint 0.8.0',
+      '[Mint] WARNING: list --json: no "items" array — overview unavailable',
+    ]);
   });
 
   it('renders the running mint version and entry label first (#58)', () => {

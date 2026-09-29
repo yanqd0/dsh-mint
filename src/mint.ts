@@ -20,8 +20,9 @@ const NODE_ENTRY = /\.(cjs|mjs|js)$/i;
  * package's own dependencies, so it works under pnpm's isolated node_modules.
  *
  * `MINT_ENTRY` overrides it, and the mount-line `mintEntry` config wins over the
- * environment. Both exist because the published `mint-faa` lags the mint repo:
- * a session that needs an unreleased subcommand points at a locally built mint.
+ * environment. The dependency range (`>=0.8.0 <1.0.0`) already lets a user pick
+ * up any pre-1.0 `mint-faa` without a plugin release; the overrides cover what a
+ * range cannot — dogfooding an unreleased or locally built mint.
  */
 export function resolveMintEntry(): string {
   const override = process.env[MINT_ENTRY_ENV];

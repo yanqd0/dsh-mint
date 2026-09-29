@@ -40,7 +40,9 @@ written in Chinese.
 - DSH (`@deepseek-ai/dsh`); the host interfaces are verified against `0.1.1-rc.2`
 - Node.js >= 20
 - No global mint install: the plugin resolves the mint CLI through its own
-  `mint-faa` dependency
+  `mint-faa` dependency (`>=0.8.0 <1.0.0`). Any pre-1.0 `mint-faa` release is
+  trusted, so a `mint-faa` upgrade needs no plugin release; use
+  `mintEntry`/`MINT_ENTRY` for an unreleased local build
 
 ## Install
 
