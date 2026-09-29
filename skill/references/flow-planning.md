@@ -14,9 +14,12 @@
      —— `--version` 必填、语义化；按 version 查重，**重复则不加、不问**。
 2. **执行计划**（plan = 一次开发计划，对应 DSH plan 模式）：
    `mint({ args: ["plan","create","<计划标题>","--body","<body>","--milestone","<RM>"] })`。
-3. **拆 issues**：按计划子任务逐个
+3. **拆 issues**：按计划子任务逐个建 issue —— 改行为的 phase 用 `--kind requirement`，
+   **纯文档/杂务/调研/CI 用 `--kind task`**（task 无 dev 态：planned → test → done），
+   统一 `--label dev-clean`：
    `mint({ args: ["issue","add","<子任务>","--kind","requirement","--label","dev-clean"] })`
-   + `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })` 挂入，
+   + `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })` 挂入；
+   **phase 已对应既有 issue（收口/合并计划）直接 attach，不重复建**。
    **挂入后统一排期锁定**：`mint({ args: ["plan","plan","<PLAN>"] })`
    （plan 下 issue 一律 planned，不留 open）。
 4. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**第一步先建 mint plan + 拆 issues 再执行**；

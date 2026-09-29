@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 import { describe, expect, it } from 'vitest';
@@ -7,44 +7,66 @@ import { MINT_TOOL_GUIDANCE } from './context.js';
 import { MINT_TOOL_DESCRIPTION } from './mint-tool.js';
 
 /**
- * The skill body is the largest thing the plugin installs, and it is loaded
- * whenever the skill triggers (#62). Two contracts are worth pinning:
+ * Skill layout contracts (#71).
  *
- * 1. It stays small — the always-loaded SKILL.md is cut to about half of what it
- *    was, with detail pushed into `references/` (read on demand).
- * 2. The mandatory workflow rules survive every slimming pass, and the
- *    tool-first policy is not restated here (it lives in the always-on guidance).
+ * The always-loaded skill payload is **SKILL.md alone**: the filesystem
+ * provider reads only `<skill>/SKILL.md` and exposes the directory as
+ * `resourceBase`, so `references/` cost nothing until the model reads one
+ * (`dsh-skill-filesystem` `get()`, checked against 0.2.0). Three contracts are
+ * worth pinning:
+ *
+ * 1. SKILL.md stays a router + gate sheet — the split principle in AGENTS.md
+ *    sends branch/standalone content to references, under an explicit budget.
+ * 2. Every reference the router names exists, and no reference is orphaned.
+ * 3. Mandatory workflow gates survive in SKILL.md; rules that moved keep their
+ *    markers in their new home file.
  */
 const SKILL_DIR = fileURLToPath(new URL('../skill', import.meta.url));
-const skill = readFileSync(`${SKILL_DIR}/SKILL.md`, 'utf8');
+const REF_DIR = `${SKILL_DIR}/references`;
+const read = (name: string): string => readFileSync(`${SKILL_DIR}/${name}`, 'utf8');
 const bytes = (text: string): number => Buffer.byteLength(text, 'utf8');
 
-/** Rules that must never be trimmed away — one per hard workflow gate. */
-const RULE_MARKERS: readonly string[] = [
+const skill = read('SKILL.md');
+
+/** Gates that must never be trimmed out of the always-loaded SKILL.md. */
+const SKILL_MARKERS: readonly string[] = [
   'plan 双向绑定',
   'exit_plan_mode',
   '"issue","state","start"',
   '"issue","state","commit"',
   'plan close',
-  'dev-clean',
-  '- [ ]',
-  'label',
   'running milestone',
   '不得自行置 running',
-  'state drop',
-  '接管模式',
-  'references/labels.md',
   '须走 bash',
+  'references/labels.md',
 ];
 
-describe('skill body (#62)', () => {
-  it('stays under half of its pre-slim size', () => {
-    // 13883 B before #62; the ceiling is the acceptance criterion, not a guess.
-    expect(bytes(skill)).toBeLessThanOrEqual(7000);
+/** Rules that moved out of SKILL.md must still exist in their home file. */
+const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['references/template-guide.md', ['- [ ]', 'title-templates/', 'body-templates/']],
+  ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
+  ['references/flow-planning.md', ['dev-clean', 'task']],
+  ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
+];
+
+describe('skill layout (#71)', () => {
+  it('keeps the always-loaded body inside the router budget', () => {
+    // 6965 B before the split; the ceiling is the AGENTS.md budget, not a guess.
+    expect(bytes(skill)).toBeLessThanOrEqual(4000);
   });
 
-  it.each(RULE_MARKERS)('keeps the rule marker %s', (marker) => {
+  it.each(SKILL_MARKERS)('keeps the gate marker %s in SKILL.md', (marker) => {
     expect(skill).toContain(marker);
+  });
+
+  it('keeps the markers that moved out of SKILL.md in their home file', () => {
+    for (const [file, markers] of HOME_MARKERS) {
+      expect(existsSync(`${SKILL_DIR}/${file}`), `${file} missing`).toBe(true);
+      const text = read(file);
+      for (const marker of markers) {
+        expect(text, `${file} missing ${marker}`).toContain(marker);
+      }
+    }
   });
 
   it('leaves the tool-first policy to the always-on guidance', () => {
@@ -55,24 +77,19 @@ describe('skill body (#62)', () => {
     expect(MINT_TOOL_GUIDANCE).toContain('不经 bash');
   });
 
-  it('points at reference files that all exist', () => {
-    const referenced = new Set(
-      [
-        ...skill.matchAll(
-          /`(?:references\/)?((?:flow-[a-z-]+|commands|state-machine|labels)\.md)`/g
-        ),
-      ].map((match) => match[1])
-    );
-    expect(referenced.size).toBeGreaterThanOrEqual(8);
-    for (const file of referenced) {
-      expect(existsSync(`${SKILL_DIR}/references/${file}`), `${file} missing`).toBe(true);
+  it('names only references that exist', () => {
+    const named = new Set([...skill.matchAll(/`references\/([a-z0-9-]+\.md)`/g)].map((m) => m[1]));
+    expect(named.size).toBeGreaterThanOrEqual(14);
+    for (const file of named) {
+      expect(existsSync(`${REF_DIR}/${file}`), `${file} missing`).toBe(true);
     }
   });
 
-  it('keeps the label conventions in their own reference', () => {
-    const labels = readFileSync(`${SKILL_DIR}/references/labels.md`, 'utf8');
-    expect(labels).toContain('上限 5 个');
-    expect(labels).toContain('英文');
-    expect(labels).toContain('不主动清理');
+  it('leaves no orphan reference', () => {
+    const named = new Set([...skill.matchAll(/`references\/([a-z0-9-]+\.md)`/g)].map((m) => m[1]));
+    const onDisk = readdirSync(REF_DIR).filter((file) => file.endsWith('.md'));
+    for (const file of onDisk) {
+      expect(named.has(file), `${file} is not referenced from SKILL.md`).toBe(true);
+    }
   });
 });
