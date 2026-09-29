@@ -98,4 +98,20 @@ describe('skill layout (#71)', () => {
     expect(commands).toContain('"blocked-by"');
     expect(commands).not.toContain('"blocked_by"');
   });
+
+  it('documents the mint 0.8 surface the workflows rely on (#74)', () => {
+    const commands = read('references/commands.md');
+    const tokens = [
+      '--force-new',
+      '--body-append',
+      '--body-section',
+      '"plan","drop"',
+      '"label","set"',
+      '"project","list"',
+      '# Page',
+    ];
+    for (const token of tokens) {
+      expect(commands, `commands.md missing ${token}`).toContain(token);
+    }
+  });
 });
