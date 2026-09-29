@@ -24,3 +24,11 @@
    （plan 下 issue 一律 planned，不留 open）。
 4. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**第一步先建 mint plan + 拆 issues 再执行**；
    每个 issue 走状态机到 done（关联对应 commit）。
+
+## 维护（改名 / 迁移 / 清理）
+
+- **plan 迁移到别的 milestone**：`mint({ args: ["plan","set","<PLAN>","--milestone","<ID>"] })`
+  （两侧 milestone 状态自动重算）。
+- **milestone 元数据修订**：`mint({ args: ["milestone","set","<ID>","--title",…,"--version",…,"--body",…] })`。
+- **空 plan 清理**：`mint({ args: ["plan","drop","<PLAN>"] })`（只允许无 issue 的 plan）。
+- 清理验证产物与不可逆操作红线见 `constraints.md`。

@@ -31,11 +31,19 @@ mint sync pull                                          # 拉取远端快照 + �
 
 ### 3. merge（本地 snapshots 目录落地，无传输）
 ```bash
-mint sync merge [--prune]                               # rsync/Syncthing 同步目录后落地
+mint sync merge [--all] [--prune]                      # rsync/Syncthing 同步目录后落地
 ```
-- 复用 `import_sql` 幂等合并；`--prune` 合并成功后删**远端**快照（本机保留），清理累积。
+- 复用 `import_sql` 幂等合并；`--prune` 合并成功后删**远端**快照（本机保留），清理累积；
+  `--all` 覆盖全部项目。
 
-### 4. 多项目
+### 4. 未合并提示（读命令可见）
+```
+mint: hint: found unmerged data from machine(s): <machine_id>; run `mint sync pull` to view the full picture
+```
+- 本地库里已下载但未合并的其它机器快照会让**读结果不完整**：先 `mint sync pull`（或 `sync merge`）
+  再对状态/统计下结论，不要据此判断「issue 不存在」。
+
+### 5. 多项目
 ```bash
 mint sync push --all / mint sync pull --all
 ```
@@ -53,5 +61,3 @@ mint sync push --all / mint sync pull --all
 
 - 全部 `Command::args`（argv 数组）spawn，无 shell；非零退出码 → 明确报错。
 - rclone/rsync 测试在工具缺失时跳过（能力探测守卫）。
-
-详见 `notes/evaluation-sync-external.md`（传输契约 + 落地复用）。

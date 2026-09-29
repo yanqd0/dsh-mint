@@ -20,8 +20,12 @@ issue 二选一：属 plan 后不能直接挂 milestone。
 ## milestone 唯一性与下一版本推测
 
 - **同刻有且仅有 1 个 running**（当前开发目标）。`mint({ args: ["milestone","list","--all-states"] })`
-  发现 ≥2 running → 列出并反问，确认后把远期那个置回 open：
-  `mint({ args: ["milestone","set","<远期 id>","--status","open"] })`。
+  发现 ≥2 running → 列出并反问；确认后**先迁移/排期其下子项**（把已完成的 plan/issue 移到当前 running：
+  `mint({ args: ["plan","set","<plan>","--milestone","<当前 running id>"] })`，其余 plan/issue 先
+  `issue state plan/reset` 回到 open），**再**把远期那个置回 open：
+  `mint({ args: ["milestone","set","<远期 id>","--status","open"] })`，最后
+  `mint({ args: ["milestone","show","<远期 id>"] })` **复查**——若又被派生回 running，说明其下仍有活跃子项，
+  回到第一步继续迁移。
 - **无 running 时**：取 `milestone list --all-states` 中的最大版本 M，给候选（每个附一句理由）：
   - 收尾修复 / 文档 → patch `x.y.(z+1)`
   - 新功能面 → minor `x.(y+1).0`（0.x 阶段 minor 即可含破坏性）
@@ -30,8 +34,9 @@ issue 二选一：属 plan 后不能直接挂 milestone。
 - **先查现有 open milestone**：版本与候选一致 → 推荐**置为 running**（不重复创建）：
   `mint({ args: ["milestone","set","<id>","--status","running"] })`；版本不符才建议 `milestone create`。
 - **必须问用户**：给候选 + 理由，由用户选「置为 running」还是「新建」；**不得自行置 running**。
-- milestone/plan 状态本是**派生**的（子项集合决定、写入时级联同步），`milestone set --status` 可手动覆盖；
-  置位后应尽快把对应 plan/issue 挂进去，使派生结果与意图一致。
+- milestone/plan 状态本是**派生**的（子项集合决定、写入时级联同步）：`milestone set --status` 里
+  **只有 `done`/`dropped` 是手动终态、不被派生覆盖**；写 `open`/`running` 只是临时覆盖，后续任何子项变化
+  都会按子项集合重算。置位后应尽快把对应 plan/issue 挂进去，使派生结果与意图一致。
 
 ## 测试分支（close 的 test-cmd 必填）
 
@@ -54,6 +59,9 @@ issue 二选一：属 plan 后不能直接挂 milestone。
 | 被别的修改引入（回归） | `mint({ args: ["issue","link","create","<issue>","solves","<引入 issue>"] })` |
 | 相关但不解决 | `mint({ args: ["issue","link","create","<issue>","related","<other>"] })` |
 | 重复 | `mint({ args: ["issue","link","create","<issue>","duplicates","<existing>"] })` |
+| 依赖 / 阻塞（本 issue 被 other 阻塞） | `mint({ args: ["issue","link","create","<issue>","blocked-by","<other>"] })` |
+
+link 参数取值一律 **kebab**（`blocked-by`，不是 `blocked_by`；后者只在 JSON `rel` 输出里出现）。
 
 ## kind 选择（决定状态机是否含 dev 态）
 

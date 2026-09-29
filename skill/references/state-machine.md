@@ -14,7 +14,7 @@
 |---|---|---|---|---|
 | open | plan | planned | `["issue","state","plan","<id>"]` | — |
 | planned | start | dev | `["issue","state","start","<id>"]` | — |
-| dev | commit | test | `["issue","state","commit","<id>","--sha","<SHA>"]` | **`--sha` 必填**（默认读 HEAD），写 last_commit_id |
+| dev | commit | test | `["issue","state","commit","<id>","--sha","<SHA>"]` | `--sha` **可省**（默认读 HEAD；非 git 目录必填），写 last_commit_id；`--test-cmd` 可选（仅记录） |
 | test | retest | dev | `["issue","state","retest","<id>","--test-cmd","<CMD>"]` | 测试失败打回；**保留 last_commit_id**（dev+旧 sha=失败标记）；**`--test-cmd` 必填**（尽量精确） |
 | test | close | done | `["issue","state","close","<id>","--test-cmd","<CMD>"]` | **`--test-cmd` 必填**；测试全绿才推进 |
 | planned/dev/test | reset | open | `["issue","state","reset","<id>"]` | 打回重做，**清空 test_cmd**（需重测） |
@@ -36,7 +36,7 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
 ## 硬约束（违反会被 CLI 拒绝 / 语义错误）
 
 - **无 dev→done 捷径**：跳过测试也必须 `commit` 到 `test`，close 时 `--test-cmd` 填 `not-tested`。
-- **commit 必填 `--sha`**：dev→test 记录 `last_commit_id`；非 git 目录无 `--sha` 报错
+- **commit 的 `--sha` 默认为当前 HEAD**：git 目录可省略；非 git 目录必须显式，否则报错
   `not a git repository (use --sha to record a commit explicitly)`。
 - **close 必填 `--test-cmd`**：缺省/空白报错 `close requires --test-cmd (use 'not-tested' if tests were skipped)`。
 - **reset 只作用于 planned/dev/test**；done/dropped 不能 reset（应 `reopen`）。
@@ -64,6 +64,8 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
 - **plan 级批量**：
   - `["plan","plan","<plan_id>"]`：该 plan 下全部 `open` issue → `planned`（挂入即排期锁定）。
   - `["plan","close","<plan_id>","--test-cmd","<cmd>"]`：该 plan 下全部 `test` issue → `done`（统一测试后统一 close）。
+  - `["plan","drop","<plan_id>"]`：**只允许空 plan**（无 issue）→ dropped，并落 `manual_dropped` 标记；
+    有 issue 时报错（先 `state drop` 子 issue 或迁走）。手动终态不会被派生复活。
 
 ## 容器（plan/milestone）五态派生（区别于 issue 六态）
 
@@ -79,3 +81,11 @@ plan/milestone 状态由**子项集合派生**（CLI 只读，非手动设置）
 
 > **判断 plan 是否完成看 issue 是否全终止（done/dropped）**，而非只看 status 标签；
 > `partial` 即完成（含被吸收/废弃项），不要把 partial 当"未完成"。
+
+## 手动状态覆盖的边界
+
+- `milestone set --status`：只有 `done`（发布）/ `dropped`（取消）是**手动终态**，派生不覆盖；
+  写 `open`/`running` 只是临时覆盖，后续任何子项变化都会按子项集合重算（`sync_milestone` 只对
+  done/dropped 短路）。置位/降级后应 `milestone show` 复查，必要时先迁移子项（见 `flow-conditions.md`）。
+- `plan drop`：走独立 `manual_dropped` 标记，空集合派生为 `open` 也不会把它复活；派生的 dropped
+  （子 issue 全 dropped）无标记，会随后续状态变化重算。
