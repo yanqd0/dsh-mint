@@ -44,6 +44,7 @@ const SKILL_MARKERS: readonly string[] = [
 /** Rules that moved out of SKILL.md must still exist in their home file. */
 const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/template-guide.md', ['- [ ]', 'title-templates/', 'body-templates/']],
+  ['references/body-editing.md', ['--body-section', '- [ ]', 'section not found']],
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
   ['references/flow-planning.md', ['dev-clean', 'task']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],

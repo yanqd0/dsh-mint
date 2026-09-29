@@ -126,6 +126,7 @@ mint({ args: ["issue","link","remove","42","related","10"] })
 
 body 编辑规则：`--body` / `--body-append` / `--body-file` **三选一**；`--body-section` 必须配
 `--body`/`--body-file`，**不能**与 `--body-append` 同用。`plan set` 支持同样的 body 参数。
+**改写/追加的纪律见 `body-editing.md`**（只动相关小节、回到模板形状、追加只记新证据）。
 
 link 类型（**CLI 取值一律 kebab**）：`related` / `solves` / `duplicates` / `blocked-by` / `blocks`；
 `blocked_by` 只出现在输出侧（JSON `rel`），**不能当参数**（传了报 exit 2 `invalid value`）。

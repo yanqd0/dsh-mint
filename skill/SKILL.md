@@ -38,6 +38,7 @@ description: >-
 | 命令 / 输出 / 字段 | `references/commands.md` |
 | 状态机 / 容器派生 | `references/state-machine.md` |
 | 标题 / body 模板纪律 | `references/template-guide.md` |
+| body 改写 / 追加纪律 | `references/body-editing.md` |
 | label 规范 | `references/labels.md` |
 | 约束红线（delete/清理/去重） | `references/constraints.md` |
 | 本宿主集成 | `references/host-dsh.md` |
@@ -61,5 +62,6 @@ description: >-
 ## 记录与检索
 
 - 正文用 `args: ["issue","get","<id>","body"]`（裸值最准）；命令与输出见 `references/commands.md`。
-- 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`（禁 `- [ ]` checkbox）。
+- 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`（禁 `- [ ]` checkbox）；
+  改写/追加既有 body 见 `references/body-editing.md`。
 - 约束红线与 label：见 `references/constraints.md`、`references/labels.md`。
