@@ -76,7 +76,7 @@ export const DENIED_FLAGS: readonly string[] = ['--db', '-p', '--project'];
 export const MINT_TOOL_DESCRIPTION = [
   '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，命令在插件进程内执行，零授权。',
   '例：["list","--status","open"]、["issue","state","start","42"]、["plan","close","7","--test-cmd","pnpm test"]',
-  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `--- Page … ---` 页脚给总数。全量参考 ["--help-llm"]，子命令帮助加 --help，版本 ["-V"]。',
+  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `# Page x/y` 页脚（stdout）给总数。参考 ["--help-llm"]（个别参数以 --help 为准），版本 ["-V"]。',
   '不可用：delete/import/sync/export/tui、--db/--project（需用户显式操作）。',
 ].join('\n');
 
@@ -178,8 +178,11 @@ export async function executeMintTool(
   }
   const result = await runMint(cwd, argv as string[], options);
   if (result.ok) {
-    // mint writes the pagination footer / totals to stderr even on success
-    // (#56); pass it through so a paged `list` is visibly incomplete.
+    // mint writes advisories to stderr even on success — `mint: hint: …` lines
+    // (dedup merge suggestion, unmerged-machine warning) — so they are passed
+    // through. The paging footer is not one of them: since mint 0.8 it goes to
+    // stdout (`# Page x/y`), which the verbatim stdout path already carries.
+    // (#56, corrected #78.)
     const outcome: MintToolOutcome = {
       ok: true,
       exitCode: 0,
@@ -196,8 +199,9 @@ export async function executeMintTool(
 }
 
 /**
- * Render a tool outcome into model-facing text: stdout verbatim, then the
- * advisory stderr (mint's pagination footer / totals) on its own line.
+ * Render a tool outcome into model-facing text: stdout verbatim, then any
+ * advisory stderr (mint's `mint: hint: …` lines, e.g. dedup or
+ * unmerged-machine warnings) on its own line.
  */
 export function renderMintOutcome(outcome: MintToolOutcome): string {
   if (outcome.ok) {

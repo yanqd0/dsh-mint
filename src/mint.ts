@@ -190,10 +190,11 @@ export interface MintRunResult {
   text?: string;
   /**
    * Raw stderr. On success this is *not* an error channel: mint writes
-   * advisory lines there (e.g. the `list` pagination footer
-   * `--- Page 1/1 (5 per page, 12 total) ---`), and dropping them makes a
-   * paged listing look complete (#56). On failure the message also lands in
-   * {@link MintRunResult.error}.
+   * advisory lines there (`mint: hint: …`, e.g. a dedup merge suggestion or an
+   * unmerged-machine warning) and dropping them hides an actionable note
+   * (#56). The `list` pagination footer is no longer one of them — since mint
+   * 0.8 it is written to stdout (`# Page x/y`), so the stdout path carries it
+   * (#78). On failure the message also lands in {@link MintRunResult.error}.
    */
   stderr?: string;
   error?: string;

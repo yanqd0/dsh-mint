@@ -92,19 +92,30 @@ describe('executeMintTool', () => {
     expect(outcome).toEqual({ ok: true, exitCode: 0, stdout: 'ID\tSTATUS\n1\topen\n' });
   });
 
-  it('passes advisory stderr through on success — paging footer / totals (#56)', async () => {
+  it('passes advisory stderr through on success — mint hints (#56)', async () => {
+    const hint =
+      'mint: hint: found unmerged data from machine(s): mach-1; run `mint sync pull` to view the full picture';
     runMintMock.mockResolvedValue({
       ok: true,
       text: 'ID\tSTATUS\n1\topen\n',
-      stderr: '--- Page 1/1 (5 per page, 1 total) ---\n',
+      stderr: `${hint}\n`,
     });
     const outcome = await executeMintTool('/proj', ['list']);
     expect(outcome).toEqual({
       ok: true,
       exitCode: 0,
       stdout: 'ID\tSTATUS\n1\topen\n',
-      stderr: '--- Page 1/1 (5 per page, 1 total) ---',
+      stderr: hint,
     });
+  });
+
+  it('carries the stdout paging footer verbatim (#78)', async () => {
+    runMintMock.mockResolvedValue({
+      ok: true,
+      text: 'ID\tSTATUS\n1\topen\n# Page 1/1 (5 per page, 1 total)\n',
+    });
+    const outcome = await executeMintTool('/proj', ['list']);
+    expect(outcome.stdout).toContain('# Page 1/1 (5 per page, 1 total)');
   });
 
   it('forwards the abort signal', async () => {
@@ -149,15 +160,11 @@ describe('renderMintOutcome', () => {
     expect(renderMintOutcome({ ok: true, exitCode: 0, stdout: '  \n' })).toBe('(mint 无输出)');
   });
 
-  it('appends advisory stderr (paging footer) after stdout', () => {
+  it('appends advisory stderr (a mint hint) after stdout', () => {
+    const hint = 'mint: hint: merged by title similarity; use --force-new to create a separate issue';
     expect(
-      renderMintOutcome({
-        ok: true,
-        exitCode: 0,
-        stdout: 'ID\tSTATUS',
-        stderr: '--- Page 1/1 (5 per page, 1 total) ---',
-      })
-    ).toBe('ID\tSTATUS\n--- Page 1/1 (5 per page, 1 total) ---');
+      renderMintOutcome({ ok: true, exitCode: 0, stdout: 'ID\tSTATUS', stderr: hint })
+    ).toBe(`ID\tSTATUS\n${hint}`);
   });
 
   it('renders failures with the exit code', () => {

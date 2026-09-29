@@ -268,14 +268,15 @@ describe('runMint', () => {
     expect(result.exitCode).toBe(2);
   });
 
-  it('keeps stderr on success — mint writes the pagination footer there (#56)', async () => {
+  it('keeps advisory stderr on success — mint writes hints there (#56)', async () => {
     fakeChild({
-      stdout: 'ID\tSTATUS\n1\topen\n',
-      stderr: '--- Page 1/1 (5 per page, 1 total) ---\n',
+      stdout: 'ID\tSTATUS\n1\topen\n# Page 1/1 (5 per page, 1 total)\n',
+      stderr: 'mint: hint: merged by title similarity; use --force-new to create a separate issue\n',
     });
     const result = await runMint('/proj', ['list']);
     expect(result.ok).toBe(true);
-    expect(result.stderr).toContain('1 total');
+    expect(result.text).toContain('# Page 1/1');
+    expect(result.stderr).toContain('--force-new');
   });
 
   it('resolves spawn failures as an error', async () => {

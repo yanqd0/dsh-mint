@@ -122,6 +122,11 @@ describe('per-request injection budget (#61)', () => {
     expect(bytes(MINT_TOOL_DESCRIPTION)).toBeLessThanOrEqual(550);
   });
 
+  it('states the paging footer contract mint 0.8 writes (#78)', () => {
+    expect(MINT_TOOL_DESCRIPTION).toContain('# Page');
+    expect(MINT_TOOL_DESCRIPTION).not.toContain('--- Page');
+  });
+
   it('keeps the entry-failure warning small — it only shows when mint is broken (#66)', () => {
     expect(bytes(`[Mint] WARNING: ${MINT_ENTRY_WARNING}`)).toBeLessThanOrEqual(200);
   });
