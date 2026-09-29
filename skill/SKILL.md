@@ -32,6 +32,7 @@ description: >-
 | 版本 / 计划 / 里程碑 / 拆解 | `references/flow-planning.md` |
 | 写码实施（门禁详解） | `references/flow-impl.md` |
 | 无参接管 | `references/flow-session.md` |
+| 散落 issue 收口 | `references/flow-sweep.md` |
 | 分支决策（挂载/测试/git/link/kind） | `references/flow-conditions.md` |
 | 多机同步 | `references/flow-sync.md` |
 | 命令 / 输出 / 字段 | `references/commands.md` |

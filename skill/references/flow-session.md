@@ -19,7 +19,8 @@
    - **无 running**：取最大版本按 semver 推测候选 + 一句理由 → **询问用户**选「置为 running」
      （`mint({ args: ["milestone","set","<id>","--status","running"] })`）还是「新建」
      （`mint({ args: ["milestone","create",…,"--version","<V>"] })`）；**不得自行置 running**。
-   - **≥2 running**：列出并反问，确认后 `mint({ args: ["milestone","set","<远期 id>","--status","open"] })`。
+   - **≥2 running**：列出并反问，按 flow-conditions「milestone 唯一性」**先迁移/排期子项**再
+     `milestone set --status open`，最后 `milestone show` 复查（被派生回 running 说明仍有活跃子项）。
    - 发现新的版本规划迹象（代码里出现下一版本需求/方向）→ **向用户确认后** create（version 重复则不问、不加）。
 4. **下一步计划建议**：基于 milestone 规划 + open issues，推荐下一个应开发项，附理由
    （若存在 running 的存量 mint plan：提示「从该 plan 开始执行需先进入宿主 plan 模式，再逐步推进」
@@ -30,3 +31,4 @@
    - 当前版本 milestone 下未完成的核心项。
    直接陈述建议（DSH 无弹窗澄清工具，用文本反问），供用户确认下一步。
 5. **声明接管**：后续 session 直接描述意图即可，skill 自动走 mint 流程。
+   若扫出大量 `plan_id=null` 的 open 项 → 转 `flow-sweep.md` 收口。
