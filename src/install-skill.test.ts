@@ -85,6 +85,41 @@ describe('installSkill', () => {
     expect(existsSync(join(target, 'sentinel.txt'))).toBe(true);
   });
 
+  it('re-syncs when a reference changed but SKILL.md is identical (#72)', () => {
+    const root = tempDir();
+    const source = join(root, 'src');
+    mkdirSync(join(source, 'references'), { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'same');
+    writeFileSync(join(source, 'references', 'a.md'), 'new');
+    const dshHome = join(root, 'dsh');
+    const target = join(dshHome, 'skills', 'mint');
+    mkdirSync(join(target, 'references'), { recursive: true });
+    writeFileSync(join(target, 'SKILL.md'), 'same');
+    writeFileSync(join(target, 'references', 'a.md'), 'old');
+
+    const result = installSkill({ dshHome, source });
+
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(target, 'references', 'a.md'), 'utf8')).toBe('new');
+  });
+
+  it('re-syncs when the copy is missing a reference (#72)', () => {
+    const root = tempDir();
+    const source = join(root, 'src');
+    mkdirSync(join(source, 'references'), { recursive: true });
+    writeFileSync(join(source, 'SKILL.md'), 'same');
+    writeFileSync(join(source, 'references', 'b.md'), 'body');
+    const dshHome = join(root, 'dsh');
+    const target = join(dshHome, 'skills', 'mint');
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, 'SKILL.md'), 'same');
+
+    const result = installSkill({ dshHome, source });
+
+    expect(result.ok).toBe(true);
+    expect(readFileSync(join(target, 'references', 'b.md'), 'utf8')).toBe('body');
+  });
+
   it('leaves a dev symlink untouched', () => {
     const root = tempDir();
     const source = join(root, 'src');

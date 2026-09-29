@@ -1,6 +1,6 @@
-import { cpSync, existsSync, lstatSync, readFileSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
@@ -16,11 +16,14 @@ import { fileURLToPath } from 'node:url';
  *    the directory per lookup, so the skill is discovered in that same
  *    session).
  *
- * Semantics are a content SYNC: a target whose `SKILL.md` already matches the
- * bundled one is left untouched (no churn on every session start); anything
- * else is replaced. A target that already IS a symlink is left alone — the dev
- * flow (`scripts/install-dsh.sh`) owns symlinks. Every failure logs one line
- * and returns `{ ok: false }`; it never breaks plugin load or package install.
+ * Semantics are a content SYNC over the **whole skill tree**: the target is
+ * untouched only when every file in the bundled skill already matches byte for
+ * byte (a SKILL.md-only check missed `references/` edits — #72); anything else
+ * is replaced. Extra files already in the target are tolerated on the skip
+ * path, so a user's own additions survive a no-op sync. A target that already
+ * IS a symlink is left alone — the dev flow (`scripts/install-dsh.sh`) owns
+ * symlinks. Every failure logs one line and returns `{ ok: false }`; it never
+ * breaks plugin load or package install.
  */
 
 const DIRNAME = dirname(fileURLToPath(import.meta.url));
@@ -45,10 +48,41 @@ export function skillTarget(dshHome: string): string {
   return join(dshHome, 'skills', 'mint');
 }
 
-/** True when the installed SKILL.md already matches the bundled one. */
+/**
+ * Every file under `root`, as paths relative to it, sorted.
+ *
+ * The skill is a tree (SKILL.md + references/), and only SKILL.md is injected
+ * into a session while references are read on demand — so a stale reference is
+ * invisible to a SKILL.md-only comparison (#72).
+ */
+function listFiles(root: string, base: string = root): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const full = join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...listFiles(full, base));
+    } else if (entry.isFile()) {
+      files.push(relative(base, full));
+    }
+  }
+  return files.sort();
+}
+
+/**
+ * True when every bundled file already exists in the target with identical
+ * bytes.
+ *
+ * Extra target files are deliberately ignored: the skip path must never delete
+ * files a user put there, and an orphan reference in the copy is harmless
+ * because SKILL.md — always synced — is the only router.
+ */
 function isCurrent(source: string, target: string): boolean {
   try {
-    return readFileSync(join(target, 'SKILL.md')).equals(readFileSync(join(source, 'SKILL.md')));
+    for (const file of listFiles(source)) {
+      const matches = readFileSync(join(source, file)).equals(readFileSync(join(target, file)));
+      if (!matches) return false;
+    }
+    return true;
   } catch {
     // unreadable or partial installs are never "current"
     return false;
