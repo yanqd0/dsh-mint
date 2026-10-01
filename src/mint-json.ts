@@ -9,6 +9,7 @@
  * overview renders a handful of fields (`context.ts` keeps its own minimal
  * predicate), while the client-face routes hand the panel whole records.
  */
+import type { ContainerDetail, IssueItem, MilestoneItem, PlanItem } from './records.js';
 
 /** True for a JSON object (not `null`, not an array). */
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -33,66 +34,6 @@ function isNumberOrNull(value: unknown): value is number | null {
 /** True for an array of strings. */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
-}
-
-/** One `list --json` issue record (0.9.0-alpha.1 field set). */
-export interface IssueItem {
-  id: number;
-  title: string;
-  kind: string;
-  status: string;
-  priority: number;
-  labels: string[];
-  /** Owning plan, or `null` for a standalone issue. */
-  plan_id: number | null;
-  /** Typed links; each element is passed through unvalidated (see `describeLink`). */
-  links: unknown[];
-  created_at: string;
-  updated_at: string;
-}
-
-/** One `plan list --json` record. */
-export interface PlanItem {
-  id: number;
-  title: string;
-  status: string;
-  version: string;
-  milestone_id: number | null;
-  issue_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** One `milestone list --json` record. */
-export interface MilestoneItem {
-  id: number;
-  title: string;
-  status: string;
-  version: string;
-  issue_count: number;
-  created_at: string;
-  updated_at: string;
-}
-
-/** One issue as a container's `show --json` embeds it. */
-export interface ContainerChild {
-  id: number;
-  title: string;
-  kind: string;
-  status: string;
-}
-
-/** `plan show <id> --json` / `milestone show <id> --json`. */
-export interface ContainerDetail {
-  id: number;
-  title: string;
-  status: string;
-  version: string;
-  milestone_id: number | null;
-  body: string;
-  issues: ContainerChild[];
-  created_at: string;
-  updated_at: string;
 }
 
 /** A `list --json` issue must carry every field the panel renders. */
