@@ -10,7 +10,11 @@ const ROOT = fileURLToPath(new URL('..', import.meta.url));
 interface Manifest {
   name: string;
   files?: string[];
-  dsh?: { bundle?: { patch?: string } };
+  exports?: Record<string, string>;
+  dsh?: {
+    bundle?: { patch?: string };
+    client?: { platform?: string; inject?: string[]; external?: string[] };
+  };
 }
 
 const manifest = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf8')) as Manifest;
@@ -44,5 +48,31 @@ describe('package manifest', () => {
   it('carries an explicit config object, so the mount validates', () => {
     const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
     expect(patch).toMatch(/^\s+config: \{\}$/m);
+  });
+
+  // The client half reaches the page only through this declaration: the module
+  // system scans *mounted* rows for `dsh.client`, serves the `./client` export
+  // over `/plugins`, and fails activation loudly when the bundle is missing.
+  describe('client half', () => {
+    it('declares a web client with the prebuilt bundle as its `./client` export', () => {
+      expect(manifest.dsh?.client?.platform).toBe('web');
+      expect(manifest.exports?.['./client']).toBe('./dist/client.js');
+      expect(manifest.files).toContain('dist');
+    });
+
+    // The sidebar's tab registry is provided by another client plugin, so the
+    // browser half has no seat to register into until that bundle arrived.
+    it('waits for the right-sidebar client bundle', () => {
+      expect(manifest.dsh?.client?.inject).toContain(
+        '@deepseek-ai/dsh-client-ui-sidebar-right'
+      );
+    });
+
+    // Everything the bundle requires must come from the shell's frozen platform
+    // table; anything else needs an `external` entry naming the row that
+    // provides it, and an undeclared request fails at materialization.
+    it('requires nothing outside the platform module table', () => {
+      expect(manifest.dsh?.client?.external ?? []).toEqual([]);
+    });
   });
 });

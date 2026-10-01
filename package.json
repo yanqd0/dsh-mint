@@ -25,16 +25,24 @@
     "scripts/install-skill-postinstall.mjs"
   ],
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./client": "./dist/client.js"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-locale"
+      ]
     }
   },
   "scripts": {
     "dev": "tsx src/index.ts",
-    "build": "tsup && node scripts/build-skill.mjs",
+    "build": "tsup && node scripts/build-client.mjs && node scripts/build-skill.mjs",
     "postinstall": "node scripts/install-skill-postinstall.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -50,7 +58,9 @@
   "devDependencies": {
     "@eslint/js": "^9.0.0",
     "@types/node": "^24.0.0",
+    "@types/react": "~18.3.31",
     "@vitest/coverage-v8": "^3.0.0",
+    "esbuild": "^0.27.7",
     "eslint": "^9.0.0",
     "prettier": "^3.0.0",
     "tsup": "^8.0.0",
