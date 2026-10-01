@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ContainerChild, IssueItem, MintListPayload } from '../records.js';
+import type { ContainerChild, ContainerDetail, IssueItem, MintListPayload } from '../records.js';
 import {
   clampPage,
   containerChildLine,
   containerMeta,
+  containerRow,
   describeLink,
+  detailContainer,
   issueHeadline,
   issueMeta,
   labelSummary,
@@ -136,6 +138,31 @@ describe('containers and pagination', () => {
 
   it('joins container meta, dropping empty parts', () => {
     expect(containerMeta(['open', '0.2.0', 6, null, undefined, ''])).toBe('open · 0.2.0 · 6');
+  });
+
+  it('projects a plan or milestone record onto a row', () => {
+    const record = { id: 3, title: '客户端面', status: 'open', version: '0.2.0', issue_count: 6 };
+    expect(containerRow(record)).toEqual({
+      id: 3,
+      title: '客户端面',
+      meta: 'open · 0.2.0 · 6 issues',
+    });
+  });
+
+  it('reads the container out of whichever key the route filled', () => {
+    const detail: ContainerDetail = {
+      id: 3,
+      title: '客户端面',
+      status: 'open',
+      version: '0.2.0',
+      milestone_id: 2,
+      body: '## 范围',
+      issues: [],
+      created_at: '2026-08-29 12:55:45',
+      updated_at: '2026-10-01 15:00:00',
+    };
+    expect(detailContainer({ ok: true, plan: detail })).toEqual(detail);
+    expect(detailContainer({ ok: true, milestone: detail })).toEqual(detail);
   });
 
   it('clamps a page into the loaded range', () => {

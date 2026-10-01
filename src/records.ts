@@ -24,6 +24,16 @@ export interface IssueItem {
   updated_at: string;
 }
 
+/** One `show <id> --json` issue: everything `list --json` carries, plus the body. */
+export interface IssueDetail extends IssueItem {
+  /** The issue's markdown body, truncated by the route at its byte budget. */
+  body: string;
+  /** Always present here, where a list row may fold it into its plan. */
+  milestone_id: number | null;
+  uid?: string;
+  test_cmd?: string | null;
+}
+
 /** One `plan list --json` record. */
 export interface PlanItem {
   id: number;
@@ -80,10 +90,11 @@ export interface MintListPayload<T> {
   warnings?: string[];
 }
 
-/** `issue get <id> body` — the raw field, truncated at the route's byte budget. */
-export interface MintBodyPayload {
+/** `issue show <id> --json` — the whole issue, with the body the list omits. */
+export interface MintIssuePayload {
   ok: true;
-  body: string;
+  item: IssueDetail;
+  /** True when the body hit the route's byte budget. */
   truncated: boolean;
 }
 

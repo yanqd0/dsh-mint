@@ -105,9 +105,12 @@ ctx.inject(['webServer'], (scoped) => {
 - `(kind, path)` 重复注册抛错；`kind: 'prefix'` 独占该前缀下的全部路径。
 - 浏览器侧路径要用 `document.baseURI` 解析（反代子路径挂载时 `/xxx` 会 404）——见 `dshmarket` 的 `api()`。
 
-dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（body）、`/dsh-mint/plans`、
-`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`，均带 `session=<SessionId>`，
+dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（`show --json` 全量，含 body）、
+`/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`，均带 `session=<SessionId>`，
 宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录（**不接受浏览器给的路径**）。
+
+> `list --json` **不含 body**，而 `show <id> --json` 同时给出列表字段与 body（还多一个 `milestone_id`）——
+> 所以 issue 详情走 `show --json` 一次调用，plan/milestone 详情里的子 issue 也据此可直接跳转。
 
 ## 4. locale
 

@@ -87,7 +87,7 @@ describe('createApi', () => {
       baseUri: 'http://host/',
       fetch: fetchStub('<html>nope</html>', 502),
     });
-    const result = await api.issueBody(9);
+    const result = await api.issue(9);
     expect(result).toEqual({ ok: false, error: 'HTTP 502: <html>nope</html>' });
   });
 
@@ -105,9 +105,9 @@ describe('createApi', () => {
     const api = createApi({
       sessionId: 's7',
       baseUri: 'http://host/',
-      fetch: fetchStub('{"ok":true,"body":"x","truncated":false}', 200, calls),
+      fetch: fetchStub('{"ok":true,"item":{},"truncated":false}', 200, calls),
     });
-    await api.issueBody(42);
+    await api.issue(42);
     await api.milestone(2);
     expect(calls.map((call) => call.url)).toEqual([
       '/dsh-mint/issue?session=s7&id=42',

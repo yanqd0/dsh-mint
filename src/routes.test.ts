@@ -9,7 +9,7 @@ import {
   ROUTE_PREFIX,
   RouteRequestError,
   buildDetailArgv,
-  buildIssueBodyArgv,
+  buildIssueDetailArgv,
   buildListArgv,
   createMintHandler,
   filterValue,
@@ -94,6 +94,14 @@ const ISSUE_ITEM = {
   links: [],
   created_at: '2026-08-29 12:55:45',
   updated_at: '2026-09-01 00:00:00',
+};
+
+const ISSUE_DETAIL = {
+  ...ISSUE_ITEM,
+  body: '## 范围',
+  milestone_id: 2,
+  uid: 'mach:9',
+  test_cmd: null,
 };
 
 const PLAN_ITEM = {
@@ -185,7 +193,7 @@ describe('route argv builders', () => {
       buildListArgv('issue', params, { page: 1, pageSize: 20 }),
       buildListArgv('plan', params, { page: 1, pageSize: 20 }),
       buildListArgv('milestone', params, { page: 1, pageSize: 20 }),
-      buildIssueBodyArgv(9),
+      buildIssueDetailArgv(9),
       buildDetailArgv('plan', 3),
       buildDetailArgv('milestone', 2),
     ];
@@ -197,7 +205,7 @@ describe('route argv builders', () => {
         );
       }
     }
-    expect(buildIssueBodyArgv(9)).toEqual(['issue', 'get', '9', 'body']);
+    expect(buildIssueDetailArgv(9)).toEqual(['show', '9', '--json']);
     expect(buildDetailArgv('milestone', 2)).toEqual(['milestone', 'show', '2', '--json']);
   });
 
@@ -287,11 +295,19 @@ describe('mint routes', () => {
     expect(detail.json()).toMatchObject({ ok: true, plan: { id: 3, body: '## 范围' } });
   });
 
-  it('serves an issue body, truncating what is too large', async () => {
-    const { handler, runs } = harness({ cwd: '/proj', result: 'body text' });
+  it('serves one issue in full, truncating a body that is too large', async () => {
+    const item = { ...ISSUE_DETAIL, body: 'short body' };
+    const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify(item) });
     const res = await invoke(handler, `${ROUTE_PREFIX}issue?session=s1&id=9`);
-    expect(runs[0]?.argv).toEqual(['issue', 'get', '9', 'body']);
-    expect(res.json()).toEqual({ ok: true, body: 'body text', truncated: false });
+    expect(runs[0]?.argv).toEqual(['show', '9', '--json']);
+    expect(res.json()).toEqual({ ok: true, item, truncated: false });
+  });
+
+  it('refuses an unreadable issue instead of inventing one', async () => {
+    const { handler } = harness({ cwd: '/proj', result: JSON.stringify({ id: 9 }) });
+    const res = await invoke(handler, `${ROUTE_PREFIX}issue?session=s1&id=9`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: false });
   });
 
   it('reports a CLI failure as a normal payload, not an HTTP error', async () => {

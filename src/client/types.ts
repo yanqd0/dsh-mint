@@ -11,8 +11,8 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
-  MintBodyPayload,
   MintDetailPayload,
+  MintIssuePayload,
   MintListPayload,
   MintResponse,
   PlanItem,
@@ -22,10 +22,11 @@ import type { CopyTranslate, Translate } from './copy.js';
 export type {
   ContainerChild,
   ContainerDetail,
+  IssueDetail,
   IssueItem,
   MilestoneItem,
-  MintBodyPayload,
   MintDetailPayload,
+  MintIssuePayload,
   MintListPayload,
   MintResponse,
   PlanItem,
@@ -110,7 +111,8 @@ export interface MintApiLike {
     signal?: AbortSignal
   ): Promise<MintResponse<MintListPayload<PlanItem>>>;
   milestones(signal?: AbortSignal): Promise<MintResponse<MintListPayload<MilestoneItem>>>;
-  issueBody(id: number, signal?: AbortSignal): Promise<MintResponse<MintBodyPayload>>;
+  /** One issue in full: the list fields plus the body. */
+  issue(id: number, signal?: AbortSignal): Promise<MintResponse<MintIssuePayload>>;
   plan(id: number, signal?: AbortSignal): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
   milestone(
     id: number,

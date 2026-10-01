@@ -1,33 +1,30 @@
 /**
- * One issue's detail: the fields the list already carries, plus the body and the
- * typed links, which need their own reads.
+ * One issue in full: identity, placement, labels, links, and the body.
  *
- * The body is the one thing `list --json` does not include, so it arrives
- * separately and carries its own loading/failure state.
+ * The item arrives from `show --json`, so this view renders exactly what the
+ * route validated — no fields are carried over from the list row.
  */
 import type { ReactElement } from 'react';
 
-import type { IssueItem, MintBodyPayload } from '../records.js';
-import { StateNotice } from './StateNotice.js';
+import type { IssueDetail as IssueDetailRecord } from '../records.js';
 import type { CopyTranslate } from './copy.js';
 import { describeLink, priorityLabel, statusTone } from './model.js';
-import type { LoadState } from './model.js';
 import { BODY, BUTTON, META, NOTE, PROSE, TOOLBAR, pill } from './styles.js';
 
 export interface IssueDetailProps {
   copy: CopyTranslate;
-  item: IssueItem;
-  /** The body read, `undefined` before it starts. */
-  body: LoadState<MintBodyPayload> | undefined;
+  item: IssueDetailRecord;
+  /** True when the route cut the body at its byte budget. */
+  truncated: boolean;
   onBack: () => void;
 }
 
 /**
  * Render the detail.
  *
- * @param props - the issue, its body state, and the way back to the list.
+ * @param props - the issue, whether its body was cut, and the way back.
  */
-export function IssueDetail({ copy, item, body, onBack }: IssueDetailProps): ReactElement {
+export function IssueDetail({ copy, item, truncated, onBack }: IssueDetailProps): ReactElement {
   const links = item.links
     .map((link) => describeLink(link))
     .filter((line): line is NonNullable<typeof line> => line !== undefined);
@@ -40,9 +37,7 @@ export function IssueDetail({ copy, item, body, onBack }: IssueDetailProps): Rea
         </button>
       </div>
       <div style={BODY}>
-        <div style={{ fontSize: 13, fontWeight: 600 }}>
-          {`#${String(item.id)} ${item.title}`}
-        </div>
+        <div style={{ fontSize: 13, fontWeight: 600 }}>{`#${String(item.id)} ${item.title}`}</div>
         <div style={{ ...META, marginTop: 6 }}>
           <span style={pill(statusTone(item.status))}>{item.status}</span>
           <span>{`${copy('field.kind')} ${item.kind}`}</span>
@@ -50,6 +45,9 @@ export function IssueDetail({ copy, item, body, onBack }: IssueDetailProps): Rea
           <span>
             {item.plan_id === null ? copy('detail.standalone') : `#${String(item.plan_id)}`}
           </span>
+          {item.milestone_id !== null && (
+            <span>{`${copy('field.milestone')} #${String(item.milestone_id)}`}</span>
+          )}
         </div>
         {item.labels.length > 0 && (
           <div style={{ ...META, marginTop: 4 }}>
@@ -71,16 +69,8 @@ export function IssueDetail({ copy, item, body, onBack }: IssueDetailProps): Rea
         </div>
 
         <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.body')}</div>
-        {body === undefined || body.status === 'loading' ? (
-          <p style={NOTE}>{copy('state.loading')}</p>
-        ) : body.status === 'failed' ? (
-          <StateNotice copy={copy} state="failed" message={body.message} stderr={body.stderr} />
-        ) : (
-          <>
-            <p style={PROSE}>{body.value.body}</p>
-            {body.value.truncated && <p style={NOTE}>{copy('panel.truncated')}</p>}
-          </>
-        )}
+        <p style={PROSE}>{item.body}</p>
+        {truncated && <p style={NOTE}>{copy('panel.truncated')}</p>}
       </div>
     </>
   );

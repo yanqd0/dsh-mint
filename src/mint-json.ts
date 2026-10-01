@@ -9,7 +9,7 @@
  * overview renders a handful of fields (`context.ts` keeps its own minimal
  * predicate), while the client-face routes hand the panel whole records.
  */
-import type { ContainerDetail, IssueItem, MilestoneItem, PlanItem } from './records.js';
+import type { ContainerDetail, IssueDetail, IssueItem, MilestoneItem, PlanItem } from './records.js';
 
 /** True for a JSON object (not `null`, not an array). */
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -54,8 +54,7 @@ export function isIssueItem(value: unknown): value is IssueItem {
 }
 
 /** A `plan list --json` record must carry every field the panel renders. */
-export function isPlanItem(value: unknown): value is PlanItem {
-  if (!isRecord(value)) return false;
+export function isPlanItem(value: unknown): value is PlanItem {  if (!isRecord(value)) return false;
   return (
     isNumber(value.id) &&
     isString(value.title) &&
@@ -104,6 +103,17 @@ export function isContainerDetail(value: unknown): value is ContainerDetail {
     isString(value.created_at) &&
     isString(value.updated_at)
   );
+}
+
+/**
+ * `show <id> --json` must carry the list fields plus the body.
+ *
+ * `list --json` folds an issue's milestone into its plan and omits the body, so
+ * the detail read is the only place a panel can see both.
+ */
+export function isIssueDetail(value: unknown): value is IssueDetail {
+  if (!isRecord(value)) return false;
+  return isIssueItem(value) && isString(value.body) && isNumberOrNull(value.milestone_id);
 }
 
 export interface ParsedItems<T> {

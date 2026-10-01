@@ -5,7 +5,13 @@
  * coloring, labels, link description — so it can be tested in Node. The React
  * components stay presentational: they call these and draw the result.
  */
-import type { ContainerChild, IssueItem, MintResponse } from '../records.js';
+import type {
+  ContainerChild,
+  ContainerDetail,
+  IssueItem,
+  MintDetailPayload,
+  MintResponse,
+} from '../records.js';
 import type { CopyKey } from './copy.js';
 
 /** What a view knows about one request. */
@@ -148,6 +154,44 @@ export function containerMeta(parts: readonly (string | number | null | undefine
     .filter((part): part is string | number => part !== null && part !== undefined && part !== '')
     .map((part) => String(part))
     .join(' · ');
+}
+
+/** One row of the plan or milestone list. */
+export interface ContainerRow {
+  id: number;
+  title: string;
+  /** Status, version, and how many issues it holds. */
+  meta: string;
+}
+
+/** The fields a container row shows; both `PlanItem` and `MilestoneItem` satisfy it. */
+export interface ContainerRecordLike {
+  id: number;
+  title: string;
+  status: string;
+  version: string;
+  issue_count: number;
+}
+
+/** Project a plan or milestone record onto a list row. */
+export function containerRow(item: ContainerRecordLike): ContainerRow {
+  return {
+    id: item.id,
+    title: item.title,
+    meta: containerMeta([item.status, item.version, `${String(item.issue_count)} issues`]),
+  };
+}
+
+/**
+ * Read the container out of a detail payload.
+ *
+ * The route fills whichever key names the kind that answered, so this is the one
+ * place that has to know about that envelope.
+ *
+ * @param payload - `plan show --json` or `milestone show --json`.
+ */
+export function detailContainer(payload: MintDetailPayload<ContainerDetail>): ContainerDetail {
+  return 'plan' in payload ? payload.plan : payload.milestone;
 }
 
 /**

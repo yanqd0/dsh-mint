@@ -13,9 +13,9 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
-  MintBodyPayload,
   MintDetailPayload,
   MintFailurePayload,
+  MintIssuePayload,
   MintListPayload,
   MintResponse,
   PlanItem,
@@ -113,7 +113,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
       get<MintListPayload<IssueItem>>(ROUTES.issues, query, signal),
     plans: (query, signal) => get<MintListPayload<PlanItem>>(ROUTES.plans, query, signal),
     milestones: (signal) => get<MintListPayload<MilestoneItem>>(ROUTES.milestones, {}, signal),
-    issueBody: (id, signal) => get<MintBodyPayload>(ROUTES.issue, { id: String(id) }, signal),
+    issue: (id, signal) => get<MintIssuePayload>(ROUTES.issue, { id: String(id) }, signal),
     plan: (id, signal) =>
       get<MintDetailPayload<ContainerDetail>>(ROUTES.plan, { id: String(id) }, signal),
     milestone: (id, signal) =>

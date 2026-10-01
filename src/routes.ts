@@ -16,7 +16,15 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { parseDetail, parseItems, isContainerDetail, isIssueItem, isMilestoneItem, isPlanItem } from './mint-json.js';
+import {
+  isContainerDetail,
+  isIssueDetail,
+  isIssueItem,
+  isMilestoneItem,
+  isPlanItem,
+  parseDetail,
+  parseItems,
+} from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
 import type { AgentsLike, DshContext, WebServerLike } from './types.js';
@@ -38,10 +46,10 @@ const MAX_FILTER_LENGTH = 200;
 
 /**
  * The only mint subcommands these routes run. Everything reachable from here is
- * a read: `list`, `plan list`, `plan show`, `issue get`, `milestone list`,
+ * a read: `list`, `show`, `plan list`, `plan show`, `milestone list`,
  * `milestone show`. Any argv whose head is outside this list is a bug.
  */
-export const READ_ONLY_SUBCOMMANDS = ['list', 'plan', 'issue', 'milestone'] as const;
+export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone'] as const;
 
 /** The six routes this prefix answers; anything else is a 404. */
 const ROUTE_NAMES: readonly string[] = ['issues', 'plans', 'milestones', 'issue', 'plan', 'milestone'];
@@ -164,9 +172,15 @@ function pushFilter(
   if (value !== undefined) argv.push(flag, value);
 }
 
-/** Build the argv that reads one issue's body (the raw, unparsed field). */
-export function buildIssueBodyArgv(id: number): string[] {
-  return ['issue', 'get', String(id), 'body'];
+/**
+ * Build the argv that reads one issue in full.
+ *
+ * `show --json` is the only read that carries both the list fields and the body,
+ * which is what lets a plan or milestone detail open an issue without a second
+ * lookup and without inventing fields the list does not have.
+ */
+export function buildIssueDetailArgv(id: number): string[] {
+  return ['show', String(id), '--json'];
 }
 
 /** Build the argv that reads one container's detail (`plan show` / `milestone show`). */
@@ -306,13 +320,20 @@ export function createMintHandler(
             return;
           case 'issue': {
             const id = parseId(params);
-            const result = await runForRequest(res, cwd, buildIssueBodyArgv(id));
+            const result = await runForRequest(res, cwd, buildIssueDetailArgv(id));
             if (result === undefined) return;
             if (!result.ok) {
               sendJson(res, 200, { ok: false, ...failure(result) });
               return;
             }
-            sendJson(res, 200, { ok: true, ...truncateBody(result.text ?? '') });
+            const parsed = parseDetail('show --json', result.text, isIssueDetail);
+            if (parsed.value === undefined) {
+              sendJson(res, 200, { ok: false, error: parsed.warning ?? 'unreadable issue' });
+              return;
+            }
+            const cut = truncateBody(parsed.value.body);
+            const item = cut.truncated ? { ...parsed.value, body: cut.body } : parsed.value;
+            sendJson(res, 200, { ok: true, item, truncated: cut.truncated });
             return;
           }
           default: {

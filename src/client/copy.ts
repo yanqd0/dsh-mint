@@ -45,6 +45,8 @@ const COPY = {
   'field.created': '创建',
   'field.updated': '更新',
   'field.issues': '包含 issue',
+  'container.plan': 'Plan',
+  'container.milestone': 'Milestone',
 
   'detail.back': '返回',
   'detail.body': '正文',
