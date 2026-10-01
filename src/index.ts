@@ -6,6 +6,7 @@ import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
+import { installMintRoutes } from './routes.js';
 import type { AgentLike, DshContext } from './types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
@@ -56,6 +57,8 @@ export type Config = z.infer<typeof Config>;
  * - #25: approval gate — once-per-session mint escalation approval, then
  *   auto-allowed mint escalations (B-v2)
  * - #28: skill auto-install — content-syncs the bundled skill on load
+ * - #10: client-face routes — read-only `ctx.webServer` JSON endpoints the
+ *   right-sidebar panel fetches (`src/routes.ts`)
  * - `mintEntry` — run a locally built mint instead of the published dependency
  */
 export function apply(ctx: DshContext, config: Config): void {
@@ -75,4 +78,5 @@ export function apply(ctx: DshContext, config: Config): void {
   installPlanBinding(ctx, mintEntry);
   installMintTool(ctx, mintEntry);
   installApprovalGate(ctx, config);
+  installMintRoutes(ctx, mintEntry);
 }

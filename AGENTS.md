@@ -4,7 +4,7 @@
 
 ## 定位
 
-DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、事件提醒、plan 绑定、`mint` 工具（mint CLI 全命令面，插件进程内执行、零授权）；客户端面 0.2.0：`conversation.view` 注册 mint tab（issue 面板）。
+DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、事件提醒、plan 绑定、`mint` 工具（mint CLI 全命令面，插件进程内执行、零授权）；客户端面 0.2.0：右侧边栏 mint 面板（issue/plan/milestone 只读视图，与【工作区文件】【新建终端】并列）。
 
 ## 硬约束
 
@@ -36,7 +36,9 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - 宿主面接口：`agent/session-start` 事件、`tools/post-execute`（enrich）、`tools/pre-execute`（allow/deny/ask）、`tools/result`、`systemPrompt.context/section`、`shell` 服务、`tools` 注册。
 - **`mint` 工具注册在 root ctx（global layer）**：所有 agent 继承，子代理也继承（子代理 approval 被 pin `never`，bash 路径对它们不可用）。工具 execute 内经 `runMint` spawn mint，插件进程不受会话沙箱约束 → 零授权。
 - 模型可见文案一律工具形态：动态概览用 `systemPrompt.context()`，静态工具指引用 `systemPrompt.section()`（order 110，落在 100–199 tool guidance band，KV cache 友好）。
-- 客户端面：package.json `dsh.client` 声明 + 预构建 bundle；Slot `conversation.view`（list 注册 id/order/label）；Host RPC 走 `harness.handle` / `host.call`（仅 lossless JSON）。
+- 客户端面：package.json `dsh.client`（`platform` + 需先到的**其它插件包名** `inject`）+ 预构建 `exports["./client"]`，产物必须是 `window.__ModuleLoader__.load({id, factory:(require)=>{…}})`；只能 `require` 浏览器内核冻结的 PLATFORM_MODULES（react / react-dom / cordis / dsh-client-store / ui-slots / ui-primitives / ui-dockkit），其余须声明 `dsh.client.external`。
+- **客户端面落点**：右侧边栏 = `ctx.sidebarRightTabs.register({id,kind,title,guide})`（guide entry 即「新建侧边栏 tab」选项）+ body seat `sidebar.right.pane.tab`；不是 `conversation.view`。实测契约见 [notes/client-face.md](notes/client-face.md)。
+- **Host RPC**：静态（已安装）插件的 client 半边**走宿主 `ctx.webServer` JSON 路由**（浏览器侧 `fetch`，`dshmarket` 在产先例）；`harness.handle` / `host.call` 只属于**动态 Cordis 包** runner，Typert `remote` 的能力集在构建期固定、仓外插件无法 join。
 
 ## 常用命令（工具链落地后启用）
 

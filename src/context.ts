@@ -6,6 +6,7 @@ import {
   runMint,
 } from './mint.js';
 import type { MintRunResult } from './mint.js';
+import { isRecord, parseItems } from './mint-json.js';
 import type { DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
@@ -54,11 +55,6 @@ interface OverviewMilestone {
   status: string;
 }
 
-/** True for a JSON object (not `null`, not an array). */
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
 /** Validate one `list --json` item against the fields the overview reads. */
 function isOverviewIssue(value: unknown): value is OverviewIssue {
   if (!isRecord(value)) return false;
@@ -82,47 +78,6 @@ function isOverviewMilestone(value: unknown): value is OverviewMilestone {
     typeof value.version === 'string' &&
     typeof value.status === 'string'
   );
-}
-
-interface ParsedItems<T> {
-  items: T[];
-  warning?: string;
-}
-
-/**
- * Parse a `{ items: [...] }` CLI response, validating every item (#65).
- *
- * Mirrors the command-level failure contract: never throws, but never lets a
- * shape mismatch pass as real data either. Items that fail validation are
- * dropped and the caller surfaces a warning, so a renamed field degrades to a
- * visible "overview suppressed" note rather than a silent empty list.
- */
-function parseItems<T>(
-  source: string,
-  text: string | undefined,
-  isItem: (value: unknown) => value is T
-): ParsedItems<T> {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text ?? '{}');
-  } catch {
-    return { items: [], warning: `${source}: response was not JSON — overview unavailable` };
-  }
-  if (!isRecord(parsed) || !Array.isArray(parsed.items)) {
-    return {
-      items: [],
-      warning: `${source}: no "items" array (mint JSON shape changed?) — overview unavailable`,
-    };
-  }
-  const items = parsed.items.filter(isItem);
-  const dropped = parsed.items.length - items.length;
-  if (dropped > 0) {
-    return {
-      items,
-      warning: `${source}: ${dropped}/${parsed.items.length} items missing required fields (mint JSON shape changed?) — hidden`,
-    };
-  }
-  return { items };
 }
 
 export interface MintOverview {

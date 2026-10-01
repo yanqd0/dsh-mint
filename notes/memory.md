@@ -12,3 +12,4 @@
 | [install-check.md](install-check.md) | 安装/自动使用**快速自检清单**（1 分钟）：挂载行、dist/skill 产物、`mint` 工具/`[Mint]` 判定、**零授权验证**——跑相同 dogfooding 任务前先跑它 |
 | [graph-memory-silent-mechanism.md](graph-memory-silent-mechanism.md) | graph-memory 静默运行（零授权）机制调研 + dsh-mint 迁移性评估：不经 bash、插件进程内跑 CLI/直写 db 的信任边界；方案 A 已落地为宿主 `mint` 工具 |
 | [mint-skill-sync.md](mint-skill-sync.md) | mint 升级后 skill 复核法：`--help-llm` 对账 + 逐命令 `--help`（补 version 类参数）+ 对照上游 `src/cli`；本轮 0.8/0.9 坑位表（#70–#78） |
+| [client-face.md](client-face.md) | 客户端面实测契约（0.2.0-rc.2）：右侧边栏 tab 类型与 body seat、`dsh.client` + `__ModuleLoader__` 产物、PLATFORM_MODULES、webServer 只读路由通道、locale/主题 token、验证手段与坑（#9/#10/#11） |

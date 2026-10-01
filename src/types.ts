@@ -6,6 +6,7 @@
  * approximations (supersets are accepted by the host, subsets are what we
  * consume). Verify against the live host with `cordis_inspect_*` at load time.
  */
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 /** Subset of a host text content block. */
 export interface ContentBlockLike {
@@ -125,4 +126,48 @@ export interface DshContext {
   on(event: string, listener: EventListener, options?: { prepend?: boolean }): () => void;
   systemPrompt?: SystemPromptLike;
   tools?: ToolsLike;
+  /**
+   * Optional service lookup. Absent on lean contexts and on the unit-test mocks,
+   * so callers must null-check both the method and its result, narrowing the
+   * `unknown` it returns to the structural slice they consume.
+   */
+  get?(name: string): unknown;
+  /**
+   * Run `callback` once the named services exist, without gating the rest of
+   * `apply` — the pattern for a capability only some compositions provide.
+   */
+  inject?(services: readonly string[], callback: (ctx: DshContext) => void): void;
+  /** Own an effect for this plugin's lifetime; the returned disposer unwinds it. */
+  effect?(callback: () => (() => void) | void, label?: string): () => void;
+  /** Live agents by session id, used to resolve a session's project directory. */
+  agents?: AgentsLike;
+  /** The browser HTTP carrier, present only in compositions that serve a page. */
+  webServer?: WebServerLike;
+}
+
+/** The slice of a live Agent the client-face routes need: where its project lives. */
+export interface AgentCwdLike {
+  session: { header: { cwd?: string } };
+}
+
+/** Subset of the host's `ctx.agents` service. */
+export interface AgentsLike {
+  get(id: string): AgentCwdLike | undefined;
+}
+
+/**
+ * One route on the host's browser HTTP carrier (`ctx.webServer`).
+ *
+ * `kind: 'prefix'` claims every path under `path`; a duplicate `(kind, path)`
+ * registration throws, because route patterns are a composition-level contract.
+ */
+export interface WebRouteLike {
+  kind: 'exact' | 'prefix';
+  path: string;
+  handler: (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
+}
+
+/** Subset of the host's `ctx.webServer` service (`dsh-host-webserver`). */
+export interface WebServerLike {
+  register(route: WebRouteLike): () => void;
 }
