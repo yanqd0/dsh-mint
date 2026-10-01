@@ -97,12 +97,17 @@ ctx.slots.inject('sidebar.right.pane.tab', () =>
 
 ```js
 ctx.inject(['webServer'], (scoped) => {
-  scoped.effect(() => scoped.webServer.register({ kind: 'prefix', path: '/dsh-mint/', handler }), 'label');
+  scoped.effect(() => scoped.webServer.register({ kind: 'prefix', path: '/dsh-mint', handler }), 'label');
 });
 ```
 
 - `webServer` 是可选服务：无头/ACP 组合没有它，`ctx.inject` 只推迟这块，不影响其余能力。
 - `(kind, path)` 重复注册抛错；`kind: 'prefix'` 独占该前缀下的全部路径。
+- **前缀不能带尾斜杠**（已踩）：宿主匹配规则是
+  `pathname === prefix || pathname.startsWith(prefix + '/')`（`dsh-host-webserver` 的 `match`）。
+  注册 `/dsh-mint/` 只匹配 `/dsh-mint/` 与 `/dsh-mint//…`，`/dsh-mint/issues` 会**落到 fallback**
+  （SPA 静态服务 → 空 body 404，面板上显示 `HTTP 404: (empty body)`）。注册 `/dsh-mint` 才对，
+  且 `/dsh-mint-other` 不会被误吞。回归护栏在 `src/routes.test.ts`。
 - 浏览器侧路径要用 `document.baseURI` 解析（反代子路径挂载时 `/xxx` 会 404）——见 `dshmarket` 的 `api()`。
 
 dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（`show --json` 全量，含 body）、

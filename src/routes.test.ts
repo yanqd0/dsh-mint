@@ -132,6 +132,20 @@ const PLAN_DETAIL = {
 };
 
 describe('route argv builders', () => {
+  // The host matches a prefix route with
+  // `pathname === prefix || pathname.startsWith(prefix + '/')`.
+  // A trailing slash here silently shadows every route behind the SPA fallback
+  // (an empty 404), which is exactly what happened once already.
+  it('registers a prefix its own routes can match', () => {
+    expect(ROUTE_PREFIX.endsWith('/')).toBe(false);
+    for (const name of ['issues', 'plans', 'milestones', 'issue', 'plan', 'milestone']) {
+      const pathname = `${ROUTE_PREFIX}/${name}`;
+      expect(pathname === ROUTE_PREFIX || pathname.startsWith(`${ROUTE_PREFIX}/`)).toBe(true);
+    }
+    // A neighbouring path is not ours.
+    expect('/dsh-mint-other'.startsWith(`${ROUTE_PREFIX}/`)).toBe(false);
+  });
+
   it('maps issue filters to their fixed flags', () => {
     const params = new URLSearchParams({
       status: 'open',
@@ -253,7 +267,7 @@ describe('route argv builders', () => {
 describe('mint routes', () => {
   it('reads the session project, never a browser-supplied path', async () => {
     const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify({ items: [ISSUE_ITEM] }) });
-    const res = await invoke(handler, `${ROUTE_PREFIX}issues?session=s1&cwd=/etc`);
+    const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1&cwd=/etc`);
     expect(runs[0]?.cwd).toBe('/proj');
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, total: 1 });
@@ -268,7 +282,7 @@ describe('mint routes', () => {
       total: 17,
     });
     const { handler } = harness({ cwd: '/proj', result: payload });
-    const res = await invoke(handler, `${ROUTE_PREFIX}issues?session=s1`);
+    const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1`);
     expect(res.json()).toMatchObject({
       ok: true,
       items: [ISSUE_ITEM],
@@ -282,15 +296,15 @@ describe('mint routes', () => {
 
   it('serves plan and milestone lists and details', async () => {
     const planRun = harness({ cwd: '/proj', result: JSON.stringify({ items: [PLAN_ITEM] }) });
-    const planList = await invoke(planRun.handler, `${ROUTE_PREFIX}plans?session=s1`);
+    const planList = await invoke(planRun.handler, `${ROUTE_PREFIX}/plans?session=s1`);
     expect(planList.json()).toMatchObject({ ok: true, items: [PLAN_ITEM] });
 
     const msRun = harness({ cwd: '/proj', result: JSON.stringify({ items: [MILESTONE_ITEM] }) });
-    const msList = await invoke(msRun.handler, `${ROUTE_PREFIX}milestones?session=s1`);
+    const msList = await invoke(msRun.handler, `${ROUTE_PREFIX}/milestones?session=s1`);
     expect(msList.json()).toMatchObject({ ok: true, items: [MILESTONE_ITEM] });
 
     const detailRun = harness({ cwd: '/proj', result: JSON.stringify(PLAN_DETAIL) });
-    const detail = await invoke(detailRun.handler, `${ROUTE_PREFIX}plan?session=s1&id=3`);
+    const detail = await invoke(detailRun.handler, `${ROUTE_PREFIX}/plan?session=s1&id=3`);
     expect(detailRun.runs[0]?.argv).toEqual(['plan', 'show', '3', '--json']);
     expect(detail.json()).toMatchObject({ ok: true, plan: { id: 3, body: '## 范围' } });
   });
@@ -298,39 +312,39 @@ describe('mint routes', () => {
   it('serves one issue in full, truncating a body that is too large', async () => {
     const item = { ...ISSUE_DETAIL, body: 'short body' };
     const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify(item) });
-    const res = await invoke(handler, `${ROUTE_PREFIX}issue?session=s1&id=9`);
+    const res = await invoke(handler, `${ROUTE_PREFIX}/issue?session=s1&id=9`);
     expect(runs[0]?.argv).toEqual(['show', '9', '--json']);
     expect(res.json()).toEqual({ ok: true, item, truncated: false });
   });
 
   it('refuses an unreadable issue instead of inventing one', async () => {
     const { handler } = harness({ cwd: '/proj', result: JSON.stringify({ id: 9 }) });
-    const res = await invoke(handler, `${ROUTE_PREFIX}issue?session=s1&id=9`);
+    const res = await invoke(handler, `${ROUTE_PREFIX}/issue?session=s1&id=9`);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: false });
   });
 
   it('reports a CLI failure as a normal payload, not an HTTP error', async () => {
     const { handler } = harness({ cwd: '/proj', result: 1 });
-    const res = await invoke(handler, `${ROUTE_PREFIX}issues?session=s1`);
+    const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1`);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
   });
 
   it('refuses an unknown session, an unknown route, a bad id, and a non-GET', async () => {
     const unknownSession = harness({ cwd: undefined, result: '{}' });
-    const refused = await invoke(unknownSession.handler, `${ROUTE_PREFIX}issues?session=gone`);
+    const refused = await invoke(unknownSession.handler, `${ROUTE_PREFIX}/issues?session=gone`);
     expect(refused.statusCode).toBe(400);
     expect(refused.json()).toEqual({ ok: false, error: 'session-not-live' });
 
     const known = harness({ cwd: '/proj', result: '{}' });
-    const missing = await invoke(known.handler, `${ROUTE_PREFIX}nope?session=s1`);
+    const missing = await invoke(known.handler, `${ROUTE_PREFIX}/nope?session=s1`);
     expect(missing.statusCode).toBe(404);
 
-    const badId = await invoke(known.handler, `${ROUTE_PREFIX}issue?session=s1&id=x`);
+    const badId = await invoke(known.handler, `${ROUTE_PREFIX}/issue?session=s1&id=x`);
     expect(badId.statusCode).toBe(400);
 
-    const posted = await invoke(known.handler, `${ROUTE_PREFIX}issues?session=s1`, 'POST');
+    const posted = await invoke(known.handler, `${ROUTE_PREFIX}/issues?session=s1`, 'POST');
     expect(posted.statusCode).toBe(405);
     expect(posted.headers['allow']).toBe('GET');
   });
@@ -345,7 +359,7 @@ describe('mint routes', () => {
         return Promise.resolve({ ok: true, text: '{}' });
       },
     };
-    await invoke(createMintHandler(deps), `${ROUTE_PREFIX}milestones?session=s1`);
+    await invoke(createMintHandler(deps), `${ROUTE_PREFIX}/milestones?session=s1`);
     expect(seen).toEqual(['~/bin/mint']);
   });
 });

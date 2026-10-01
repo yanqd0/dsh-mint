@@ -29,8 +29,16 @@ import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
 import type { AgentsLike, DshContext, WebServerLike } from './types.js';
 
-/** Every route lives under this prefix; one registration owns the whole space. */
-export const ROUTE_PREFIX = '/dsh-mint/';
+/**
+ * Every route lives under this prefix; one registration owns the whole space.
+ *
+ * **No trailing slash.** The host matches a `prefix` route with
+ * `pathname === prefix || pathname.startsWith(prefix + '/')`, so a registered
+ * `/dsh-mint/` would only ever match `/dsh-mint/` or `/dsh-mint//…`: a request
+ * for `/dsh-mint/issues` misses it, falls through to the SPA fallback, and comes
+ * back as an empty 404.
+ */
+export const ROUTE_PREFIX = '/dsh-mint';
 
 /** The panel truncates an issue body at this many UTF-8 bytes. */
 export const BODY_MAX_BYTES = 256 * 1024;
@@ -288,8 +296,10 @@ export function createMintHandler(
       return;
     }
     const url = new URL(req.url ?? '/', 'http://localhost');
-    const name = url.pathname.startsWith(ROUTE_PREFIX)
-      ? url.pathname.slice(ROUTE_PREFIX.length)
+    // Mirror the host's own prefix rule: `/dsh-mint/issues` is ours,
+    // `/dsh-mint-other` is not.
+    const name = url.pathname.startsWith(`${ROUTE_PREFIX}/`)
+      ? url.pathname.slice(ROUTE_PREFIX.length + 1)
       : '';
     const params = url.searchParams;
 
