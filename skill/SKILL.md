@@ -28,12 +28,13 @@ description: >-
 | bug / 问题 | `references/flow-bug.md` |
 | 需求 / 改进 | `references/flow-requirement.md` |
 | 遗留 / TODO / 观察项 | `references/flow-todo.md` |
-| 审查 / 审计 / 测试报告 | `references/flow-review.md` |
+| 审查 / 测试报告 | `references/flow-review.md` |
 | 版本 / 计划 / 里程碑 / 拆解 | `references/flow-planning.md` |
 | 写码实施（门禁详解） | `references/flow-impl.md` |
 | 无参接管 | `references/flow-session.md` |
 | 散落 issue 收口 | `references/flow-sweep.md` |
 | 分支决策（挂载/测试/git/link/kind） | `references/flow-conditions.md` |
+| 跨项目登记 | `references/cross-project.md` |
 | 多机同步 | `references/flow-sync.md` |
 | 命令 / 输出 / 字段 | `references/commands.md` |
 | 状态机 / 容器派生 | `references/state-machine.md` |

@@ -10,7 +10,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 
 - **依赖 mint CLI**（经 `mint-faa` 依赖解析入口执行），不直读 mint db；skill 安装走 `~/.dsh/skills/mint`（插件自有产物，rank 400 遮蔽其它用户级 skill）。
 - **skill 单一真源 = 本仓 `skill/`**：构建时拷入 `dist/skill`，插件加载/安装时 content-sync 到 `~/.dsh/skills/mint`（同步按**整树**比对，改任一 reference 都会重同步）。**本仓与 mint 上游仓已 git 层解耦**（无子模块），skill 在本仓独立演进。
-- **skill 拆分原则**：`skill/SKILL.md` 只保留「常驻机制 + 意图路由 + 不可延迟的硬门禁」。按触发条件才生效的**分支内容**（接管模式、实现流程详解、宿主专属、同步、收口、模板/body 纪律等）一律拆到 `skill/references/`，SKILL.md 只留一行指针；**较大的独立主题同样拆出**。新增内容默认先落 reference，只有确需每轮都生效的才进 SKILL.md。SKILL.md 字节上限与 reference 孤儿检查由 `src/skill-doc.test.ts` 守（当前 ≤4000 B）。
+- **skill 拆分原则**：`skill/SKILL.md` 只保留「常驻机制 + 意图路由 + 不可延迟的硬门禁」。按触发条件才生效的**分支内容**（接管模式、实现流程详解、宿主专属、同步、收口、模板/body 纪律等）一律拆到 `skill/references/`，SKILL.md 只留一行指针；**较大的独立主题同样拆出**。新增内容默认先落 reference，只有确需每轮都生效的才进 SKILL.md。SKILL.md 字节上限与 reference 孤儿检查由 `src/skill-doc.test.ts` 守（当前 ≤4000 B）。**勿对 `skill/**/*.md` 跑 prettier**：表格填充（对齐空格/长破折号）会撑破 4000 B 预算。
 - **npm 同名双注册表发布**：`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages（scoped 名，GH Packages 天然要求 scope，无需发布时改名；见 docs/RELEASING.md）。
 - **本仓本地安装进 DSH profile 用 dsh/pnpm 命令放行构建脚本**：`dsh plugin --profile web add ./` 会在 `~/.dsh/profiles/web` 下跑 pnpm，pnpm 11 默认报 `ERR_PNPM_IGNORED_BUILDS`。不要要求用户手工改 `pnpm-workspace.yaml`；应先用 `dsh plugin --profile web approve-builds --all`，再重跑 add；或直接 `dsh plugin --profile web add ./ --config.dangerouslyAllowAllBuilds=true`。
 - **自带 `dsh.bundle` 挂载声明**：包根 `cordis.patch.yml`（`insert` 语义）+ `package.json` 的 `dsh.bundle.patch`，且该文件须列入 `files` 随包发布——`dsh plugin --profile <p> add` 装完即按已装状态把本包写进 `dsh.profile.bundles`，**无需手改 profile 的 `cordis.patch.yml`**；手写 `insert:` 是遗留做法，与 bundle 并存会重复挂载。契约由 `src/package-manifest.test.ts` 守住。

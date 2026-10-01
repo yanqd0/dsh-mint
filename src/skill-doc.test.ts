@@ -39,6 +39,7 @@ const SKILL_MARKERS: readonly string[] = [
   '不得自行置 running',
   '须走 bash',
   'references/labels.md',
+  '跨项目登记',
 ];
 
 /** Rules that moved out of SKILL.md must still exist in their home file. */
@@ -48,6 +49,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
   ['references/flow-planning.md', ['dev-clean', 'task']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
+  // #81: cross-project registration carries its source, and the tool gate is
+  // one confirmation per session and target project — not per call.
+  ['references/cross-project.md', ['--project', '来源：', '同一会话', '子代理']],
 ];
 
 describe('skill layout (#71)', () => {

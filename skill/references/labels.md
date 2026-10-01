@@ -14,6 +14,14 @@
 - 模块 label 按开发模块打（`MCP` / `TUI` / `DB` / `CLI` / `plugin` 等）。
 - **参与者**用 `agent:` 前缀（本宿主为 `agent:dsh`）。
 
+## 来源 label（跨项目登记）
+
+- 跨项目登记时**追加来源项目名**作 label：小写、等于 mint 项目名（如 `dsh-mint`、`dsh-dev-dsh`）。
+  对方据此筛「外部反馈」与「自发现」，并用 `mint({args:["-p","<项目>","list","--label","<来源>"]})` 反查。
+- 来源 label 与内容 label 并列（例：`docs,dogfood,dsh-mint`），**不替代**内容 label；
+  仍受「每个 issue 上限 5 个」约束——超出时先砍内容 label 里最弱的一个。
+- 本项目自己的 issue **不打**来源 label；口径与判据见 `cross-project.md`。
+
 ## 规则
 
 - **版本不用 label**：版本经 plan → milestone 表达。

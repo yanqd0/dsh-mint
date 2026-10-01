@@ -166,10 +166,23 @@ mint({ args: ["project","get","1","git"] })   // 字段：name/description/git/a
 `project create` / `project set` 会新建项目库或改项目元数据（跨项目/上下文漂移），默认不用；
 确需时先向用户确认。
 
+## 跨项目（`-p` / `--project`，须在子命令之前）
+
+```js
+mint({ args: ["-p","dsh-dev-dsh","list","--status","open"] })                          // 读：直接放行
+mint({ args: ["-p","dsh-dev-dsh","issue","add","<标题>","--label","docs,dsh-mint"] })  // 写：弹一次确认
+mint({ args: ["-p","dsh-dev-dsh","issue","state","start","12"] })                      // 同会话同项目之后免问
+```
+
+- 只接受**项目名**（`projects/` 下的目录名），非路径；候选见 `mint({ args: ["project","list"] })`。
+- 目标项目不存在 → 工具拒绝并给候选，**不会**新建项目库、不会落到本项目。
+- `MINT_DB_PATH` 单文件模式不支持跨项目。
+- 来源标注与触发条件见 `cross-project.md`。
+
 ## 不通过工具的操作（需用户显式确认后走 bash）
 
 `delete`（物理删除，不可逆）、`import` / `sync`（跨机数据合并与同步）、`export`、`tui`，
-以及 `--db` / `--project`（绕过会话项目上下文）。工具会直接拒绝。
+以及 `--db`（单文件库，绕过会话项目上下文）。工具会直接拒绝。
 
 ```bash
 # 仅在用户明确要求时执行；这些会走常规沙箱提权审批

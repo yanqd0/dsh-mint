@@ -8,8 +8,11 @@
   `args` 即 CLI 参数数组，输出原生 TSV（页脚 `# Page x/y` 在 stdout）。
 - 工具注册在 **root ctx（global layer）**，所有 agent 继承；**子代理也继承**，但子代理 approval 被
   pin 为 `never`，**bash 路径对子代理不可用**——子代理只能用 `mint` 工具。
-- 工具拒绝的根命令：`delete` / `import` / `sync` / `export` / `tui`，以及全局 `--db` / `--project`；
+- 工具拒绝的根命令：`delete` / `import` / `sync` / `export` / `tui`，以及全局 `--db`；
   这些须经用户确认后走 bash（常规沙箱提权审批）。
+- `-p` / `--project`（写在**子命令之前**）是放行项：读直接放行；写操作同会话 + 同目标项目首次
+  弹一次确认（`tools/pre-execute` 的 `ask`，文案含目标项目与动作），之后免问；目标项目不存在即拒绝。
+  bash 里可识别的裸 mint 命令走**同一个分类器**。口径见 `cross-project.md`。
 
 ## plan 绑定门禁
 
