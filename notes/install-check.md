@@ -40,16 +40,21 @@ dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
 - 裸 `- id/name` 行是**覆盖**语义，会报 `patch: entry not found`——新插件必须 `insert:` 包裹。
 - 改完若配置不生效，重启 harness（GUI 进程）。
 
-## 3. 产物：dist 与 skill 都在（预期：两处 SKILL.md 存在且一致）
+## 3. 产物：dist 与 skill 都在（预期：两处 SKILL.md 存在且一致，且 client bundle 在）
 
 ```bash
 ls /home/user/yanqd0/dsh-mint/dist/index.js /home/user/yanqd0/dsh-mint/dist/skill/SKILL.md
+ls /home/user/yanqd0/dsh-mint/dist/client.js                # #9：client 半边预构建产物
+head -c 60 /home/user/yanqd0/dsh-mint/dist/client.js        # 应为 window.__ModuleLoader__.load(
 ls ~/.dsh/skills/mint/SKILL.md                 # 插件 apply/postinstall 自动同步目标
 diff -rq ~/.dsh/skills/mint /home/user/yanqd0/dsh-mint/dist/skill >/dev/null && echo "skill 一致"
 ```
 
 坑：
 - `exports: { ".": "./dist/index.js" }` —— **dist 不构建则加载即失败**。先 `pnpm build`。
+- **新增 `dsh.client` 后必须重启 harness**：client 行只在启动扫描时入图；此后改 bundle 只需
+  重新 `pnpm build` + 刷新页面（revision 由 mtime/ctime/size 推导）。
+- `dist/client.js` 缺失 = `MissingClientBundleError`（宿主激活期直接报错）。
 - `pnpm build` 前会跑 deps 检查触发 install；mint-faa postinstall 下载 GitHub release
   失败会让 install 非零退出 → 本机用
   `pnpm install --frozen-lockfile --ignore-scripts && pnpm build`。
@@ -59,6 +64,19 @@ diff -rq ~/.dsh/skills/mint /home/user/yanqd0/dsh-mint/dist/skill >/dev/null && 
 - **手工清理（一次性）**：删掉 `~/.agents/skills/mint` 软链（rank 500，指向 mint 上游仓的旧
   skill）。rank 400 本已遮蔽 rank 500，但删掉可避免两个 mint skill 同时在目录里造成困惑。
   **注意别删 `~/.dsh/skills/mint`**——那是插件的同步产物。
+
+## 3.1 客户端面：右侧边栏第三张 guide 卡片（#11/#12/#79）
+
+重启 harness 并刷新页面后：
+
+1. 打开右侧边栏 → `+`（新建侧边栏 tab）→ guide 应列出三张卡片：**工作区文件 / 新建终端 / Mint**。
+2. 点 Mint → 出现标题为「Mint」的 tab；Issue 视图列出当前会话项目的 issue，可搜索、翻页、点开详情（含 body）。
+3. 切到 Plan / Milestone 视图：列表 → 详情 → 点详情里的子 issue 可跳回 Issue 详情。
+4. shape/契约自检（无需授权）：
+   `cordis_inspect_query` client `Slots.listSubTree`，`root: "sidebar.right.pane.tab"` →
+   occupants 应含 `@yanqd0/dsh-mint`。
+5. 只读自检：面板全部数据走 `GET /dsh-mint/*`；宿主侧 argv 白名单见 `src/routes.ts`
+   （`READ_ONLY_SUBCOMMANDS`），契约细节见 `client-face.md`。
 
 ## 4. 生效判定（自动使用，预期：工具/上下文出现）
 

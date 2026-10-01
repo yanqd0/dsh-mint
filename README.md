@@ -221,8 +221,12 @@ restart DSH after changing either one.
 
 ## Roadmap
 
-`0.2.0` adds the client face: a mint tab in the conversation area with an issue
-panel, backed by host RPC queries.
+`0.2.0` adds the client face: a **mint panel in the right sidebar**, opened from
+the tab strip's add control beside *Workspace files* and *New terminal*. It reads
+the session's project read-only — issues (list, filters, detail), plans and
+milestones (lists, details) — through read-only host routes backed by the mint
+CLI. Copy ships in Simplified Chinese only for now; the dictionaries already
+travel through the client locale service, so `0.3.0` adds English as data.
 
 ## Development
 

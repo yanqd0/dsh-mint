@@ -53,6 +53,7 @@ pnpm check-types   # tsc --noEmit
 ## 文档导航
 
 - `notes/memory.md`：项目记忆索引（新会话先读）。
+- `notes/client-face.md`：**客户端面实测契约**（右侧边栏 seat、`dsh.client` 产物、webServer 路由通道、locale/主题、验证手段与坑）。
 - `notes/dsh-plugin-dev.md`：DSH 插件开发调研（挂载/DI/事件签名/沙箱/开发环）。
 - `notes/mounting.md`：挂载与安装指南（含 workspace-write 下 mint 放行选项）。
 - `docs/`：未来对外 i18n 文档（暂不做；RELEASING 属 #8）。
