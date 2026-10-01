@@ -78,7 +78,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
   const doFetch = options.fetch ?? globalThis.fetch;
   const { sessionId } = options;
 
-  const get = async <T>(
+  const get = async <T extends { ok: true }>(
     path: string,
     query: Record<string, string | undefined>,
     signal?: AbortSignal

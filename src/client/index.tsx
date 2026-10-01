@@ -99,9 +99,12 @@ export function apply(ctx: ClientContextLike): void {
             name: 'sidebar.right.pane.tab',
             key: TAB_ID,
             locale: NS,
-            inject: (sessionId): { api: MintApiLike; t: CopyTranslate } => ({
+            // `locale: NS` gives the framework's `t`; the panel uses this injected
+            // seat instead, because only its keys are checked against the copy and
+            // it still answers Chinese on a locale that carries no dictionary.
+            inject: (sessionId): { api: MintApiLike; copy: CopyTranslate } => ({
               api: createApi({ sessionId }),
-              t,
+              copy: t,
             }),
           },
           MintBody

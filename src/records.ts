@@ -97,5 +97,5 @@ export interface MintFailurePayload {
   stderr?: string;
 }
 
-/** What the panel must handle from any route. */
-export type MintResponse<T> = T | MintFailurePayload;
+/** What the panel must handle from any route: a success payload or a refusal. */
+export type MintResponse<T extends { ok: true }> = T | MintFailurePayload;

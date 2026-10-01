@@ -50,6 +50,14 @@ const COPY = {
   'detail.body': '正文',
   'detail.standalone': '未挂 plan',
 
+  'link.related': '相关',
+  'link.solves': '解决',
+  'link.solved-by': '被解决',
+  'link.duplicates': '重复',
+  'link.duplicated-by': '被重复',
+  'link.blocked_by': '阻塞于',
+  'link.blocks': '阻塞',
+
   'pager.summary': '第 {page}/{pages} 页，共 {total} 条',
   'pager.prev': '上一页',
   'pager.next': '下一页',

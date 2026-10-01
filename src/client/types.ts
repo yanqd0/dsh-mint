@@ -118,12 +118,40 @@ export interface MintApiLike {
   ): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
 }
 
-/** Props the panel body receives: session identity, copy, and transport. */
+/** The actions a tab body may take on its own occurrence. */
+export interface TabActionsLike {
+  /** Bind page operations until the body unmounts; returns the disposer. */
+  bindCommands(commands: { refresh?: () => void }): () => void;
+}
+
+/** Live information the seat hands a tab body (`useTabInfo()`). */
+export interface TabInfoLike {
+  sidebar: { expanded: boolean; fullscreen: boolean };
+  panel: { id: string };
+  tab: {
+    /** Only the foreground session is visible. */
+    visible: boolean;
+    /** Aborted when the tab record disappears or this plugin unloads. */
+    signal: AbortSignal;
+    navigation: { revision: number };
+    actions: TabActionsLike;
+  };
+}
+
+/** Props the panel body receives: session identity, copy, transport, and the tab. */
 export interface MintBodyProps {
   /** The session whose project the panel reads; delivered by the slot. */
   sessionId: string;
-  /** Translation seat bound to the `mint` namespace, key-checked against the copy. */
-  t: CopyTranslate;
+  /**
+   * The copy seat. Injected (not the framework's `t`) so keys are checked against
+   * the dictionary and an unregistered locale still renders words.
+   */
+  copy: CopyTranslate;
   /** Transport injected by `apply`. */
   api: MintApiLike;
+  /**
+   * The seat's tab-info hook. Optional so the body can also be rendered in a
+   * lean harness (a test, a future surface) without the sidebar right runtime.
+   */
+  useTabInfo?: () => TabInfoLike | undefined;
 }

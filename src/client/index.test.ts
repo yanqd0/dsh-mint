@@ -106,7 +106,7 @@ describe('mint client plugin', () => {
     const { ctx, registrations } = clientDouble();
     apply(ctx);
     const injectedProps = registrations[0]?.options.inject?.('session-1');
-    expect(Object.keys(injectedProps ?? {}).sort()).toEqual(['api', 't']);
+    expect(Object.keys(injectedProps ?? {}).sort()).toEqual(['api', 'copy']);
     const api = (injectedProps as { api: Record<string, unknown> }).api;
     expect(Object.keys(api).sort()).toEqual([
       'issueBody',
