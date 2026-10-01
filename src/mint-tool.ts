@@ -1,3 +1,9 @@
+import {
+  listProjects,
+  missingProjectMessage,
+  parseInvocation,
+  projectProbeFailureMessage,
+} from './cross-project.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions } from './mint.js';
 import type {
@@ -62,8 +68,15 @@ export const DENIED_SUBCOMMANDS: Readonly<Record<string, string>> = {
  */
 export const ALLOWED_ROOT_FLAGS: readonly string[] = ['-V', '--version', '--help-llm'];
 
-/** Flags that would escape the session's project context or database. */
-export const DENIED_FLAGS: readonly string[] = ['--db', '-p', '--project'];
+/**
+ * Flags that would escape the session's project context or database.
+ *
+ * `--project` is **not** here any more (#55): a cross-project target is a
+ * first-class use case, and the confirmation gate in `cross-project.ts` owns the
+ * write side (#80). `--db` stays denied — a single-file database is a different
+ * trust decision and the plan explicitly leaves it out.
+ */
+export const DENIED_FLAGS: readonly string[] = ['--db'];
 
 /**
  * Model-facing tool description.
@@ -75,9 +88,10 @@ export const DENIED_FLAGS: readonly string[] = ['--db', '-p', '--project'];
  */
 export const MINT_TOOL_DESCRIPTION = [
   '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，命令在插件进程内执行，零授权。',
-  '例：["list","--status","open"]、["issue","state","start","42"]、["plan","close","7","--test-cmd","pnpm test"]',
-  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `# Page x/y` 页脚（stdout）给总数。参考 ["--help-llm"]（个别参数以 --help 为准），版本 ["-V"]。',
-  '不可用：delete/import/sync/export/tui、--db/--project（需用户显式操作）。',
+  '例：["list","--status","open"]、["issue","state","start","42"]、["-p","<项目>","list"]',
+  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `# Page x/y` 页脚（stdout）给总数。参考 ["--help-llm"]，版本 ["-V"]。',
+  '跨项目 ["-p","<项目>",…] 置于子命令前；写操作同会话首次确认后免问。',
+  '不可用：delete/import/sync/export/tui、--db。',
 ].join('\n');
 
 export interface MintToolArgs {
@@ -111,6 +125,10 @@ export const MINT_SKEW_HINT =
  *
  * `spawn` receives an array and never a shell, so there is no injection or
  * quoting surface here — this check is about *scope*, not about escaping.
+ *
+ * Global flags are resolved by {@link parseInvocation} first: `-p`/`--project`
+ * is a legal leading flag (its shape, position and value are validated there),
+ * so the root subcommand is `rest[0]`, not `argv[0]` (#55).
  */
 export function validateMintArgs(argv: unknown): string | undefined {
   if (!Array.isArray(argv) || argv.length === 0) {
@@ -124,15 +142,25 @@ export function validateMintArgs(argv: unknown): string | undefined {
       return 'args 不能包含空字符';
     }
   }
-  const [root] = argv as string[];
-  if (root === undefined) {
-    return 'args 不能为空：至少给出一个 mint 子命令（如 ["list"]）';
-  }
+  const tokens = argv as string[];
   // Flags first: a denied global flag may sit in argv[0], where it would
-  // otherwise be misreported as an unknown subcommand.
-  const deniedFlag = (argv as string[]).find((token) => DENIED_FLAGS.includes(token));
+  // otherwise be misreported as an unknown subcommand. `--db=<path>` counts too.
+  const deniedFlag = tokens.find((token) =>
+    DENIED_FLAGS.some((flag) => token === flag || token.startsWith(`${flag}=`))
+  );
   if (deniedFlag !== undefined) {
-    return `不允许的参数：${deniedFlag}（项目上下文由会话 cwd 决定）`;
+    return `不允许的参数：${deniedFlag}（项目上下文由会话 cwd 决定；跨项目请用 --project）`;
+  }
+  const invocation = parseInvocation(tokens);
+  if (invocation.problem !== undefined) {
+    return invocation.problem;
+  }
+  const root = invocation.rest[0];
+  if (root === undefined) {
+    if (invocation.rootFlag !== undefined && ALLOWED_ROOT_FLAGS.includes(invocation.rootFlag)) {
+      return undefined;
+    }
+    return 'args 需要至少一个 mint 子命令（如 ["-p","<项目>","list"]）';
   }
   const denied = DENIED_SUBCOMMANDS[root];
   if (denied !== undefined) {
@@ -161,6 +189,12 @@ function truncate(text: string): string {
  * result the model should read and recover from, so it comes back as
  * `ok: false` rather than a thrown tool error; only a broken tool contract
  * throws.
+ *
+ * A cross-project target is resolved against mint's project list **before**
+ * spawning (#80): `mint -p <typo>` would otherwise create a phantom project
+ * database whose `abs_dir` is this session's workspace. The confirmation gate
+ * (`cross-project.ts`) asks the user first; this check is the tool-side
+ * backstop for the calls that reach execution.
  */
 export async function executeMintTool(
   cwd: string,
@@ -171,6 +205,17 @@ export async function executeMintTool(
   const problem = validateMintArgs(argv);
   if (problem !== undefined) {
     return { ok: false, exitCode: 1, stderr: problem };
+  }
+  const invocation = parseInvocation(argv as string[]);
+  const target = invocation.project;
+  if (target !== undefined) {
+    const candidates = await listProjects(cwd, entry);
+    if (candidates === undefined) {
+      return { ok: false, exitCode: 1, stderr: projectProbeFailureMessage(target) };
+    }
+    if (!candidates.includes(target)) {
+      return { ok: false, exitCode: 1, stderr: missingProjectMessage(target, candidates) };
+    }
   }
   const options: MintRunOptions = signal === undefined ? {} : { signal };
   if (entry !== undefined) {

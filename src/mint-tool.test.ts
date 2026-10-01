@@ -68,9 +68,36 @@ describe('validateMintArgs', () => {
     expect(validateMintArgs(['--frobnicate'])).toContain('不支持的 mint 顶层参数');
   });
 
-  it('rejects flags that escape the session project context', () => {
+  it('accepts a cross-project target before the subcommand (#55)', () => {
+    const accepted: readonly string[][] = [
+      ['-p', 'dsh-dev-dsh', 'list'],
+      ['--project', 'dsh-dev-dsh', 'list'],
+      ['--project=dsh-dev-dsh', 'list'],
+      ['-p=dsh-dev-dsh', 'list'],
+      ['-pdsh-dev-dsh', 'list'],
+      ['-p', 'dsh-dev-dsh', 'issue', 'state', 'start', '5'],
+    ];
+    for (const argv of accepted) {
+      expect(validateMintArgs(argv), argv.join(' ')).toBeUndefined();
+    }
+  });
+
+  it('rejects a mispositioned, duplicated or malformed project flag (#55)', () => {
+    expect(validateMintArgs(['list', '--project', 'other'])).toContain('必须放在子命令之前');
+    expect(validateMintArgs(['-p', 'a', '-p', 'b', 'list'])).toContain('重复');
+    expect(validateMintArgs(['-p'])).toContain('缺少项目名');
+    expect(validateMintArgs(['-p', 'a/b', 'list'])).toContain('不是路径');
+    expect(validateMintArgs(['-p', '..', 'list'])).toContain('项目名非法');
+    expect(validateMintArgs(['-p', 'other'])).toContain('至少一个 mint 子命令');
+  });
+
+  it('rejects --db in both spellings', () => {
     expect(validateMintArgs(['list', '--db', '/tmp/x.db'])).toContain('不允许的参数');
-    expect(validateMintArgs(['--project', 'other', 'list'])).toContain('不允许的参数');
+    expect(validateMintArgs(['--db=/tmp/x.db', 'list'])).toContain('不允许的参数');
+  });
+
+  it('checks the denied subcommand after the global flags', () => {
+    expect(validateMintArgs(['-p', 'other', 'delete', '42'])).toContain('不允许的子命令');
   });
 
   it('rejects empty or malformed argv', () => {
@@ -131,6 +158,31 @@ describe('executeMintTool', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
+  it('resolves a cross-project target before running mint (#80)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-dev-dsh"}]' });
+    const outcome = await executeMintTool('/proj', ['-p', 'dsh-dev-dsh', 'list']);
+    expect(outcome.ok).toBe(true);
+    expect(runMintMock).toHaveBeenNthCalledWith(1, '/proj', ['project', 'list', '--json'], {});
+    expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['-p', 'dsh-dev-dsh', 'list'], {});
+  });
+
+  it('refuses an unknown project without running mint (#80)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
+    const outcome = await executeMintTool('/proj', ['-p', 'typo', 'list']);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.stderr).toContain('目标项目 "typo" 不存在');
+    expect(outcome.stderr).toContain('dsh-mint');
+    expect(runMintMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('fails closed when the project list cannot be read (#80)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: false, exitCode: 1, error: 'boom' });
+    const outcome = await executeMintTool('/proj', ['-p', 'other', 'list']);
+    expect(outcome.ok).toBe(false);
+    expect(outcome.stderr).toContain('无法校验目标项目 "other"');
+    expect(runMintMock).toHaveBeenCalledTimes(1);
+  });
+
   it('surfaces a domain failure as a result instead of throwing', async () => {
     runMintMock.mockResolvedValue({ ok: false, exitCode: 2, error: 'invalid transition' });
     const outcome = await executeMintTool('/proj', ['issue', 'state', 'start', '42']);
@@ -161,10 +213,11 @@ describe('renderMintOutcome', () => {
   });
 
   it('appends advisory stderr (a mint hint) after stdout', () => {
-    const hint = 'mint: hint: merged by title similarity; use --force-new to create a separate issue';
-    expect(
-      renderMintOutcome({ ok: true, exitCode: 0, stdout: 'ID\tSTATUS', stderr: hint })
-    ).toBe(`ID\tSTATUS\n${hint}`);
+    const hint =
+      'mint: hint: merged by title similarity; use --force-new to create a separate issue';
+    expect(renderMintOutcome({ ok: true, exitCode: 0, stdout: 'ID\tSTATUS', stderr: hint })).toBe(
+      `ID\tSTATUS\n${hint}`
+    );
   });
 
   it('renders failures with the exit code', () => {
@@ -267,5 +320,12 @@ describe('tool description', () => {
     // the policy sentence lives in MINT_TOOL_GUIDANCE only — not restated here
     expect(MINT_TOOL_DESCRIPTION).not.toContain('不要用 bash');
     expect(MINT_TOOL_DESCRIPTION).not.toContain('不经 bash');
+  });
+
+  it('documents cross-project targets and the survived refusal list (#55)', () => {
+    expect(MINT_TOOL_DESCRIPTION).toContain('跨项目');
+    expect(MINT_TOOL_DESCRIPTION).toContain('置于子命令前');
+    expect(MINT_TOOL_DESCRIPTION).toContain('不可用：delete/import/sync/export/tui、--db');
+    expect(MINT_TOOL_DESCRIPTION).not.toContain('--db/--project');
   });
 });
