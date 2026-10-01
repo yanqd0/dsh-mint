@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { installApprovalGate } from './approval-gate.js';
 import { registerMintContext } from './context.js';
+import { installCrossProjectGate } from './cross-project-gate.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
@@ -56,6 +57,8 @@ export type Config = z.infer<typeof Config>;
  * - #6/#34: `mint` tool — the whole mint CLI in-process, zero approval
  * - #25: approval gate — once-per-session mint escalation approval, then
  *   auto-allowed mint escalations (B-v2)
+ * - #55/#80: cross-project gate — `-p/--project` is allowed, and a write to
+ *   another project asks once per session and target project
  * - #28: skill auto-install — content-syncs the bundled skill on load
  * - #10: client-face routes — read-only `ctx.webServer` JSON endpoints the
  *   right-sidebar panel fetches (`src/routes.ts`)
@@ -78,5 +81,6 @@ export function apply(ctx: DshContext, config: Config): void {
   installPlanBinding(ctx, mintEntry);
   installMintTool(ctx, mintEntry);
   installApprovalGate(ctx, config);
+  installCrossProjectGate(ctx, mintEntry);
   installMintRoutes(ctx, mintEntry);
 }

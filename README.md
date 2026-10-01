@@ -19,8 +19,13 @@ plan always has a mint plan behind it.
   host tool: mint is spawned inside the plugin process, so there is no bash
   call, no sandbox write access and no approval prompt. Subagents inherit the
   tool too (their bash is pinned to `never`). Destructive subcommands (`delete`,
-  `import`, `sync`, `export`, `tui`) and the global `--db` / `--project` flags
-  are refused.
+  `import`, `sync`, `export`, `tui`) and the global `--db` flag are refused.
+- **Cross-project work** — `-p` / `--project` (before the subcommand) reaches
+  another project's ledger in the same session: reads pass straight through, and
+  a **write** asks once, naming the target project and the action, then stays
+  quiet for that project in that session. A target that is not a known project
+  is refused with the candidate list instead of silently creating one, and
+  `autoApprove` never silences this gate.
 - **Plan-mode binding** — `exit_plan_mode` is refused while the project has no
   active mint plan, so a host plan cannot drift away from its mint plan.
 - **Reminders** — after a `git commit` the agent is reminded to register it
@@ -28,9 +33,12 @@ plan always has a mint plan behind it.
 - **Bundled mint skill** — the `mint` skill shipped in this package is
   content-synced into `$DSH_HOME/skills/mint` on load, so the agent knows the
   issue/plan/milestone workflow without a manual skill install.
-- **bash fallback gate** — if the tool is ever unavailable, the first mint
-  sandbox escalation of a session is approved once and later ones pass
-  automatically; `autoApprove: true` skips even that first prompt.
+- **bash fallback gate** — bash is a last resort, for sessions where the tool is
+  unavailable or the plugin is not installed: there the first mint sandbox
+  escalation of a session is approved once and later ones pass automatically
+  (`autoApprove: true` skips even that first prompt). When the plugin _is_
+  loaded, a recognised `mint -p <project> …` bash write goes through the same
+  cross-project confirmation as the tool.
 
 Model-facing text — the injected overview and the reminders — is currently
 written in Chinese.
@@ -141,10 +149,10 @@ default, which runs the released binary) or a locally built mint. One knob
 selects either one — the mount-line `mintEntry` option, or the `MINT_ENTRY`
 environment variable; the mount line wins when both are set.
 
-| Mode                | How to select                                                                                              | What runs                                                                                                                   |
-| ------------------- | ---------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| Dependency (default) | nothing, or `mintEntry: dependency`                                                                        | `mint-faa`'s `run-mint.js` inside the installed plugin package, which executes the binary downloaded from the mint release that the installed `mint-faa` pins |
-| Local build         | `mintEntry: ~/bin/mint`, an absolute path such as `/path/to/mint/target/release/mint`, or a bare `mint` looked up through `PATH` | that executable directly                                                                                                     |
+| Mode                 | How to select                                                                                                                    | What runs                                                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dependency (default) | nothing, or `mintEntry: dependency`                                                                                              | `mint-faa`'s `run-mint.js` inside the installed plugin package, which executes the binary downloaded from the mint release that the installed `mint-faa` pins |
+| Local build          | `mintEntry: ~/bin/mint`, an absolute path such as `/path/to/mint/target/release/mint`, or a bare `mint` looked up through `PATH` | that executable directly                                                                                                                                      |
 
 `dependency` at either knob is a sentinel: it forces the dependency chain even
 when the other knob carries a path — useful while a development profile is
@@ -194,11 +202,11 @@ the mint help verbatim.
 
 ## Configuration
 
-| Option             | Default                  | Effect                                                                                                                         |
-| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
-| `autoApprove`      | `false`                  | Auto-allow mint sandbox escalations (bash fallback) without any prompt — an explicit trust of the mint CLI.                    |
-| `autoInstallSkill` | `true`                   | Content-sync the bundled mint skill into `$DSH_HOME/skills/mint` on plugin load.                                               |
-| `debug`            | `false`                  | Reserved for verbose plugin diagnostics.                                                                                       |
+| Option             | Default                  | Effect                                                                                                                                                                                      |
+| ------------------ | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `autoApprove`      | `false`                  | Auto-allow mint sandbox escalations (bash fallback) without any prompt — an explicit trust of the mint CLI.                                                                                 |
+| `autoInstallSkill` | `true`                   | Content-sync the bundled mint skill into `$DSH_HOME/skills/mint` on plugin load.                                                                                                            |
+| `debug`            | `false`                  | Reserved for verbose plugin diagnostics.                                                                                                                                                    |
 | `mintEntry`        | mint-faa's `run-mint.js` | Mint CLI to run: a `run-mint.js` path, a native mint binary, a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel. See [Choosing the mint CLI](#choosing-the-mint-cli). |
 
 Override them in the profile's own patch layer (`~/.dsh/profiles/<profile>/cordis.patch.yml`).
@@ -222,7 +230,7 @@ restart DSH after changing either one.
 ## Roadmap
 
 `0.2.0` adds the client face: a **mint panel in the right sidebar**, opened from
-the tab strip's add control beside *Workspace files* and *New terminal*. It reads
+the tab strip's add control beside _Workspace files_ and _New terminal_. It reads
 the session's project read-only — issues (list, filters, detail), plans and
 milestones (lists, details) — through read-only host routes backed by the mint
 CLI. Copy ships in Simplified Chinese only for now; the dictionaries already

@@ -17,7 +17,11 @@ plan。
 - **`mint` 工具，零授权** —— agent 经宿主工具使用完整 mint CLI：mint 在插件
   进程内 spawn，不经 bash、不需要沙箱写权限、不弹审批。子代理同样继承该工具
   （子代理的 bash 被 pin 为 `never`）。危险子命令（`delete`、`import`、
-  `sync`、`export`、`tui`）与全局参数 `--db` / `--project` 会被拒绝。
+  `sync`、`export`、`tui`）与全局参数 `--db` 会被拒绝。
+- **跨项目操作** —— `-p` / `--project`（写在子命令之前）可在同一会话里读写
+  另一个项目的台账：读直接放行；**写**操作首次弹一次确认（写明目标项目与动作），
+  之后同一会话同一项目不再询问。目标项目不存在时报候选清单而不是静默新建，
+  且 `autoApprove` 不会让它免确认。
 - **plan 双向绑定** —— 项目没有活跃 mint plan 时 `exit_plan_mode` 被拒，宿主
   plan 不会与 mint plan 脱钩。
 - **提醒** —— `git commit` 后提醒 agent 登记（`issue state commit --sha`）；
@@ -25,8 +29,10 @@ plan。
 - **内置 mint skill** —— 随包发布的 `mint` skill 在插件加载时 content-sync 到
   `$DSH_HOME/skills/mint`，无需手工安装 skill，agent 即知 issue/plan/milestone
   流程。
-- **bash 兜底 gate** —— 万一工具不可用，同一会话内首次 mint 沙箱提权批准一次，
-  后续自动放行；`autoApprove: true` 连首次也不再询问。
+- **bash 兜底 gate** —— bash 只是兜底：仅当工具不可用或插件未安装时才走。那时
+  同一会话内首次 mint 沙箱提权批准一次、后续自动放行（`autoApprove: true` 连首次
+  也不再询问）。插件正常加载时，可识别的 `mint -p <项目> …` 写命令与工具走**同一道**
+  跨项目确认。
 
 模型可见的文案（注入概览与提醒）目前是中文。
 
@@ -125,10 +131,10 @@ dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
 官方二进制）或本地构建的 mint。用一个旋钮二选一——挂载行的 `mintEntry` 选项，或
 环境变量 `MINT_ENTRY`；两者同时存在时以挂载行为准。
 
-| 模式            | 怎么选                                                                                                     | 实际跑什么                                                                                     |
-| --------------- | ---------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| 依赖链（默认）  | 不写，或 `mintEntry: dependency`                                                                            | 已安装插件包内 `mint-faa` 的 `run-mint.js`，它执行该 `mint-faa` 版本对应的官方 release 二进制 |
-| 本地构建        | `mintEntry: ~/bin/mint`、绝对路径（如 `/path/to/mint/target/release/mint`）、或裸名 `mint`（走 `PATH` 查找） | 直接执行该可执行程序                                                                           |
+| 模式           | 怎么选                                                                                                       | 实际跑什么                                                                                    |
+| -------------- | ------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------- |
+| 依赖链（默认） | 不写，或 `mintEntry: dependency`                                                                             | 已安装插件包内 `mint-faa` 的 `run-mint.js`，它执行该 `mint-faa` 版本对应的官方 release 二进制 |
+| 本地构建       | `mintEntry: ~/bin/mint`、绝对路径（如 `/path/to/mint/target/release/mint`）、或裸名 `mint`（走 `PATH` 查找） | 直接执行该可执行程序                                                                          |
 
 任一旋钮写 `dependency` 都是**哨兵**：即使另一个旋钮写了路径，也强制走依赖链——
 开发 profile 固定成本地构建、但仍要验证已发布链路时很有用。
@@ -170,11 +176,11 @@ issue → plan → milestone 的流程教给 agent。日常用自然语言说需
 
 ## 配置
 
-| 选项               | 默认值                    | 作用                                                                                      |
-| ------------------ | ------------------------- | ----------------------------------------------------------------------------------------- |
-| `autoApprove`      | `false`                   | mint 沙箱提权（bash 兜底路径）不再询问——显式信任 mint CLI。                               |
-| `autoInstallSkill` | `true`                    | 插件加载时把内置 mint skill content-sync 到 `$DSH_HOME/skills/mint`。                     |
-| `debug`            | `false`                   | 预留给插件的详细诊断输出。                                                                |
+| 选项               | 默认值                    | 作用                                                                                                                                                   |
+| ------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `autoApprove`      | `false`                   | mint 沙箱提权（bash 兜底路径）不再询问——显式信任 mint CLI。                                                                                            |
+| `autoInstallSkill` | `true`                    | 插件加载时把内置 mint skill content-sync 到 `$DSH_HOME/skills/mint`。                                                                                  |
+| `debug`            | `false`                   | 预留给插件的详细诊断输出。                                                                                                                             |
 | `mintEntry`        | mint-faa 的 `run-mint.js` | 要运行的 mint CLI：`run-mint.js` 路径、原生 mint 二进制、`~/` 前缀路径、裸名（走 `PATH`），或 `dependency` 哨兵。见[选择 mint 入口](#选择-mint-入口)。 |
 
 在 profile 自己的 patch 层（`~/.dsh/profiles/<profile>/cordis.patch.yml`）覆盖。

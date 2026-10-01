@@ -8,7 +8,8 @@ import type {
   ToolResultLike,
 } from './types.js';
 
-const BASH_TOOL_NAMES = new Set(['bash', 'tool:bash']);
+/** Tool names a bash command reaches the host through. */
+export const BASH_TOOL_NAMES: ReadonlySet<string> = new Set(['bash', 'tool:bash']);
 const ESCALATION_PREFIX = 'escalate sandbox to danger-full-access: ';
 const MAX_PENDING = 100;
 /** One argv token of a bare mint invocation: no shell metacharacters. */
@@ -95,11 +96,15 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
     'tools/pre-execute',
     (
       exec: ToolExecutionLike,
-      next: () => Promise<PreToolDecisionLike>,
+      next: () => Promise<PreToolDecisionLike>
     ): Promise<PreToolDecisionLike> => {
       try {
         const command = exec.arguments?.command;
-        if (exec.callId !== undefined && typeof command === 'string' && BASH_TOOL_NAMES.has(exec.name)) {
+        if (
+          exec.callId !== undefined &&
+          typeof command === 'string' &&
+          BASH_TOOL_NAMES.has(exec.name)
+        ) {
           if (pending.size >= MAX_PENDING) {
             const oldest = pending.keys().next().value;
             if (oldest !== undefined) pending.delete(oldest);
@@ -110,7 +115,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
         // correlation is best-effort — never disturb tool dispatch
       }
       return next();
-    },
+    }
   );
 
   const offPost = ctx.on(
@@ -118,7 +123,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
     (
       exec: ToolExecutionLike,
       _result: ToolResultLike,
-      next: () => Promise<PostToolDecisionLike>,
+      next: () => Promise<PostToolDecisionLike>
     ): Promise<PostToolDecisionLike> => {
       try {
         if (exec.callId !== undefined) pending.delete(String(exec.callId));
@@ -126,7 +131,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
         // stale entries only cost a later failed correlation
       }
       return next();
-    },
+    }
   );
 
   /** True when `req` is a bash sandbox escalation the gate may auto-grant. */
@@ -139,7 +144,8 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
       if (command !== undefined) return isMintCommand(command);
     }
     // No correlated command: fall back to the standardised justification.
-    const justification = typeof req.reason === 'string' ? req.reason.slice(ESCALATION_PREFIX.length).trim() : '';
+    const justification =
+      typeof req.reason === 'string' ? req.reason.slice(ESCALATION_PREFIX.length).trim() : '';
     return justification.length > 0 && MINT_JUSTIFICATION.test(justification);
   }
 
@@ -147,7 +153,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
     'approval/request',
     async (
       req: ApprovalRequestLike,
-      next: () => Promise<ApprovalOutcomeLike>,
+      next: () => Promise<ApprovalOutcomeLike>
     ): Promise<ApprovalOutcomeLike> => {
       try {
         if (!isMintEscalationRequest(req)) return next();
@@ -162,7 +168,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
         return next();
       }
     },
-    { prepend: true },
+    { prepend: true }
   );
 
   return () => {

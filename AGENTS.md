@@ -26,7 +26,11 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - **默认挂当前 milestone**：新 plan / 独立 issue **默认挂当前 running milestone**（同刻有且仅有一个）；
   无 running → 按 semver 推测候选并**询问用户**（`milestone set <id> --status running` 置位，或新建），**勿自行置位**。
 - **在 DSH 会话里一律走宿主 `mint` 工具**（`mint({args:["issue","state","start","3"]})`）：插件进程内执行，
-  不经 bash、不进沙箱、零授权。**不要用 bash 跑 mint** —— 那会触发沙箱拒绝与提权审批。
+  不经 bash、不进沙箱、零授权。**不要用 bash 跑 mint** —— 那会触发沙箱拒绝与提权审批；bash 只作兜底
+  （插件未装或工具不可用时），且只有可识别的裸 mint 命令会走同一道跨项目确认。
+- **跨项目（`-p`/`--project`）**：写在**子命令之前**；读直接放行，写操作首次弹一次确认（文案带目标项目
+  与动作），同会话同目标项目之后免问；目标项目不存在即拒绝（不许 mint 静默新建项目库）；`autoApprove`
+  只作用于沙箱提权，**不解除**这道门禁。口径见 `skill/references/cross-project.md`。
 - **改码前门禁**：改某 issue 的代码前必须 `state start <id>`（dev）；commit 后立即 `state commit <id> --sha <前7位>`；
   同 plan 统一测试后 `plan close <plan> --test-cmd "<命令>"`。
 

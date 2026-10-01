@@ -20,7 +20,7 @@ export interface ToolExecutionLike {
   /** Opaque call identity used to correlate executions with approval asks. */
   callId?: string;
   arguments: { command?: string } & Record<string, unknown>;
-  agent?: { session?: { header?: { cwd?: string } } };
+  agent?: { session?: { id?: string; header?: { cwd?: string } } };
   /**
    * Cooperative cancellation. Tool bodies are expected to observe and forward
    * it; the host only signals (`notes/dsh/0.1.0/06,20`).
@@ -42,10 +42,16 @@ export interface PostToolDecisionLike {
   feedback?: ContentBlockLike[];
 }
 
-/** Subset of the host's `PreToolDecision`. */
+/**
+ * Subset of the host's `PreToolDecision`.
+ *
+ * `displayReason` is presentation-only (localized prompt copy, never audited);
+ * `en` is required by the host's locale resolution, extra keys are locales.
+ */
 export interface PreToolDecisionLike {
   kind: 'allow' | 'deny' | 'ask';
   reason?: string;
+  displayReason?: { en: string; [locale: string]: string };
 }
 
 /** Subset of the host's tool registry (`ctx.tools`). */
@@ -105,17 +111,17 @@ export type EventListener =
   | ((payload: { agent?: AgentLike }) => void)
   | ((
       exec: ToolExecutionLike,
-      next: () => Promise<PreToolDecisionLike>,
+      next: () => Promise<PreToolDecisionLike>
     ) => Promise<PreToolDecisionLike>)
   | ((
       exec: ToolExecutionLike,
       result: ToolResultLike,
-      next: () => Promise<PostToolDecisionLike>,
+      next: () => Promise<PostToolDecisionLike>
     ) => Promise<PostToolDecisionLike>)
   | ((exec: ToolExecutionLike, result: ToolResultLike) => void)
   | ((
       req: ApprovalRequestLike,
-      next: () => Promise<ApprovalOutcomeLike>,
+      next: () => Promise<ApprovalOutcomeLike>
     ) => Promise<ApprovalOutcomeLike>);
 
 /**
