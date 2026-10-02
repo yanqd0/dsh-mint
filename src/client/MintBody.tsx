@@ -19,6 +19,7 @@ import type {
   MilestoneItem,
   MintIssuePayload,
   MintListPayload,
+  MintMetaPayload,
   MintResponse,
   PlanItem,
 } from '../records.js';
@@ -29,7 +30,7 @@ import { IssueList } from './IssueList.js';
 import { StateNotice } from './StateNotice.js';
 import { activeContainer, clampPage, containerRow, detailContainer, toLoadState } from './model.js';
 import type { ContainerTarget, LoadState } from './model.js';
-import { HEADER, SHELL, TAB, TAB_ACTIVE } from './styles.js';
+import { HEADER, NOTE, SHELL, TAB, TAB_ACTIVE } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
 
 /** The three read-only views, in tab order. */
@@ -59,6 +60,11 @@ export function MintBody(props: MintBodyProps): ReactElement {
 
   const [view, setView] = useState<ViewKey>('view.issues');
   const [reload, setReload] = useState(0);
+
+  // The lookup tables: plans, milestones, labels, and where each issue sits.
+  // They do not depend on any filter or page, so one read serves every view and
+  // only an explicit refresh replaces it.
+  const [meta, setMeta] = useState<LoadState<MintMetaPayload>>({ status: 'loading' });
 
   // Issue view.
   const [allStates, setAllStates] = useState(false);
@@ -93,6 +99,24 @@ export function MintBody(props: MintBodyProps): ReactElement {
       clearTimeout(timer);
     };
   }, [draft, search]);
+
+  // Read the lookup tables once per mount and per explicit refresh.
+  useEffect(() => {
+    if (signal?.aborted === true) return;
+    const controller = new AbortController();
+    const abort = (): void => {
+      controller.abort();
+    };
+    signal?.addEventListener('abort', abort);
+    setMeta({ status: 'loading' });
+    void api.meta(controller.signal).then((response) => {
+      setMeta(toLoadState(response));
+    });
+    return () => {
+      signal?.removeEventListener('abort', abort);
+      controller.abort();
+    };
+  }, [api, reload, signal]);
 
   // Read the issue page whenever a filter, the page, or the refresh counter moves.
   useEffect(() => {
@@ -210,6 +234,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
     setReload((count) => count + 1);
   };
 
+  /** The lookup tables when they are usable; rows degrade to what they carry. */
+  const tables = meta.status === 'ready' ? meta.value : undefined;
+
   /** The issue view, list or detail. */
   const issueView = (): ReactElement => {
     if (openIssueId === undefined) {
@@ -217,6 +244,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
         <IssueList
           copy={copy}
           state={issues}
+          meta={tables}
           search={draft}
           allStates={allStates}
           onSearch={setDraft}
@@ -251,7 +279,13 @@ export function MintBody(props: MintBodyProps): ReactElement {
     }
     const detail: IssueDetailRecord = issue.value.item;
     return (
-      <IssueDetail copy={copy} item={detail} truncated={issue.value.truncated} onBack={back} />
+      <IssueDetail
+        copy={copy}
+        item={detail}
+        meta={tables}
+        truncated={issue.value.truncated}
+        onBack={back}
+      />
     );
   };
 
@@ -314,6 +348,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
           );
         })}
       </div>
+      {meta.status === 'failed' && (
+        <p style={{ ...NOTE, padding: '6px 10px 0' }}>{copy('panel.metaUnavailable')}</p>
+      )}
       {view === 'view.issues'
         ? issueView()
         : containerView(view === 'view.plans' ? 'plan' : 'milestone')}

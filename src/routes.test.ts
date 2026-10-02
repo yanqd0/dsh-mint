@@ -5,12 +5,17 @@ import { describe, expect, it } from 'vitest';
 
 import {
   BODY_MAX_BYTES,
+  META_LABELS_ARGV,
+  META_MILESTONE_LIMIT,
+  META_MILESTONES_ARGV,
+  META_PLANS_ARGV,
   READ_ONLY_SUBCOMMANDS,
   ROUTE_PREFIX,
   RouteRequestError,
   buildDetailArgv,
   buildIssueDetailArgv,
   buildListArgv,
+  buildMilestoneIssuesArgv,
   createMintHandler,
   filterValue,
   installMintRoutes,
@@ -49,6 +54,8 @@ interface RecordedRun {
 function harness(options: {
   cwd?: string | undefined;
   result?: unknown;
+  /** Per-argv result; takes precedence over the single {@link options.result}. */
+  byArgv?: (argv: readonly string[]) => unknown;
   entry?: string;
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
@@ -59,7 +66,7 @@ function harness(options: {
     getCwd: () => options.cwd,
     run: (cwd, argv) => {
       runs.push({ cwd, argv });
-      const result = options.result;
+      const result = options.byArgv === undefined ? options.result : options.byArgv(argv);
       if (result instanceof Error) return Promise.reject(result);
       if (typeof result === 'string') return Promise.resolve({ ok: true, text: result });
       return Promise.resolve({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
@@ -131,6 +138,27 @@ const PLAN_DETAIL = {
   issues: [{ id: 9, title: '实现 client 打包面', kind: 'requirement', status: 'dev' }],
 };
 
+/** A second milestone, so placement has more than one member set to resolve. */
+const MILESTONE_ITEM_4 = {
+  ...MILESTONE_ITEM,
+  id: 4,
+  title: '0.3.0 客户端面优化',
+  status: 'open',
+  version: '0.3.0',
+  issue_count: 0,
+};
+
+/** One `label list --json` record: the only place a label color exists. */
+const LABEL_ITEM = {
+  id: 9,
+  name: 'client',
+  color: '#bbdd3c',
+  description: null,
+  issue_count: 4,
+  created_at: '2026-08-29 12:55:45',
+  updated_at: '2026-08-29 12:55:45',
+};
+
 describe('route argv builders', () => {
   // The host matches a prefix route with
   // `pathname === prefix || pathname.startsWith(prefix + '/')`.
@@ -138,7 +166,7 @@ describe('route argv builders', () => {
   // (an empty 404), which is exactly what happened once already.
   it('registers a prefix its own routes can match', () => {
     expect(ROUTE_PREFIX.endsWith('/')).toBe(false);
-    for (const name of ['issues', 'plans', 'milestones', 'issue', 'plan', 'milestone']) {
+    for (const name of ['issues', 'plans', 'milestones', 'issue', 'plan', 'milestone', 'meta']) {
       const pathname = `${ROUTE_PREFIX}/${name}`;
       expect(pathname === ROUTE_PREFIX || pathname.startsWith(`${ROUTE_PREFIX}/`)).toBe(true);
     }
@@ -210,6 +238,11 @@ describe('route argv builders', () => {
       buildIssueDetailArgv(9),
       buildDetailArgv('plan', 3),
       buildDetailArgv('milestone', 2),
+      [...META_MILESTONES_ARGV],
+      [...META_PLANS_ARGV],
+      [...META_LABELS_ARGV],
+      buildMilestoneIssuesArgv(2),
+      ['label', 'list', '--json', '--no-page'],
     ];
     for (const argv of argvs) {
       expect(READ_ONLY_SUBCOMMANDS).toContain(argv[0]);
@@ -329,6 +362,122 @@ describe('mint routes', () => {
     const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1`);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
+  });
+
+  it('serves the panel dictionary and issue placement in one response', async () => {
+    const run = harness({
+      cwd: '/proj',
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
+        if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
+        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
+        if (argv[0] === 'list' && argv[3] === '2') {
+          return JSON.stringify({
+            items: [ISSUE_ITEM, { ...ISSUE_ITEM, id: 69, plan_id: null }],
+          });
+        }
+        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
+      },
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(res.json()).toMatchObject({
+      ok: true,
+      plans: [PLAN_ITEM],
+      milestones: [MILESTONE_ITEM, MILESTONE_ITEM_4],
+      labels: [LABEL_ITEM],
+      placement: {
+        '9': { milestone: 2, direct: false },
+        '69': { milestone: 2, direct: true },
+        '87': { milestone: 4, direct: true },
+      },
+    });
+    expect(run.runs.map((entry) => entry.argv)).toEqual(
+      expect.arrayContaining([
+        [...META_MILESTONES_ARGV],
+        [...META_PLANS_ARGV],
+        [...META_LABELS_ARGV],
+        buildMilestoneIssuesArgv(2),
+        buildMilestoneIssuesArgv(4),
+      ])
+    );
+  });
+
+  it('keeps the rest of the response when one milestone placement read fails', async () => {
+    const run = harness({
+      cwd: '/proj',
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
+        if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
+        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
+        if (argv[0] === 'list' && argv[3] === '2') return 1; // the runner turns this into a CLI failure
+        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
+      },
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    const payload = res.json();
+    expect(payload.ok).toBe(true);
+    expect(payload.placement).toEqual({ '87': { milestone: 4, direct: true } });
+    expect(payload.warnings as string[]).toEqual([
+      expect.stringContaining('milestone #2 issue placement unavailable'),
+    ]);
+  });
+
+  it('refuses the whole response when a dictionary read fails', async () => {
+    const run = harness({
+      cwd: '/proj',
+      byArgv: (argv) => (argv[0] === 'plan' ? 1 : JSON.stringify({ items: [] })),
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: false, error: 'boom' });
+  });
+
+  it('caps how many milestones it scans for placement', async () => {
+    const many = Array.from({ length: META_MILESTONE_LIMIT + 1 }, (_value, index) => ({
+      ...MILESTONE_ITEM,
+      id: index + 1,
+    }));
+    const run = harness({
+      cwd: '/proj',
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone') return JSON.stringify({ items: many });
+        if (argv[0] === 'plan' || argv[0] === 'label') return JSON.stringify({ items: [] });
+        return JSON.stringify({ items: [] });
+      },
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    const scans = run.runs.filter((entry) => entry.argv[2] === '--milestone');
+    expect(scans).toHaveLength(META_MILESTONE_LIMIT);
+    expect(res.json().warnings as string[]).toEqual([
+      expect.stringContaining(`first ${String(META_MILESTONE_LIMIT)} of 31 milestones`),
+    ]);
+  });
+
+  it('aborts every run of a request when the client disconnects', async () => {
+    const signals: AbortSignal[] = [];
+    const handler = createMintHandler({
+      getCwd: () => '/proj',
+      run: (_cwd, _argv, options) =>
+        new Promise((resolve) => {
+          const signal = options?.signal;
+          if (signal !== undefined) signals.push(signal);
+          signal?.addEventListener('abort', () => {
+            resolve({ ok: false, error: 'aborted' });
+          });
+        }),
+    });
+    const res = new FakeResponse();
+    const pending = handler(
+      { method: 'GET', url: `${ROUTE_PREFIX}/meta?session=s1` } as unknown as IncomingMessage,
+      res as unknown as ServerResponse
+    );
+    await new Promise((resolve) => setImmediate(resolve));
+    // The dictionary reads are in flight together; one disconnect ends them all.
+    expect(signals.length).toBe(3);
+    res.emit('close');
+    await pending;
+    for (const signal of signals) expect(signal.aborted).toBe(true);
+    expect(res.body).toBe('');
   });
 
   it('refuses an unknown session, an unknown route, a bad id, and a non-GET', async () => {

@@ -20,6 +20,7 @@ import {
   isContainerDetail,
   isIssueDetail,
   isIssueItem,
+  isLabelItem,
   isMilestoneItem,
   isPlanItem,
   parseDetail,
@@ -27,6 +28,7 @@ import {
 } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
+import type { IssuePlacement } from './records.js';
 import type { AgentsLike, DshContext, WebServerLike } from './types.js';
 
 /**
@@ -55,12 +57,55 @@ const MAX_FILTER_LENGTH = 200;
 /**
  * The only mint subcommands these routes run. Everything reachable from here is
  * a read: `list`, `show`, `plan list`, `plan show`, `milestone list`,
- * `milestone show`. Any argv whose head is outside this list is a bug.
+ * `milestone show`, `label list`. Any argv whose head is outside this list is a
+ * bug — `label` is here for the color dictionary only, never `label set`.
  */
-export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone'] as const;
+export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone', 'label'] as const;
 
-/** The six routes this prefix answers; anything else is a 404. */
-const ROUTE_NAMES: readonly string[] = ['issues', 'plans', 'milestones', 'issue', 'plan', 'milestone'];
+/** The seven routes this prefix answers; anything else is a 404. */
+const ROUTE_NAMES: readonly string[] = [
+  'issues',
+  'plans',
+  'milestones',
+  'issue',
+  'plan',
+  'milestone',
+  'meta',
+];
+
+/**
+ * How many milestones the meta route scans for issue placement.
+ *
+ * Placement has no bulk read (see {@link META_MILESTONE_ARGV}): one milestone
+ * costs one CLI run, so a pathological project must degrade to a warning instead
+ * of spawning hundreds of children.
+ */
+export const META_MILESTONE_LIMIT = 30;
+
+/** The three whole-table reads the meta route always performs, unpaginated. */
+export const META_MILESTONES_ARGV: readonly string[] = [
+  'milestone',
+  'list',
+  '--all-states',
+  '--json',
+  '--no-page',
+];
+export const META_PLANS_ARGV: readonly string[] = ['plan', 'list', '--all-states', '--json', '--no-page'];
+export const META_LABELS_ARGV: readonly string[] = ['label', 'list', '--json', '--no-page'];
+
+/**
+ * The argv that lists one milestone's issues.
+ *
+ * This is the temporary stand-in for mint exposing an issue's effective
+ * milestone on `list --json` (dsh-mint plan #15 → mint #503). `--milestone`
+ * already means "effective milestone (direct, else via plan)" in mint, and the
+ * items carry `plan_id`, which is how the caller tells the two apart.
+ *
+ * @param id - the milestone to enumerate.
+ */
+export function buildMilestoneIssuesArgv(id: number): string[] {
+  return ['list', '--all-states', '--milestone', String(id), '--json', '--no-page'];
+}
 
 /** A request these routes refuse: bad path, bad id, or a bad filter. */
 export class RouteRequestError extends Error {}
@@ -88,6 +133,16 @@ export interface MintRouteDeps {
   entry?: string;
   /** Defaults to {@link runMint}; tests replace it. */
   run?: MintRunner;
+}
+
+/**
+ * One in-flight request: the response to answer, the project to read, and the
+ * abort signal every CLI run it starts shares.
+ */
+interface RequestScope {
+  res: ServerResponse;
+  cwd: string;
+  signal: AbortSignal;
 }
 
 /** Read `page` / `pageSize`: missing means default, malformed means 400. */
@@ -241,44 +296,41 @@ export function createMintHandler(
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const run = deps.run ?? runMint;
 
-  /** Run mint under the request's lifetime; `undefined` once the client left. */
+  /**
+   * Run mint under the request's lifetime; `undefined` once the client left.
+   *
+   * The signal is the request's own ({@link RequestScope}), not this call's: a
+   * route that reads several tables in parallel (the meta route) must not
+   * register one `close` listener per child, and one disconnect should cancel
+   * every run it started.
+   */
   const runForRequest = async (
-    res: ServerResponse,
-    cwd: string,
+    scope: RequestScope,
     argv: string[]
   ): Promise<MintRunResult | undefined> => {
-    const controller = new AbortController();
-    const onClose = (): void => {
-      if (!res.writableEnded) controller.abort();
-    };
-    res.on('close', onClose);
-    try {
-      const options: MintRunOptions =
-        deps.entry === undefined
-          ? { signal: controller.signal }
-          : { signal: controller.signal, entry: deps.entry };
-      const result = await run(cwd, argv, options);
-      return controller.signal.aborted ? undefined : result;
-    } finally {
-      res.off('close', onClose);
-    }
+    if (scope.signal.aborted) return undefined;
+    const options: MintRunOptions =
+      deps.entry === undefined
+        ? { signal: scope.signal }
+        : { signal: scope.signal, entry: deps.entry };
+    const result = await run(scope.cwd, argv, options);
+    return scope.signal.aborted ? undefined : result;
   };
 
   const sendList = async <T>(
-    res: ServerResponse,
-    cwd: string,
+    scope: RequestScope,
     argv: string[],
     source: string,
     isItem: (value: unknown) => value is T
   ): Promise<void> => {
-    const result = await runForRequest(res, cwd, argv);
+    const result = await runForRequest(scope, argv);
     if (result === undefined) return;
     if (!result.ok) {
-      sendJson(res, 200, { ok: false, ...failure(result) });
+      sendJson(scope.res, 200, { ok: false, ...failure(result) });
       return;
     }
     const parsed = parseItems(source, result.text, isItem, { noun: 'list' });
-    sendJson(res, 200, {
+    sendJson(scope.res, 200, {
       ok: true,
       items: parsed.items,
       page: parsed.page,
@@ -286,6 +338,85 @@ export function createMintHandler(
       pages: parsed.pages,
       total: parsed.total,
       ...(parsed.warning === undefined ? {} : { warnings: [parsed.warning] }),
+    });
+  };
+
+  /**
+   * Serve the panel's lookup tables in one response.
+   *
+   * Three whole-table reads plus one run per milestone (the temporary placement
+   * stand-in, {@link buildMilestoneIssuesArgv}) — all in parallel, because each
+   * is an independent child process. A per-milestone failure costs that
+   * milestone's placement and a warning, never the whole response: the panel can
+   * still draw every row it already has.
+   */
+  const sendMeta = async (scope: RequestScope): Promise<void> => {
+    const [milestones, plans, labels] = await Promise.all([
+      runForRequest(scope, [...META_MILESTONES_ARGV]),
+      runForRequest(scope, [...META_PLANS_ARGV]),
+      runForRequest(scope, [...META_LABELS_ARGV]),
+    ]);
+    if (milestones === undefined || plans === undefined || labels === undefined) return;
+    // The dictionary reads are the response's spine: without them, nothing the
+    // panel renders would be trustworthy, so the first failure answers for all.
+    const failed = [milestones, plans, labels].find((result) => !result.ok);
+    if (failed !== undefined) {
+      sendJson(scope.res, 200, { ok: false, ...failure(failed) });
+      return;
+    }
+
+    const warnings: string[] = [];
+    const milestonePage = parseItems(
+      'milestone list --json',
+      milestones.text,
+      isMilestoneItem,
+      { noun: 'meta' }
+    );
+    const planPage = parseItems('plan list --json', plans.text, isPlanItem, { noun: 'meta' });
+    const labelPage = parseItems('label list --json', labels.text, isLabelItem, { noun: 'meta' });
+    for (const warning of [milestonePage.warning, planPage.warning, labelPage.warning]) {
+      if (warning !== undefined) warnings.push(warning);
+    }
+
+    const scan = milestonePage.items.slice(0, META_MILESTONE_LIMIT);
+    if (milestonePage.items.length > scan.length) {
+      warnings.push(
+        `meta: placement scanned the first ${String(META_MILESTONE_LIMIT)} of ${String(milestonePage.items.length)} milestones`
+      );
+    }
+
+    const members = await Promise.all(
+      scan.map(async (milestone) => ({
+        id: milestone.id,
+        result: await runForRequest(scope, buildMilestoneIssuesArgv(milestone.id)),
+      }))
+    );
+
+    const placement: Record<string, IssuePlacement> = {};
+    for (const { id, result } of members) {
+      if (result === undefined) continue;
+      if (!result.ok) {
+        warnings.push(`meta: milestone #${String(id)} issue placement unavailable`);
+        continue;
+      }
+      const page = parseItems(`list --milestone ${String(id)} --json`, result.text, isIssueItem, {
+        noun: 'meta',
+      });
+      if (page.warning !== undefined) warnings.push(page.warning);
+      for (const item of page.items) {
+        // mint answers `--milestone` with the effective milestone, so a member
+        // without a plan is the direct case and everyone else is via that plan.
+        placement[String(item.id)] = { milestone: id, direct: item.plan_id === null };
+      }
+    }
+
+    sendJson(scope.res, 200, {
+      ok: true,
+      plans: planPage.items,
+      milestones: milestonePage.items,
+      labels: labelPage.items,
+      placement,
+      ...(warnings.length === 0 ? {} : { warnings }),
     });
   };
 
@@ -303,6 +434,14 @@ export function createMintHandler(
       : '';
     const params = url.searchParams;
 
+    // One lifetime for the whole request: every CLI run it starts shares this
+    // signal, so a disconnect cancels all of them and adds a single listener.
+    const controller = new AbortController();
+    const onClose = (): void => {
+      if (!res.writableEnded) controller.abort();
+    };
+    res.on('close', onClose);
+
     try {
       if (ROUTE_NAMES.includes(name)) {
         const sessionId = params.get('session') ?? '';
@@ -311,26 +450,29 @@ export function createMintHandler(
           sendJson(res, 400, { ok: false, error: 'session-not-live' });
           return;
         }
+        const scope: RequestScope = { res, cwd, signal: controller.signal };
         const page = parsePageQuery(params);
         switch (name) {
           case 'issues':
-            await sendList(res, cwd, buildListArgv('issue', params, page), 'list --json', isIssueItem);
+            await sendList(scope, buildListArgv('issue', params, page), 'list --json', isIssueItem);
             return;
           case 'plans':
-            await sendList(res, cwd, buildListArgv('plan', params, page), 'plan list --json', isPlanItem);
+            await sendList(scope, buildListArgv('plan', params, page), 'plan list --json', isPlanItem);
             return;
           case 'milestones':
             await sendList(
-              res,
-              cwd,
+              scope,
               buildListArgv('milestone', params, page),
               'milestone list --json',
               isMilestoneItem
             );
             return;
+          case 'meta':
+            await sendMeta(scope);
+            return;
           case 'issue': {
             const id = parseId(params);
-            const result = await runForRequest(res, cwd, buildIssueDetailArgv(id));
+            const result = await runForRequest(scope, buildIssueDetailArgv(id));
             if (result === undefined) return;
             if (!result.ok) {
               sendJson(res, 200, { ok: false, ...failure(result) });
@@ -349,7 +491,7 @@ export function createMintHandler(
           default: {
             const kind = name === 'plan' ? 'plan' : 'milestone';
             const id = parseId(params);
-            const result = await runForRequest(res, cwd, buildDetailArgv(kind, id));
+            const result = await runForRequest(scope, buildDetailArgv(kind, id));
             if (result === undefined) return;
             if (!result.ok) {
               sendJson(res, 200, { ok: false, ...failure(result) });
@@ -375,6 +517,8 @@ export function createMintHandler(
         ok: false,
         error: error instanceof Error ? error.message : String(error),
       });
+    } finally {
+      res.off('close', onClose);
     }
   };
 }

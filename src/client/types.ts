@@ -14,6 +14,7 @@ import type {
   MintDetailPayload,
   MintIssuePayload,
   MintListPayload,
+  MintMetaPayload,
   MintResponse,
   PlanItem,
 } from '../records.js';
@@ -24,10 +25,13 @@ export type {
   ContainerDetail,
   IssueDetail,
   IssueItem,
+  IssuePlacement,
+  LabelItem,
   MilestoneItem,
   MintDetailPayload,
   MintIssuePayload,
   MintListPayload,
+  MintMetaPayload,
   MintResponse,
   PlanItem,
 } from '../records.js';
@@ -113,6 +117,11 @@ export interface MintApiLike {
   milestones(signal?: AbortSignal): Promise<MintResponse<MintListPayload<MilestoneItem>>>;
   /** One issue in full: the list fields plus the body. */
   issue(id: number, signal?: AbortSignal): Promise<MintResponse<MintIssuePayload>>;
+  /**
+   * The panel's lookup tables in one read: plans, milestones, labels, and where
+   * each issue sits. Nothing a row needs per item lives on the item itself.
+   */
+  meta(signal?: AbortSignal): Promise<MintResponse<MintMetaPayload>>;
   plan(id: number, signal?: AbortSignal): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
   milestone(
     id: number,

@@ -114,4 +114,16 @@ describe('createApi', () => {
       '/dsh-mint/milestone?session=s7&id=2',
     ]);
   });
+
+  it('reads the lookup tables from one parameterless route', async () => {
+    const calls: Call[] = [];
+    const api = createApi({
+      sessionId: 's1',
+      baseUri: 'http://host/app/',
+      fetch: fetchStub('{"ok":true,"plans":[],"milestones":[],"labels":[],"placement":{}}', 200, calls),
+    });
+    const result = await api.meta();
+    expect(result.ok).toBe(true);
+    expect(calls[0]?.url).toBe('/app/dsh-mint/meta?session=s1');
+  });
 });

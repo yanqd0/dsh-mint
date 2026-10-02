@@ -48,6 +48,9 @@ const COPY = {
   'container.plan': 'Plan',
   'container.milestone': 'Milestone',
 
+  'placement.viaPlan': '经 plan 关联',
+  'panel.metaUnavailable': '归属与标签颜色暂不可用，刷新重试',
+
   'detail.back': '返回',
   'detail.body': '正文',
   'detail.standalone': '未挂 plan',

@@ -6,14 +6,17 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueDetail as IssueDetailRecord } from '../records.js';
+import type { IssueDetail as IssueDetailRecord, MintMetaPayload } from '../records.js';
+import { PlacementChips } from './Rows.js';
 import type { CopyTranslate } from './copy.js';
-import { describeLink, priorityLabel, statusTone } from './model.js';
+import { describeLink, detailPlacement, priorityLabel, statusTone } from './model.js';
 import { BODY, BUTTON, META, NOTE, PROSE, TOOLBAR, pill } from './styles.js';
 
 export interface IssueDetailProps {
   copy: CopyTranslate;
   item: IssueDetailRecord;
+  /** The lookup tables; the milestone's version label lives in them. */
+  meta: MintMetaPayload | undefined;
   /** True when the route cut the body at its byte budget. */
   truncated: boolean;
   onBack: () => void;
@@ -24,7 +27,7 @@ export interface IssueDetailProps {
  *
  * @param props - the issue, whether its body was cut, and the way back.
  */
-export function IssueDetail({ copy, item, truncated, onBack }: IssueDetailProps): ReactElement {
+export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetailProps): ReactElement {
   const links = item.links
     .map((link) => describeLink(link))
     .filter((line): line is NonNullable<typeof line> => line !== undefined);
@@ -42,12 +45,10 @@ export function IssueDetail({ copy, item, truncated, onBack }: IssueDetailProps)
           <span style={pill(statusTone(item.status))}>{item.status}</span>
           <span>{`${copy('field.kind')} ${item.kind}`}</span>
           <span>{`${copy('field.priority')} ${priorityLabel(item.priority)}`}</span>
-          <span>
-            {item.plan_id === null ? copy('detail.standalone') : `#${String(item.plan_id)}`}
-          </span>
-          {item.milestone_id !== null && (
-            <span>{`${copy('field.milestone')} #${String(item.milestone_id)}`}</span>
+          {item.plan_id === null && item.milestone_id === null && (
+            <span>{copy('detail.standalone')}</span>
           )}
+          <PlacementChips copy={copy} placement={detailPlacement(item, meta)} />
         </div>
         {item.labels.length > 0 && (
           <div style={{ ...META, marginTop: 4 }}>

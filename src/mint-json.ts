@@ -9,7 +9,14 @@
  * overview renders a handful of fields (`context.ts` keeps its own minimal
  * predicate), while the client-face routes hand the panel whole records.
  */
-import type { ContainerDetail, IssueDetail, IssueItem, MilestoneItem, PlanItem } from './records.js';
+import type {
+  ContainerDetail,
+  IssueDetail,
+  IssueItem,
+  LabelItem,
+  MilestoneItem,
+  PlanItem,
+} from './records.js';
 
 /** True for a JSON object (not `null`, not an array). */
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -75,6 +82,20 @@ export function isMilestoneItem(value: unknown): value is MilestoneItem {
     isString(value.title) &&
     isString(value.status) &&
     isString(value.version) &&
+    isNumber(value.issue_count) &&
+    isString(value.created_at) &&
+    isString(value.updated_at)
+  );
+}
+
+/** A `label list --json` record must carry the color the panel tints with. */
+export function isLabelItem(value: unknown): value is LabelItem {
+  if (!isRecord(value)) return false;
+  return (
+    isNumber(value.id) &&
+    isString(value.name) &&
+    isString(value.color) &&
+    (value.description === null || isString(value.description)) &&
     isNumber(value.issue_count) &&
     isString(value.created_at) &&
     isString(value.updated_at)

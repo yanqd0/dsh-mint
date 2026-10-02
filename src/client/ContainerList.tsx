@@ -8,10 +8,11 @@
 import type { ReactElement } from 'react';
 
 import type { MintListPayload } from '../records.js';
+import { ContainerRowView } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
 import type { ContainerRow, LoadState } from './model.js';
-import { BODY, BUTTON, NOTE, ROW, TOOLBAR } from './styles.js';
+import { BODY, BUTTON, NOTE, TOOLBAR } from './styles.js';
 
 export interface ContainerListProps<T> {
   copy: CopyTranslate;
@@ -71,17 +72,13 @@ export function ContainerList<T>({
             {items.map((item) => {
               const line = row(item);
               return (
-                <button
+                <ContainerRowView
                   key={line.id}
-                  type="button"
-                  style={ROW}
-                  onClick={() => {
+                  row={line}
+                  onSelect={() => {
                     onSelect(item);
                   }}
-                >
-                  <span>{`#${String(line.id)} ${line.title}`}</span>
-                  <span style={NOTE}>{line.meta}</span>
-                </button>
+                />
               );
             })}
           </div>

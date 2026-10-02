@@ -8,8 +8,10 @@
 import type {
   ContainerChild,
   ContainerDetail,
+  IssueDetail,
   IssueItem,
   MintDetailPayload,
+  MintMetaPayload,
   MintResponse,
 } from '../records.js';
 import type { CopyKey } from './copy.js';
@@ -132,15 +134,93 @@ export function describeLink(value: unknown): LinkLine | undefined {
     : { rel, labelKey, target };
 }
 
-/** Where an issue sits, as one short string: `P1 · dev · #3`. */
+/** Where an issue sits, as one short string: `P1 · dev`. */
 export function issueMeta(item: IssueItem): string {
-  return [
-    priorityLabel(item.priority),
-    item.status,
-    item.plan_id === null ? undefined : `#${String(item.plan_id)}`,
-  ]
-    .filter((part): part is string => part !== undefined)
-    .join(' · ');
+  return [priorityLabel(item.priority), item.status].join(' · ');
+}
+
+/**
+ * Where one issue sits, once the lookup tables have answered.
+ *
+ * The panel shows the plan it belongs to and the milestone that follows from it,
+ * and it must say which of the two a milestone came from: mint's own
+ * `--milestone` filter means "direct, else the issue's plan's", so the
+ * distinction is real data, not a presentation choice.
+ */
+export interface PlacementView {
+  /** Owning plan, or `null` for a standalone issue. */
+  planId: number | null;
+  /** Effective milestone, when one is known. */
+  milestoneId: number | null;
+  /** The milestone's version, the label the panel shows for it. */
+  milestoneVersion: string | undefined;
+  /** True when the milestone is the issue's own rather than its plan's. */
+  direct: boolean;
+}
+
+/** The version a milestone id renders as; `undefined` when the table lacks it. */
+export function milestoneVersionOf(
+  meta: MintMetaPayload | undefined,
+  id: number | null
+): string | undefined {
+  if (meta === undefined || id === null) return undefined;
+  return meta.milestones.find((milestone) => milestone.id === id)?.version;
+}
+
+/**
+ * Resolve an issue row's placement from the lookup tables.
+ *
+ * `list --json` carries neither an effective milestone nor a plan's version, so
+ * every answer past the row's own `plan_id` comes from `meta`. When that read
+ * failed the panel still shows the plan link it has and nothing it would have to
+ * guess; `undefined` means the row has no placement to show at all.
+ *
+ * @param item - one `list --json` issue.
+ * @param meta - the lookup tables, or `undefined` when they are not loaded.
+ */
+export function issuePlacement(
+  item: IssueItem,
+  meta: MintMetaPayload | undefined
+): PlacementView | undefined {
+  const planId = item.plan_id;
+  const placed = meta?.placement[String(item.id)];
+  const viaPlan =
+    planId === null
+      ? undefined
+      : (meta?.plans.find((plan) => plan.id === planId)?.milestone_id ?? null);
+  const milestoneId = placed?.milestone ?? viaPlan ?? null;
+  if (planId === null && milestoneId === null) return undefined;
+  return {
+    planId,
+    milestoneId,
+    milestoneVersion: milestoneVersionOf(meta, milestoneId),
+    // A placement entry is authoritative; without one, a milestone that follows
+    // from a plan is that plan's, never the issue's own.
+    direct: placed?.direct ?? false,
+  };
+}
+
+/**
+ * Resolve one issue's placement from `show --json`.
+ *
+ * The detail read carries the effective milestone itself, so only its version
+ * label needs the table — and a standalone issue with a milestone is the one
+ * case the panel can call direct without any lookup at all.
+ *
+ * @param item - the issue `show --json` returned.
+ * @param meta - the lookup tables, or `undefined` when they are not loaded.
+ */
+export function detailPlacement(
+  item: IssueDetail,
+  meta: MintMetaPayload | undefined
+): PlacementView | undefined {
+  if (item.milestone_id === null && item.plan_id === null) return undefined;
+  return {
+    planId: item.plan_id,
+    milestoneId: item.milestone_id,
+    milestoneVersion: milestoneVersionOf(meta, item.milestone_id),
+    direct: item.milestone_id !== null && item.plan_id === null,
+  };
 }
 
 /** One issue a container lists, as a single line. */

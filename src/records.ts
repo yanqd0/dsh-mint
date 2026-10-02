@@ -57,6 +57,43 @@ export interface MilestoneItem {
   updated_at: string;
 }
 
+/** One `label list --json` record; the color only exists here, never on an issue. */
+export interface LabelItem {
+  id: number;
+  name: string;
+  /** The recorded `#rrggbb` value the panel tints the label's badge with. */
+  color: string;
+  description: string | null;
+  issue_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Where one issue sits: its effective milestone, and how it got there. */
+export interface IssuePlacement {
+  /** The milestone the issue effectively belongs to (direct, else its plan's). */
+  milestone: number;
+  /** True when the milestone is the issue's own, not its plan's. */
+  direct: boolean;
+}
+
+/**
+ * The panel's lookup tables, read once instead of once per row.
+ *
+ * `list --json` carries neither an issue's effective milestone nor a label's
+ * color, so the host assembles both here. `placement` is keyed by issue id as a
+ * string, because that is what a JSON object can key by.
+ */
+export interface MintMetaPayload {
+  ok: true;
+  plans: PlanItem[];
+  milestones: MilestoneItem[];
+  labels: LabelItem[];
+  placement: Record<string, IssuePlacement>;
+  /** Shape-drift and partial-read notices the panel shows instead of guessing. */
+  warnings?: string[];
+}
+
 /** One issue as a container's `show --json` embeds it. */
 export interface ContainerChild {
   id: number;

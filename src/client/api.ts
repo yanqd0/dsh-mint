@@ -17,6 +17,7 @@ import type {
   MintFailurePayload,
   MintIssuePayload,
   MintListPayload,
+  MintMetaPayload,
   MintResponse,
   PlanItem,
 } from '../records.js';
@@ -30,6 +31,7 @@ const ROUTES = {
   issue: '/dsh-mint/issue',
   plan: '/dsh-mint/plan',
   milestone: '/dsh-mint/milestone',
+  meta: '/dsh-mint/meta',
 } as const;
 
 /**
@@ -114,6 +116,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
     plans: (query, signal) => get<MintListPayload<PlanItem>>(ROUTES.plans, query, signal),
     milestones: (signal) => get<MintListPayload<MilestoneItem>>(ROUTES.milestones, {}, signal),
     issue: (id, signal) => get<MintIssuePayload>(ROUTES.issue, { id: String(id) }, signal),
+    meta: (signal) => get<MintMetaPayload>(ROUTES.meta, {}, signal),
     plan: (id, signal) =>
       get<MintDetailPayload<ContainerDetail>>(ROUTES.plan, { id: String(id) }, signal),
     milestone: (id, signal) =>

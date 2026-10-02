@@ -132,3 +132,47 @@ export function pill(tone: StatusTone): CSSProperties {
     lineHeight: '16px',
   };
 }
+
+/** Which parent a row's chip names. */
+export type PlacementKind = 'plan' | 'direct' | 'viaPlan';
+
+/**
+ * The chip that carries one parent reference.
+ *
+ * A plan reads as an id in a quiet capsule; a milestone keeps the primary tone
+ * when it is the issue's own and drops to a dashed secondary one when it is
+ * reached through the plan — the difference is the point of showing both.
+ *
+ * @param kind - which parent the chip stands for.
+ */
+export function placementChip(kind: PlacementKind): CSSProperties {
+  const base: CSSProperties = {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderStyle: 'solid',
+    padding: '0 6px',
+    fontSize: 10,
+    lineHeight: '16px',
+  };
+  switch (kind) {
+    case 'plan':
+      return {
+        ...base,
+        color: 'var(--dsw-alias-label-secondary)',
+        borderColor: 'var(--dsw-alias-border-l1)',
+      };
+    case 'direct':
+      return {
+        ...base,
+        color: 'var(--dsw-alias-label-primary)',
+        borderColor: 'var(--dsw-alias-label-primary)',
+      };
+    case 'viaPlan':
+      return {
+        ...base,
+        color: 'var(--dsw-alias-label-secondary)',
+        borderColor: 'var(--dsw-alias-border-l2)',
+        borderStyle: 'dashed',
+      };
+  }
+}

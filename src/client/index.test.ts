@@ -111,6 +111,7 @@ describe('mint client plugin', () => {
     expect(Object.keys(api).sort()).toEqual([
       'issue',
       'issues',
+      'meta',
       'milestone',
       'milestones',
       'plan',

@@ -6,16 +6,18 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueItem, MintListPayload } from '../records.js';
+import type { IssueItem, MintListPayload, MintMetaPayload } from '../records.js';
+import { IssueRow } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
 import type { LoadState } from './model.js';
-import { issueHeadline, issueMeta, labelSummary, statusTone } from './model.js';
-import { BODY, BUTTON, INPUT, META, NOTE, ROW, TAB_ACTIVE, TOOLBAR, pill } from './styles.js';
+import { BODY, BUTTON, INPUT, NOTE, TAB_ACTIVE, TOOLBAR } from './styles.js';
 
 export interface IssueListProps {
   copy: CopyTranslate;
   state: LoadState<MintListPayload<IssueItem>>;
+  /** The lookup tables rows read for placement; absent until they load. */
+  meta: MintMetaPayload | undefined;
   /** The search box's live text (the caller debounces it into a request). */
   search: string;
   /** Whether the hide-settled default is off. */
@@ -33,7 +35,8 @@ export interface IssueListProps {
  * @param props - copy, loaded state, filters, and the callbacks that change them.
  */
 export function IssueList(props: IssueListProps): ReactElement {
-  const { copy, state, search, allStates, onSearch, onAllStates, onRefresh, onPage, onSelect } = props;
+  const { copy, state, meta, search, allStates, onSearch, onAllStates, onRefresh, onPage, onSelect } =
+    props;
 
   if (state.status !== 'ready') {
     return (
@@ -87,26 +90,9 @@ export function IssueList(props: IssueListProps): ReactElement {
       ) : (
         <>
           <div style={BODY}>
-            {items.map((item) => {
-              const labels = labelSummary(item.labels);
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  style={ROW}
-                  onClick={() => {
-                    onSelect(item);
-                  }}
-                >
-                  <span>{issueHeadline(item)}</span>
-                  <span style={META}>
-                    <span style={pill(statusTone(item.status))}>{item.status}</span>
-                    <span>{issueMeta(item)}</span>
-                    {labels !== undefined && <span>{labels}</span>}
-                  </span>
-                </button>
-              );
-            })}
+            {items.map((item) => (
+              <IssueRow key={item.id} copy={copy} item={item} meta={meta} onSelect={onSelect} />
+            ))}
           </div>
           <div style={{ ...TOOLBAR, borderTop: '1px solid var(--dsw-alias-border-l1)', borderBottom: 'none' }}>
             <button
