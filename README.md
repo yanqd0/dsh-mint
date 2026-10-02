@@ -248,7 +248,8 @@ pnpm check-types   # tsc --noEmit
 
 [`AGENTS.md`](AGENTS.md) is the project navigation (Chinese) for AI coding
 agents: layout, hard constraints and architecture facts. `notes/` holds the
-internal Chinese engineering notes, `docs/` the future English documentation.
+internal Chinese engineering notes, and [`docs/RELEASING.md`](docs/RELEASING.md)
+is the release runbook (the rest of the `docs/` i18n work is still to come).
 
 ## License
 

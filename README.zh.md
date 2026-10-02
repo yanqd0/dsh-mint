@@ -217,7 +217,8 @@ pnpm check-types   # tsc --noEmit
 ```
 
 [`AGENTS.md`](AGENTS.md) 是给编程 AI 的项目导航（中文）：定位、硬约束与架构事实。
-`notes/` 放对内中文工程记录，`docs/` 放未来的对外英文文档。
+`notes/` 放对内中文工程记录；[`docs/RELEASING.md`](docs/RELEASING.md) 是对外的发布
+runbook（`docs/` 其余 i18n 工作暂不做）。
 
 ## 许可证
 
