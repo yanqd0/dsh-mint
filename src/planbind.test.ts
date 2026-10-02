@@ -31,7 +31,7 @@ describe('planBindListener', () => {
     expect(decision.kind).toBe('deny');
     expect(decision.reason).toContain('mint({args:["plan","create"');
     expect(spy).not.toHaveBeenCalled();
-    expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json']);
+    expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
   });
 
   it('allows exit_plan_mode when a running plan exists (#59)', async () => {
@@ -45,6 +45,28 @@ describe('planBindListener', () => {
 
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('reads the whole plan table, so an older running plan still counts (#93)', async () => {
+    // Pre-#93 the gate took mint's default page of five (newest id first), so a
+    // running plan older than the five newest read as "no plan at all". The argv
+    // is the fix; this six-plan answer is what that argv exists for.
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          ...Array.from({ length: 5 }, (_, index) => ({ id: 12 - index, status: 'open' })),
+          { id: 1, status: 'running', issue_count: 2, title: 'old' },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+    expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
   });
 
   it('denies an open, issue-less plan instead of passing the gate (#59)', async () => {
@@ -125,7 +147,12 @@ describe('planBindListener', () => {
     const exec = makeExec('exit_plan_mode');
     const decision = await planBindListener(exec, vi.fn(next));
     expect(decision.kind).toBe('deny');
-    expect(runMintMock).toHaveBeenCalledWith(process.cwd(), ['plan', 'list', '--json']);
+    expect(runMintMock).toHaveBeenCalledWith(process.cwd(), [
+      'plan',
+      'list',
+      '--json',
+      '--no-page',
+    ]);
   });
 });
 

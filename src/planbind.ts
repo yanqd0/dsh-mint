@@ -15,6 +15,21 @@ const EXIT_PLAN_MODE = 'exit_plan_mode';
  */
 const ACTIVE_PLAN_STATUS = 'running';
 
+/**
+ * The plan read behind the gate (#93).
+ *
+ * `--no-page` is required: mint pages `plan list` at five rows with the newest
+ * id first, so a valid `running` plan older than the newest five read as "no
+ * active plan" and trapped the session in plan mode.
+ *
+ * `--status running` would shrink the answer further but costs the gate's two
+ * distinct messages: an empty answer must keep meaning "no plan exists"
+ * ({@link DENY_REASON}) while a non-empty answer without a running plan means
+ * "plan exists, never decomposed" ({@link UNDECOMPOSED_DENY_REASON}). The
+ * default read already hides only `done`, and the overview needs no more.
+ */
+const PLAN_LIST_ARGV: readonly string[] = ['plan', 'list', '--json', '--no-page'];
+
 const DENY_REASON =
   'No active mint plan for this project — create one first with the mint tool: ' +
   'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach the issues, before exiting plan mode.';
@@ -50,8 +65,8 @@ export async function planBindListener(
     const cwd = exec.agent?.session?.header?.cwd ?? process.cwd();
     const result =
       entry === undefined
-        ? await runMint(cwd, ['plan', 'list', '--json'])
-        : await runMint(cwd, ['plan', 'list', '--json'], { entry });
+        ? await runMint(cwd, PLAN_LIST_ARGV)
+        : await runMint(cwd, PLAN_LIST_ARGV, { entry });
     if (!result.ok) {
       return next();
     }
