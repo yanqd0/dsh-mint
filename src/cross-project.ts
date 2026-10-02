@@ -250,12 +250,14 @@ function isProjectFlagToken(token: string): boolean {
  * a usage error (exit 2) that touches no ledger. Classifying either as a write
  * asked the user to confirm a pure read, and a subagent (approvals pinned to
  * `never`) could not run it at all (#99).
+ *
+ * A help token **inside** `rest` never downgrades the call: the leading scan has
+ * already taken the root-level ones, so anything left is an argument of the
+ * subcommand and may be a value — `issue add -- --help` creates an issue titled
+ * `--help` (#98). Such a call stays a write.
  */
 export function isWriteInvocation(invocation: Invocation): boolean {
   const { rest } = invocation;
-  if (rest.some((token) => token === '-h' || token === '--help' || token === '--help-llm')) {
-    return false;
-  }
   const root = rest[0];
   const leaf = rest[1];
   if (root === undefined) return false;

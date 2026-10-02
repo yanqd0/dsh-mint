@@ -122,6 +122,19 @@ describe('installCrossProjectGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  it('still asks when --help is a positional value, not a root flag (#98)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    const next = allowNext();
+    const decision = await pre(
+      listeners
+    )(mintExec(['-p', 'other', 'issue', 'add', '--', '--help']), next);
+    expect(decision.kind).toBe('ask');
+    if (decision.kind !== 'ask') throw new Error('expected an ask');
+    expect(decision.reason).toContain('-- --help');
+    expect(next).not.toHaveBeenCalled();
+  });
+
   it('asks before the first cross-project write, naming project and action', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);

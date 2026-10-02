@@ -136,8 +136,6 @@ describe('isWriteInvocation', () => {
     ['project', 'show', '1'],
     ['project', 'get', '1', 'git'],
     ['help'],
-    ['issue', 'add', 'x', '--help'],
-    ['plan', 'close', '3', '-h'],
   ];
 
   it.each(reads)('treats %j as a read', (...argv) => {
@@ -165,6 +163,12 @@ describe('isWriteInvocation', () => {
     ['project', 'set', '1', '--git', 'x'],
     ['frobnicate'],
     ['issue'],
+    // A help token after the subcommand is an argument or a value, never a
+    // reason to downgrade the call to a read (#98).
+    ['issue', 'add', 'x', '--help'],
+    ['plan', 'close', '3', '-h'],
+    ['issue', 'add', '--', '--help'],
+    ['issue', 'add', '--body', '--help'],
   ];
 
   it.each(writes)('treats %j as a write', (...argv) => {
