@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { pill, placementChip } from './styles.js';
+import { labelBadge, pill, placementChip } from './styles.js';
 
 describe('panel styles', () => {
   // The tone is the only thing that varies, and it must reach a real theme token:
@@ -30,5 +30,26 @@ describe('panel styles', () => {
     expect(plan.color).toBe('var(--dsw-alias-label-secondary)');
     expect(plan.borderColor).toBe('var(--dsw-alias-border-l1)');
     expect(plan.borderRadius).toBe(999);
+  });
+});
+
+describe('label badges', () => {
+  it('tints the badge from the recorded color, like the shell Tag tones', () => {
+    const badge = labelBadge('#bbdd3c');
+    expect(badge.color).toBe('#bbdd3c');
+    expect(badge.background).toBe('color-mix(in srgb, #bbdd3c 10%, transparent)');
+    expect(badge.borderColor).toBe('color-mix(in srgb, #bbdd3c 45%, transparent)');
+    expect(badge.borderRadius).toBe(999);
+  });
+
+  // The color arrives from the database through the CLI: an unrecognized value
+  // must never reach CSS, and must still render as a readable chip.
+  it('falls back to a neutral chip for a color it cannot trust', () => {
+    for (const color of ['', 'red', '#12345', 'rgb(1,2,3)', '#bbdd3c; color: red']) {
+      const badge = labelBadge(color);
+      expect(badge.color).toBe('var(--dsw-alias-label-tertiary)');
+      expect(badge.borderColor).toBe('var(--dsw-alias-border-l4)');
+      expect(badge.background).toBe('var(--dsw-alias-bg-layer-2)');
+    }
   });
 });

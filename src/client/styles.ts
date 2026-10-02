@@ -133,6 +133,57 @@ export function pill(tone: StatusTone): CSSProperties {
   };
 }
 
+/** The characters a label color may consist of before it is trusted in CSS. */
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+/**
+ * The badge that carries one label.
+ *
+ * Geometry mirrors the shell's `Tag` (fixed capsule, only the palette varies),
+ * but the palette is the color mint recorded for that label rather than a theme
+ * tone. The value comes out of the database through the CLI, so it is checked
+ * here: an unrecognized color falls back to a neutral chip instead of being
+ * interpolated into CSS.
+ *
+ * @param color - the label's recorded `#rgb` / `#rrggbb` value, or anything else.
+ */
+export function labelBadge(color: string): CSSProperties {
+  const base: CSSProperties = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    borderRadius: 999,
+    borderWidth: 0.5,
+    borderStyle: 'solid',
+    padding: '1px 8px',
+    fontSize: 11,
+    lineHeight: '17px',
+    fontWeight: 500,
+    whiteSpace: 'nowrap',
+  };
+  if (!HEX_COLOR.test(color)) {
+    return {
+      ...base,
+      color: 'var(--dsw-alias-label-tertiary)',
+      borderColor: 'var(--dsw-alias-border-l4)',
+      background: 'var(--dsw-alias-bg-layer-2)',
+    };
+  }
+  return {
+    ...base,
+    color,
+    borderColor: `color-mix(in srgb, ${color} 45%, transparent)`,
+    background: `color-mix(in srgb, ${color} 10%, transparent)`,
+  };
+}
+
+/** The line a row's label badges live on. */
+export const LABELS: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  gap: 4,
+};
+
 /** Which parent a row's chip names. */
 export type PlacementKind = 'plan' | 'direct' | 'viaPlan';
 

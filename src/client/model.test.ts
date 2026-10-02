@@ -20,7 +20,6 @@ import {
   issueHeadline,
   issueMeta,
   issuePlacement,
-  labelSummary,
   linkLabelKey,
   milestoneVersionOf,
   priorityLabel,
@@ -81,15 +80,6 @@ describe('status and priority', () => {
   it('writes priority the way mint does', () => {
     expect(priorityLabel(0)).toBe('P0');
     expect(priorityLabel(3)).toBe('P3');
-  });
-});
-
-describe('labels', () => {
-  it('elides a long label list and says how many are hidden', () => {
-    expect(labelSummary([])).toBeUndefined();
-    expect(labelSummary(['agent'])).toBe('agent');
-    expect(labelSummary(['a', 'b', 'c'])).toBe('a · b · c');
-    expect(labelSummary(['a', 'b', 'c', 'd'], 2)).toBe('a · b +2');
   });
 });
 

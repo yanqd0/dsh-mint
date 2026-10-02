@@ -7,7 +7,7 @@
 import type { ReactElement } from 'react';
 
 import type { IssueDetail as IssueDetailRecord, MintMetaPayload } from '../records.js';
-import { PlacementChips } from './Rows.js';
+import { LabelBadges, PlacementChips } from './Rows.js';
 import type { CopyTranslate } from './copy.js';
 import { describeLink, detailPlacement, priorityLabel, statusTone } from './model.js';
 import { BODY, BUTTON, META, NOTE, PROSE, TOOLBAR, pill } from './styles.js';
@@ -51,8 +51,8 @@ export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetail
           <PlacementChips copy={copy} placement={detailPlacement(item, meta)} />
         </div>
         {item.labels.length > 0 && (
-          <div style={{ ...META, marginTop: 4 }}>
-            <span>{`${copy('field.labels')} ${item.labels.join(' · ')}`}</span>
+          <div style={{ marginTop: 6 }}>
+            <LabelBadges labels={item.labels} meta={meta} />
           </div>
         )}
         {links.length > 0 && (

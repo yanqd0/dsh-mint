@@ -8,11 +8,48 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueItem, MintMetaPayload } from '../records.js';
+import type { IssueItem, LabelItem, MintMetaPayload } from '../records.js';
 import type { CopyTranslate } from './copy.js';
 import type { ContainerRow, PlacementView } from './model.js';
-import { issueHeadline, issueMeta, issuePlacement, labelSummary, statusTone } from './model.js';
-import { META, NOTE, ROW, placementChip, pill } from './styles.js';
+import { issueHeadline, issueMeta, issuePlacement, statusTone } from './model.js';
+import { LABELS, META, NOTE, ROW, labelBadge, placementChip, pill } from './styles.js';
+
+export interface LabelBadgesProps {
+  labels: readonly string[];
+  /** The label dictionary, where every color lives; absent until it loads. */
+  meta: MintMetaPayload | undefined;
+}
+
+/**
+ * One line of label badges, each tinted by the color mint recorded for it.
+ *
+ * An issue carries label names only, so a name the dictionary does not know (or
+ * a color it cannot trust) still renders — as a neutral chip.
+ *
+ * @param props - the label names and the dictionary they are looked up in.
+ */
+export function LabelBadges({ labels, meta }: LabelBadgesProps): ReactElement | null {
+  if (labels.length === 0) return null;
+  const known = new Map<string, LabelItem>(
+    (meta?.labels ?? []).map((label) => [label.name, label])
+  );
+  return (
+    <span style={LABELS}>
+      {labels.map((name) => {
+        const label = known.get(name);
+        return (
+          <span
+            key={name}
+            style={labelBadge(label?.color ?? '')}
+            title={label?.description ?? undefined}
+          >
+            {name}
+          </span>
+        );
+      })}
+    </span>
+  );
+}
 
 export interface PlacementChipsProps {
   copy: CopyTranslate;
@@ -64,7 +101,6 @@ export interface IssueRowProps {
  */
 export function IssueRow({ copy, item, meta, onSelect }: IssueRowProps): ReactElement {
   const placement = issuePlacement(item, meta);
-  const labels = labelSummary(item.labels);
   return (
     <button
       type="button"
@@ -79,7 +115,7 @@ export function IssueRow({ copy, item, meta, onSelect }: IssueRowProps): ReactEl
         <span>{issueMeta(item)}</span>
         <PlacementChips copy={copy} placement={placement} />
       </span>
-      {labels !== undefined && <span style={NOTE}>{labels}</span>}
+      <LabelBadges labels={item.labels} meta={meta} />
     </button>
   );
 }

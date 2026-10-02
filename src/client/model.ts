@@ -59,19 +59,6 @@ export function priorityLabel(priority: number): string {
   return `P${String(priority)}`;
 }
 
-/**
- * Join labels for a one-line summary.
- *
- * @param labels - the issue's labels, in CLI order.
- * @param max - how many to show before eliding; the count makes the elision honest.
- */
-export function labelSummary(labels: readonly string[], max = 3): string | undefined {
-  if (labels.length === 0) return undefined;
-  const shown = labels.slice(0, max).join(' · ');
-  const hidden = labels.length - max;
-  return hidden > 0 ? `${shown} +${String(hidden)}` : shown;
-}
-
 /** The one-line headline of an issue row, without decoration. */
 export function issueHeadline(item: IssueItem): string {
   return `#${String(item.id)} ${item.title}`;
