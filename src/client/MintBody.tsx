@@ -27,8 +27,8 @@ import { ContainerList } from './ContainerList.js';
 import { IssueDetail } from './IssueDetail.js';
 import { IssueList } from './IssueList.js';
 import { StateNotice } from './StateNotice.js';
-import { clampPage, containerRow, detailContainer, toLoadState } from './model.js';
-import type { LoadState } from './model.js';
+import { activeContainer, clampPage, containerRow, detailContainer, toLoadState } from './model.js';
+import type { ContainerTarget, LoadState } from './model.js';
 import { HEADER, SHELL, TAB, TAB_ACTIVE } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
 
@@ -76,7 +76,8 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [containers, setContainers] = useState<
     LoadState<MintListPayload<PlanItem | MilestoneItem>>
   >({ status: 'loading' });
-  const [openContainerId, setOpenContainerId] = useState<number | undefined>(undefined);
+  // The open detail carries its kind: an id must never be read as another table.
+  const [openContainer, setOpenContainer] = useState<ContainerTarget | undefined>(undefined);
   const [container, setContainer] = useState<LoadState<ContainerDetailRecord> | undefined>(
     undefined
   );
@@ -183,15 +184,19 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
   }, [api, openIssueId, reload]);
 
-  // One plan or milestone in full, with the issues it holds.
+  // One plan or milestone in full, with the issues it holds. The target names its
+  // own table, so switching tabs never re-reads the same id in the other one.
   useEffect(() => {
-    if (openContainerId === undefined || kind === undefined) {
+    if (openContainer === undefined) {
       setContainer(undefined);
       return;
     }
     const controller = new AbortController();
     setContainer({ status: 'loading' });
-    const request = kind === 'plan' ? api.plan(openContainerId, controller.signal) : api.milestone(openContainerId, controller.signal);
+    const request =
+      openContainer.kind === 'plan'
+        ? api.plan(openContainer.id, controller.signal)
+        : api.milestone(openContainer.id, controller.signal);
     void request.then((response) => {
       const state = toLoadState(response);
       setContainer(state.status === 'ready' ? { status: 'ready', value: detailContainer(state.value) } : state);
@@ -199,7 +204,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
     return () => {
       controller.abort();
     };
-  }, [api, kind, openContainerId, reload]);
+  }, [api, openContainer, reload]);
 
   const refresh = (): void => {
     setReload((count) => count + 1);
@@ -252,7 +257,8 @@ export function MintBody(props: MintBodyProps): ReactElement {
 
   /** The plan or milestone view, list or detail. */
   const containerView = (active: 'plan' | 'milestone'): ReactElement => {
-    if (openContainerId === undefined) {
+    const target = activeContainer(openContainer, active);
+    if (target === undefined) {
       return (
         <ContainerList
           copy={copy}
@@ -261,13 +267,13 @@ export function MintBody(props: MintBodyProps): ReactElement {
           onRefresh={refresh}
           onPage={setContainerPage}
           onSelect={(item) => {
-            setOpenContainerId(item.id);
+            setOpenContainer({ kind: active, id: item.id });
           }}
         />
       );
     }
     const back = (): void => {
-      setOpenContainerId(undefined);
+      setOpenContainer(undefined);
     };
     if (container === undefined) {
       return <StateNotice copy={copy} state="loading" />;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ContainerChild, ContainerDetail, IssueItem, MintListPayload } from '../records.js';
 import {
+  activeContainer,
   clampPage,
   containerChildLine,
   containerMeta,
@@ -172,5 +173,24 @@ describe('containers and pagination', () => {
     expect(clampPage(Number.NaN, 5)).toBe(1);
     expect(clampPage(2, Number.NaN)).toBe(1);
     expect(clampPage(2.7, 5)).toBe(2);
+  });
+});
+
+describe('open container targets', () => {
+  // Regression for #82: plan and milestone ids are different namespaces, so a
+  // plan opened in one tab must not be read as the milestone with that id.
+  it('answers only for the tab whose kind opened the target', () => {
+    expect(activeContainer({ kind: 'plan', id: 13 }, 'plan')).toEqual({ kind: 'plan', id: 13 });
+    expect(activeContainer({ kind: 'plan', id: 13 }, 'milestone')).toBeUndefined();
+    expect(activeContainer({ kind: 'milestone', id: 4 }, 'milestone')).toEqual({
+      kind: 'milestone',
+      id: 4,
+    });
+    expect(activeContainer({ kind: 'milestone', id: 4 }, 'plan')).toBeUndefined();
+  });
+
+  it('has no target before anything is opened', () => {
+    expect(activeContainer(undefined, 'plan')).toBeUndefined();
+    expect(activeContainer(undefined, 'milestone')).toBeUndefined();
   });
 });

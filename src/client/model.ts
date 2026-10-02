@@ -156,6 +156,26 @@ export function containerMeta(parts: readonly (string | number | null | undefine
     .join(' · ');
 }
 
+/** Which container a detail view is showing: the kind is part of the target. */
+export interface ContainerTarget {
+  kind: 'plan' | 'milestone';
+  id: number;
+}
+
+/**
+ * The open container that belongs to the tab being rendered.
+ *
+ * Plan ids and milestone ids are different namespaces, so an id opened under one
+ * kind must never be read as the other (#82): a milestone tab asks for its own
+ * kind and shows its list when the open target belongs to the other one.
+ */
+export function activeContainer(
+  open: ContainerTarget | undefined,
+  kind: 'plan' | 'milestone'
+): ContainerTarget | undefined {
+  return open !== undefined && open.kind === kind ? open : undefined;
+}
+
 /** One row of the plan or milestone list. */
 export interface ContainerRow {
   id: number;
