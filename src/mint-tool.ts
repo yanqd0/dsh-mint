@@ -1,8 +1,10 @@
 import {
   listProjects,
   missingProjectMessage,
+  mutatesProjectList,
   parseInvocation,
   projectProbeFailureMessage,
+  resetProjectCache,
 } from './cross-project.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions } from './mint.js';
@@ -237,6 +239,11 @@ export async function executeMintTool(
     options.entry = entry;
   }
   const result = await runMint(cwd, argv as string[], options);
+  // A call that can change `project list` must not leave a stale answer behind:
+  // the gate and this re-check both read through that memo (#106).
+  if (result.ok && mutatesProjectList(invocation)) {
+    resetProjectCache();
+  }
   if (result.ok) {
     // mint writes advisories to stderr even on success — `mint: hint: …` lines
     // (dedup merge suggestion, unmerged-machine warning) — so they are passed

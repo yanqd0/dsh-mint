@@ -2,16 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   CROSS_PROJECT_REASON_PREFIX,
+  PROJECT_LIST_TTL_MS,
   buildApprovalText,
   isWriteInvocation,
   listProjects,
   missingProjectMessage,
+  mutatesProjectList,
   parseBashMintCalls,
   parseInvocation,
   projectFromReason,
   projectNameProblem,
   projectProbeFailureMessage,
   renderAction,
+  resetProjectCache,
 } from './cross-project.js';
 import { runMint } from './mint.js';
 
@@ -20,6 +23,7 @@ const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
   runMintMock.mockReset();
+  resetProjectCache();
   vi.stubEnv('MINT_PROJECT', undefined);
   vi.stubEnv('MINT_DB_PATH', undefined);
 });
@@ -278,6 +282,41 @@ describe('project existence probe', () => {
     expect(await listProjects('/proj')).toBeUndefined();
     runMintMock.mockResolvedValue({ ok: true, text: '' });
     expect(await listProjects('/proj')).toBeUndefined();
+  });
+
+  it('answers both callers with one probe, until the TTL passes (#106)', async () => {
+    runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"other"}]' });
+    const now = vi.spyOn(Date, 'now');
+    now.mockReturnValue(1_000);
+    expect(await listProjects('/proj')).toEqual(['other']);
+    now.mockReturnValue(1_000 + PROJECT_LIST_TTL_MS - 1);
+    expect(await listProjects('/proj')).toEqual(['other']);
+    expect(runMintMock).toHaveBeenCalledTimes(1);
+    // A stale answer is re-read rather than trusted.
+    now.mockReturnValue(1_000 + PROJECT_LIST_TTL_MS);
+    await listProjects('/proj');
+    expect(runMintMock).toHaveBeenCalledTimes(2);
+    now.mockRestore();
+  });
+
+  it('scopes the memo to (cwd, entry) and forgets it on reset (#106)', async () => {
+    runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"other"}]' });
+    await listProjects('/proj', 'mint');
+    await listProjects('/other', 'mint');
+    await listProjects('/proj', 'other-entry');
+    expect(runMintMock).toHaveBeenCalledTimes(3);
+    await listProjects('/proj', 'mint');
+    expect(runMintMock).toHaveBeenCalledTimes(3);
+    resetProjectCache();
+    await listProjects('/proj', 'mint');
+    expect(runMintMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('knows which calls can change the project list (#106)', () => {
+    expect(mutatesProjectList(parseInvocation(['project', 'create', 'x']))).toBe(true);
+    expect(mutatesProjectList(parseInvocation(['project', 'set', '1', '--git', 'x']))).toBe(true);
+    expect(mutatesProjectList(parseInvocation(['project', 'list']))).toBe(false);
+    expect(mutatesProjectList(parseInvocation(['list']))).toBe(false);
   });
 
   it('lists the candidates in the actionable error', () => {

@@ -377,11 +377,25 @@ export function projectProbeFailureMessage(project: string): string {
  * Returns `undefined` on any failure — callers fail closed. The command scans
  * the data directory without opening a database (`needs_conn = false`), so this
  * probe has no side effect on the target project.
+ *
+ * One cross-project tool call probes **twice** by design — the gate decides
+ * before execution and the tool re-checks before spawning — so a successful
+ * answer is remembered for {@link PROJECT_LIST_TTL_MS} and both callers share
+ * one child process (#106). Only successful reads are memoized: a failure still
+ * means "fail closed", and a name that is not in the memoized answer is still
+ * refused. The window is short by design: the probe is inherently a
+ * time-of-check/time-of-use answer, so the cache does not widen the gap beyond
+ * one refresh.
  */
 export async function listProjects(
   cwd: string,
   entry?: string
 ): Promise<readonly string[] | undefined> {
+  const key = projectCacheKey(cwd, entry);
+  const cached = projectListCache.get(key);
+  if (cached !== undefined && Date.now() - cached.at < PROJECT_LIST_TTL_MS) {
+    return cached.names;
+  }
   const options: MintRunOptions = entry === undefined ? {} : { entry };
   const result = await runMint(cwd, ['project', 'list', '--json'], options);
   if (!result.ok) return undefined;
@@ -396,5 +410,34 @@ export async function listProjects(
     isRecord(item) && typeof item.name === 'string' ? item.name : undefined
   );
   if (names.some((name) => name === undefined)) return undefined;
+  projectListCache.set(key, { at: Date.now(), names: names as string[] });
   return names as string[];
+}
+
+/** How long one successful project-list read answers both callers (#106). */
+export const PROJECT_LIST_TTL_MS = 5_000;
+
+/** The probe's answer, remembered per (cwd, entry) for {@link PROJECT_LIST_TTL_MS}. */
+const projectListCache = new Map<string, { at: number; names: readonly string[] }>();
+
+/**
+ * Forget the memoized project list.
+ *
+ * Two callers: the tests (state must not leak between cases) and the tool, after
+ * a call that can change the answer — `project create` / `project set` would
+ * otherwise be invisible for up to the TTL.
+ */
+export function resetProjectCache(): void {
+  projectListCache.clear();
+}
+
+/** Cache key: both the cwd and the entry decide what the probe sees. */
+function projectCacheKey(cwd: string, entry: string | undefined): string {
+  return `${entry ?? ''}\u0000${cwd}`;
+}
+
+/** True when the invocation can change what `project list` answers (#106). */
+export function mutatesProjectList(invocation: Invocation): boolean {
+  const [root, leaf] = invocation.rest;
+  return root === 'project' && (leaf === 'create' || leaf === 'set');
 }

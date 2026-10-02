@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { runMint } from './mint.js';
+import { resetProjectCache } from './cross-project.js';
 import {
   ALLOWED_ROOT_FLAGS,
   ALLOWED_SUBCOMMANDS,
@@ -19,6 +20,7 @@ const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
   runMintMock.mockReset();
+  resetProjectCache();
   runMintMock.mockResolvedValue({ ok: true, text: 'ID\tSTATUS\n1\topen\n' });
 });
 
@@ -331,6 +333,26 @@ describe('installMintTool', () => {
     runMintMock.mockResolvedValueOnce({ ok: false, timedOut: true, error: 'exit timeout' });
     const value = await registered[0]?.execute({ args: ['list'] }, makeExec());
     expect(value).toEqual({ ok: false, exitCode: 1, stderr: 'exit timeout', timedOut: true });
+  });
+
+  it('forgets the memoized project list after project create (#106)', async () => {
+    runMintMock.mockImplementation((_cwd, argv) =>
+      Promise.resolve(
+        argv[0] === 'project' && argv[1] === 'list'
+          ? { ok: true, text: '[{"name":"other"}]' }
+          : { ok: true, text: 'ok' }
+      )
+    );
+    await executeMintTool('/proj', ['-p', 'other', 'list']);
+    await executeMintTool('/proj', ['project', 'create', 'brand-new']);
+    await executeMintTool('/proj', ['-p', 'other', 'list']);
+
+    const probes = runMintMock.mock.calls.filter(
+      ([, argv]) => argv?.[0] === 'project' && argv?.[1] === 'list'
+    );
+    // Two probes: the memo answered the middle call's gate path, but the
+    // `project create` in between must have dropped it.
+    expect(probes).toHaveLength(2);
   });
 
   it('degrades to a no-op without a tools service', () => {

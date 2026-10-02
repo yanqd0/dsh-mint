@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { installCrossProjectGate, invocationsOf, sessionIdOf } from './cross-project-gate.js';
+import { resetProjectCache } from './cross-project.js';
+import { executeMintTool } from './mint-tool.js';
 import { runMint } from './mint.js';
 import type {
   ApprovalRequestLike,
@@ -14,6 +16,7 @@ const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
   runMintMock.mockReset();
+  resetProjectCache();
   runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"dsh-mint"},{"name":"other"}]' });
 });
 
@@ -88,6 +91,29 @@ describe('installCrossProjectGate', () => {
     expect(listeners['tools/pre-execute']).toBeTypeOf('function');
     expect(listeners['approval/request']).toBeTypeOf('function');
     expect(dispose).toBeTypeOf('function');
+  });
+
+  it('probes the project list once for one gate + tool pair (#106)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    runMintMock.mockImplementation((_cwd, argv) =>
+      Promise.resolve(
+        argv[0] === 'project' && argv[1] === 'list'
+          ? { ok: true, text: '[{"name":"other"}]' }
+          : { ok: true, text: 'ok' }
+      )
+    );
+    // The gate decides on the invocation, then the tool re-checks before spawn:
+    // two callers, one probe.
+    expect((await pre(listeners)(mintExec(['-p', 'other', 'list']), allowNext())).kind).toBe(
+      'allow'
+    );
+    await executeMintTool('/proj', ['-p', 'other', 'list']);
+
+    const probes = runMintMock.mock.calls.filter(
+      ([, argv]) => argv?.[0] === 'project' && argv?.[1] === 'list'
+    );
+    expect(probes).toHaveLength(1);
   });
 
   it('delegates every tool that carries no mint invocation', async () => {
