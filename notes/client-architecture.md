@@ -132,7 +132,9 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 - **失败即数据**：会话失效 / 参数非法 → 400 `{ok:false,error}`；CLI 失败 → 200 `{ok:false,error,stderr}`。
   浏览器侧 `createApi` 把非 JSON、非 2xx、网络异常都归一成同一个 `{ok:false}`，所以面板只有一种错误态。
 - **分页**：`list --json` 自带 `page/page_size/pages/total`，不解析 stdout 页脚。
-  `pageSize` 宿主侧钳制到 1–100。
+  `pageSize` 宿主侧钳制到 1–100。**容器列表例外**：默认（只看进行中）走 `--all-states --no-page`
+  全表读，由宿主 `settledContainerPage` 过滤结束态并重算分页；勾选「含已结束」或显式 `status` 时
+  才把分页交回 mint（#88）。
 - **截断**：`issue` 详情的 body 超过 256 KiB 时按 UTF-8 边界截断并置 `truncated`。
 - **字典一次读**：`/dsh-mint/meta` 一次给出 plans / milestones / labels 与 `placement`（issue → effective
   milestone + 是否直连），面板只在挂载与显式刷新时读一次，不随筛选/翻页变化。`list --json` 既没有

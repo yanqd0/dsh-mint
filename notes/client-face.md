@@ -121,15 +121,23 @@ dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint
 `milestone list --all-states`、`label list`（均 `--no-page`），加上 `placement`（issue → effective
 milestone + 是否直连）。
 
+> **容器列表的结束态默认（#88）**：`plan list` / `milestone list` 自己只隐藏 `done`，`partial`
+> （issue 已全部收口但未 released）与 `dropped` 仍会出现；而 `--status` 只接受单值（重复即 usage
+> error），"open 或 running" 无法表达。所以 `/dsh-mint/plans` 与 `/dsh-mint/milestones` 的**默认**
+> 路径读全表（`{kind} list --all-states --json --no-page`）→ 宿主按 `CONTAINER_END_STATES`
+> 过滤 → `settledContainerPage` 自己重算 `page/page_size/pages/total` 并切片（`--no-page` 仍带
+> mint 的**未过滤**计数，不能直接用）。`allStates=1` 或显式 `status` 才走 `buildListArgv` 的直通
+> 形式（前者含 `--all-states`，分页交回 mint）。判据：mint 新增状态不在白名单里时**保持可见**。
+
 > `list --json` **不含 body**，而 `show <id> --json` 同时给出列表字段与 body（还多一个 `milestone_id`）——
 > 所以 issue 详情走 `show --json` 一次调用。
 
 > **`list --json` 也不含 issue 的 effective milestone**（0.9.0-alpha.1 实测：只有 `plan_id`），
 > label 的 color 更是只存在于 `label list`。所以 meta 的 placement 目前**逐 milestone 反查**
 > （`list --all-states --milestone <M>`，上限 30，M 次 spawn），上游 mint 在 list 输出补上该字段即可
-> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录）。同理 `plan list` 路由**不传**
-> `--all-states`，故 milestone 详情的「包含 plan」用 meta 的 all-states plans 按 `milestone_id`
-> 过滤，而不是再打一次 plans 路由（否则已收口的 plan 会消失）。
+> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录）。milestone 详情的「包含 plan」仍用 meta
+> 的 all-states plans 按 `milestone_id` 过滤，而不是再打一次计划路由（那里只回应当前筛选下的分页，
+> 已收口的 plan 会消失）。
 
 ## 4. locale
 
