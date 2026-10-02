@@ -113,6 +113,15 @@ describe('installCrossProjectGate', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['project', 'list', '--json'], {});
   });
 
+  it('treats a root-flag-only cross-project call as a read, not a write (#99)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    const next = allowNext();
+    const decision = await pre(listeners)(mintExec(['-p', 'other', '-V']), next);
+    expect(decision.kind).toBe('allow');
+    expect(next).toHaveBeenCalled();
+  });
+
   it('asks before the first cross-project write, naming project and action', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);

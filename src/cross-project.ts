@@ -242,14 +242,23 @@ function isProjectFlagToken(token: string): boolean {
  * True when the invocation can **write** to the target ledger. Reads are an
  * explicit allowlist (mint's own read leaves); anything unrecognised counts as
  * a write, so a new mint subcommand cannot slip past the gate.
+ *
+ * The whole {@link Invocation} is taken rather than its `rest`, because an empty
+ * `rest` is not a write: `parseInvocation` moves every value-less global flag
+ * (`-V`, `--version`, `--help*`) into `leading`, so `rest` is empty exactly when
+ * the caller asked for the CLI's version/help — or for nothing at all, which is
+ * a usage error (exit 2) that touches no ledger. Classifying either as a write
+ * asked the user to confirm a pure read, and a subagent (approvals pinned to
+ * `never`) could not run it at all (#99).
  */
-export function isWriteInvocation(rest: readonly string[]): boolean {
+export function isWriteInvocation(invocation: Invocation): boolean {
+  const { rest } = invocation;
   if (rest.some((token) => token === '-h' || token === '--help' || token === '--help-llm')) {
     return false;
   }
   const root = rest[0];
   const leaf = rest[1];
-  if (root === undefined) return true;
+  if (root === undefined) return false;
   if (root === 'list' || root === 'show' || root === 'search') return false;
   if (root === 'help') return false;
   if (CONTAINER_ROOTS.has(root)) {

@@ -109,7 +109,15 @@ describe('projectNameProblem', () => {
 });
 
 describe('isWriteInvocation', () => {
+  /** Classify an argv the way both channels do: parse first, then judge. */
+  const classify = (argv: readonly string[]): boolean => isWriteInvocation(parseInvocation(argv));
+
   const reads: readonly string[][] = [
+    [],
+    ['-V'],
+    ['--version'],
+    ['--help'],
+    ['--help-llm'],
     ['list'],
     ['list', '--status', 'open'],
     ['show', '12'],
@@ -133,7 +141,7 @@ describe('isWriteInvocation', () => {
   ];
 
   it.each(reads)('treats %j as a read', (...argv) => {
-    expect(isWriteInvocation(argv)).toBe(false);
+    expect(classify(argv)).toBe(false);
   });
 
   const writes: readonly string[][] = [
@@ -160,11 +168,11 @@ describe('isWriteInvocation', () => {
   ];
 
   it.each(writes)('treats %j as a write', (...argv) => {
-    expect(isWriteInvocation(argv)).toBe(true);
+    expect(classify(argv)).toBe(true);
   });
 
   it('exempts project create — it opens no existing ledger', () => {
-    expect(isWriteInvocation(['project', 'create', 'new-project'])).toBe(false);
+    expect(classify(['project', 'create', 'new-project'])).toBe(false);
   });
 });
 
@@ -172,14 +180,14 @@ describe('parseBashMintCalls', () => {
   it('finds a bare mint invocation with an explicit project', () => {
     const [invocation] = parseBashMintCalls('mint -p other issue add title');
     expect(invocation?.project).toBe('other');
-    expect(isWriteInvocation(invocation?.rest ?? [])).toBe(true);
+    expect(invocation !== undefined && isWriteInvocation(invocation)).toBe(true);
   });
 
   it('finds mint inside a compound command', () => {
     const calls = parseBashMintCalls('cd ~/yanqd0/dsh-dev-dsh && mint -p other list');
     expect(calls).toHaveLength(1);
     expect(calls[0]?.project).toBe('other');
-    expect(isWriteInvocation(calls[0]?.rest ?? [])).toBe(false);
+    expect(calls[0] !== undefined && isWriteInvocation(calls[0])).toBe(false);
   });
 
   it('honours an inline MINT_PROJECT assignment', () => {

@@ -95,7 +95,7 @@ async function decide(
   if (!candidates.includes(project)) {
     return { kind: 'deny', reason: missingProjectMessage(project, candidates) };
   }
-  if (!isWriteInvocation(invocation.rest)) return undefined;
+  if (!isWriteInvocation(invocation)) return undefined;
   const sessionId = sessionIdOf(exec?.agent);
   if (sessionId !== undefined && granted.has(`${sessionId}${KEY_SEPARATOR}${project}`)) {
     return undefined;
