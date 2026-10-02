@@ -21,9 +21,6 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
   /** Checklist glyph, used as the guide entry's artwork. */
   export const IconChecklistOutlineRegular: ComponentType<IconProps>;
 
-  /** Refresh glyph, used by the panel's toolbar. */
-  export const IconRefreshOutlineRegular: ComponentType<IconProps>;
-
   /** What the panel passes to the highlighted body block it renders. */
   export interface CodeBlockProps {
     /** The source text, rendered verbatim. */

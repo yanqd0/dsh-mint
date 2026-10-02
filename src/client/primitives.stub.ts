@@ -19,9 +19,6 @@ export interface IconProps {
 /** Checklist glyph, used as the guide entry's artwork. */
 export const IconChecklistOutlineRegular: ComponentType<IconProps> = () => null;
 
-/** Refresh glyph, used by the panel's toolbar. */
-export const IconRefreshOutlineRegular: ComponentType<IconProps> = () => null;
-
 /** What the panel passes to the highlighted body block it renders. */
 export interface CodeBlockProps {
   code: string;
