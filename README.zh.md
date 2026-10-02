@@ -78,9 +78,10 @@ dsh plugin --profile web add @yanqd0/dsh-mint      # 重新 add 才会写入挂�
 ```
 
 从未请求过本包的 profile 上跑 `approve-builds` 只会输出
-"There are no packages awaiting approval"，什么都没批准。pnpm 12 的一次性放行
-写法是 `--allow-build=<pkg>`；pnpm 10/11 是
-`--config.dangerouslyAllowAllBuilds=true`。
+"There are no packages awaiting approval"，什么都没批准。一次性放行写法是
+`--allow-build=<pkg>`，但它只对**注册表**依赖按名匹配——`file:`/tarball 安装
+（`dsh plugin --profile web add ./`）用不上；这种场景 pnpm 10/11 可用
+`--config.dangerouslyAllowAllBuilds=true`，pnpm 12 已忽略该参数。
 
 安装失败时插件**完全没挂载**：`dsh --profile web --dump-config` 不会打印
 `id: mint`。装完按下节验证。

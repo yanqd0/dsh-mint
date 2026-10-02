@@ -91,9 +91,11 @@ dsh plugin --profile web add @yanqd0/dsh-mint      # added again for the mount r
 ```
 
 `approve-builds` on a profile that never requested this package reports "There
-are no packages awaiting approval" and approves nothing. pnpm 12 spells the
-one-shot allow as `--allow-build=<pkg>`; pnpm 10/11 used
-`--config.dangerouslyAllowAllBuilds=true`.
+are no packages awaiting approval" and approves nothing. The one-shot allow is
+`--allow-build=<pkg>`, but it matches **registry** dependencies by name only — a
+`file:`/tarball install (`dsh plugin --profile web add ./`) gets nothing from it.
+For that case pnpm 10/11 accepted `--config.dangerouslyAllowAllBuilds=true`, and
+pnpm 12 ignores it.
 
 After a failed install the plugin is not mounted at all —
 `dsh --profile web --dump-config` prints no `id: mint`. Verify below.

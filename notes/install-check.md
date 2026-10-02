@@ -25,20 +25,24 @@ grep -n "@yanqd0/dsh-mint" ~/.dsh/profiles/web/package.json   # 预期 "link:/ho
 ls -l ~/.dsh/profiles/web/node_modules/@yanqd0/dsh-mint        # 预期 symlink -> 仓库
 ```
 
-若缺：`dsh plugin --profile web approve-builds --all && dsh plugin --profile web add ./`
-（pnpm 11 会拦构建脚本，见 `mounting.md`；构建产物需要先 `pnpm build`）。
+若缺：`dsh plugin --profile web approve-builds --all` → `dsh plugin --profile web remove @yanqd0/dsh-mint`
+→ `dsh plugin --profile web add ./`（pnpm 11 会拦构建脚本；**已记录的依赖必须删掉再加**才会补 bundle，
+见 `mounting.md`、README 的 npm 一节；构建产物需要先 `pnpm build`）。
 
 ## 2. 挂载：cordis 组合树里有 mint 行（预期：出现 id: mint，无 patch: 警告）
 
 ```bash
-cat ~/.dsh/profiles/web/cordis.patch.yml      # 预期 insert 列表含 @yanqd0/dsh-mint
+grep -n "@yanqd0/dsh-mint" ~/.dsh/profiles/web/package.json   # 预期 dsh.profile.bundles 含本包
+cat ~/.dsh/profiles/web/cordis.patch.yml      # 预期只有覆盖行 `- id: mint`（放 config），无手写 insert
 dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
 ```
 
 坑（历史教训，别再踩）：
-- `dsh plugin add ./` **只是装依赖，不挂载**；必须手动写 `cordis.patch.yml` 的
-  `- insert: [{ id: mint, name: '@yanqd0/dsh-mint', config: { debug: false } }]`。
-- 裸 `- id/name` 行是**覆盖**语义，会报 `patch: entry not found`——新插件必须 `insert:` 包裹。
+- 挂载行由**包自带的 bundle patch** 提供（包根 `cordis.patch.yml` + `package.json` 的
+  `dsh.bundle.patch`，见 #50）：`dsh plugin add` 成功即把本包写进 profile 的 `dsh.profile.bundles`，
+  **不需要**手写 `insert:`；手写 insert 与 bundle 并存会**重复挂载**。
+- 裸 `- id/name` 是**覆盖**语义（profile 里那行 `- id: mint` 只用来放 `config`），
+  行不存在时会报 `patch: entry not found`——所以别把它当成新增挂载的手段。
 - 改完若配置不生效，重启 harness（GUI 进程）。
 
 ## 3. 产物：dist 与 skill 都在（预期：两处 SKILL.md 存在且一致，且 client bundle 在）
