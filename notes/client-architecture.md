@@ -28,7 +28,7 @@ title: dsh-mint 双产物与运行时归属
 flowchart TB
   subgraph build["构建期 pnpm build"]
     srchost["src 宿主面<br/>index / routes / context / mint"]
-    srcclient["src/client 浏览器面<br/>index.tsx / MintBody / api / copy"]
+    srcclient["src/client 浏览器面<br/>index.tsx / MintBody / api / copy<br/>Rows.tsx / Body.tsx / model.ts / styles.ts"]
     shared["src/records.ts<br/>仅类型，两端共享"]
     tsup["tsup<br/>ESM 加 d.ts"]
     esb["scripts/build-client.mjs<br/>esbuild 加加载器包装"]
@@ -75,11 +75,17 @@ sequenceDiagram
   participant T as "sidebarRightTabs 与 slots"
   participant B as "MintBody 浏览器组件"
   participant W as "ctx.webServer 路由"
+  participant V as "meta 字典路由"
   participant M as "mint CLI 插件进程内"
   U->>G: 右侧边栏点 + 打开 guide
   G->>T: openTab mint
   T-->>B: 挂载并注入 sessionId 与 api 与 copy
   B->>B: useTabInfo 取 tab.signal 与 bindCommands
+  B->>V: GET /dsh-mint/meta 带 session
+  V->>M: spawn plan/milestone/label list（并行）
+  V->>M: spawn list --all-states --milestone <M>（每个 milestone 一次）
+  M-->>V: 字典与 placement
+  V-->>B: 200 加 ok true 与「上级资源」查找表
   B->>W: GET /dsh-mint/issues 带 session
   W->>W: 校验参数后解析 session 到 cwd
   alt 参数或会话不合法
@@ -89,13 +95,17 @@ sequenceDiagram
     M-->>W: JSON items 与分页字段
     W-->>B: 200 加 ok true 与 items
   end
-  B-->>U: 渲染列表或错误态
+  B-->>U: 用字典渲染列表（归属 chip 与标签徽章）或错误态
   U->>B: 点某行进详情
   B->>W: GET /dsh-mint/issue 带 id
   W->>M: spawn show 12 --json
   M-->>W: 全量 item 含 body
   W-->>B: 200 加 ok true 与 item 与 truncated
   Note over W,M: CLI 失败一律 200 加 ok false，面板统一渲染错误态
+  U->>B: 打开 plan/milestone 详情
+  B->>W: GET /dsh-mint/plan 或 /milestone 带 id
+  B->>W: GET /dsh-mint/issues 带 plan/milestone 筛选且 allStates
+  Note over B,W: 内嵌列表与最外层列表同一套行组件，只有筛选不同
 ```
 
 三条通道，只有一条是「网络」：
@@ -124,6 +134,15 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 - **分页**：`list --json` 自带 `page/page_size/pages/total`，不解析 stdout 页脚。
   `pageSize` 宿主侧钳制到 1–100。
 - **截断**：`issue` 详情的 body 超过 256 KiB 时按 UTF-8 边界截断并置 `truncated`。
+- **字典一次读**：`/dsh-mint/meta` 一次给出 plans / milestones / labels 与 `placement`（issue → effective
+  milestone + 是否直连），面板只在挂载与显式刷新时读一次，不随筛选/翻页变化。`list --json` 既没有
+  effective milestone，也没有 label 颜色，所以行内归属与徽章配色全靠这份字典；字典不可用时行只显示自己
+  带的 `#plan`、徽章回退中性色，并给一行提示（不假装数据完整）。
+- **临时的归属反查**：meta 的 placement 目前逐 milestone 跑 `list --all-states --milestone <M>`（上限 30）。
+  这是等上游补字段的临时实现（**mint #503**），落地后删除——判据与代价记在
+  [client-face.md](client-face.md) 与 plan #15。
+- **每请求一个 abort**：一次 HTTP 请求内的所有 CLI run 共享一个 `AbortController`（`RequestScope`），
+  浏览器断连即全取消；不是一个 run 一个 `close` 监听。
 
 ## 5. 状态归属
 
@@ -132,6 +151,8 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 | 打开了哪些 tab、在哪个 pane、是否浮动、呈现模式 | 右侧边栏 layout store | 按 session 持久化到 localStorage（刷新仍在） |
 | tab 记录与 `tab.signal` | 侧边栏 Tab 域 | tab 关闭或插件卸载时 abort |
 | 当前视图（Issue/Plan/Milestone）、筛选、页码、选中的条目 | **MintBody 组件内 `useState`** | 组件卸载即丢；不落盘（0.2.0 刻意如此） |
+| 打开的是哪个容器（`{kind,id}`）与它所在 tab | MintBody 组件内 | kind 随目标存，故切 tab 不会用对方的 id 取表（#82）；切回仍保留各自详情 |
+| 字典（plans/milestones/labels/placement） | MintBody 组件内 | 挂载与刷新时各读一次；失败即降级显示 |
 | 一次读取的 loading/failed/ready | MintBody 组件内 | 每次输入变化重新请求（旧请求 abort） |
 | 文案词典 | client locale 注册表 | 插件生命周期 |
 

@@ -111,11 +111,25 @@ ctx.inject(['webServer'], (scoped) => {
 - 浏览器侧路径要用 `document.baseURI` 解析（反代子路径挂载时 `/xxx` 会 404）——见 `dshmarket` 的 `api()`。
 
 dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（`show --json` 全量，含 body）、
-`/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`，均带 `session=<SessionId>`，
-宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录（**不接受浏览器给的路径**）。
+`/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`、`/dsh-mint/meta`，
+均带 `session=<SessionId>`，宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录
+（**不接受浏览器给的路径**）。每次 CLI run 共享**本请求的一个 AbortController**（`RequestScope`），
+浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
+`MaxListeners`，且只能取消其中一个。
+
+`/dsh-mint/meta` 是面板的**字典路由**（一次响应替代 N 次读）：`plan list --all-states`、
+`milestone list --all-states`、`label list`（均 `--no-page`），加上 `placement`（issue → effective
+milestone + 是否直连）。
 
 > `list --json` **不含 body**，而 `show <id> --json` 同时给出列表字段与 body（还多一个 `milestone_id`）——
-> 所以 issue 详情走 `show --json` 一次调用，plan/milestone 详情里的子 issue 也据此可直接跳转。
+> 所以 issue 详情走 `show --json` 一次调用。
+
+> **`list --json` 也不含 issue 的 effective milestone**（0.9.0-alpha.1 实测：只有 `plan_id`），
+> label 的 color 更是只存在于 `label list`。所以 meta 的 placement 目前**逐 milestone 反查**
+> （`list --all-states --milestone <M>`，上限 30，M 次 spawn），上游 mint 在 list 输出补上该字段即可
+> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录）。同理 `plan list` 路由**不传**
+> `--all-states`，故 milestone 详情的「包含 plan」用 meta 的 all-states plans 按 `milestone_id`
+> 过滤，而不是再打一次 plans 路由（否则已收口的 plan 会消失）。
 
 ## 4. locale
 
