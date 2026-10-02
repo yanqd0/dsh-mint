@@ -51,7 +51,8 @@ interface OverviewIssue {
 interface OverviewMilestone {
   id: number;
   title: string;
-  version: string;
+  /** `null` for a milestone mint has no version for (#107). */
+  version: string | null;
   status: string;
 }
 
@@ -69,13 +70,19 @@ function isOverviewIssue(value: unknown): value is OverviewIssue {
   );
 }
 
-/** Validate one `milestone list --json` item against the fields the overview reads. */
+/**
+ * Validate one `milestone list --json` item against the fields the overview reads.
+ *
+ * `version` is optional in mint (the column is nullable), so `null` is a real
+ * answer and must not drop the milestone from the overview: a version-less
+ * running milestone is exactly the one the attachment advice has to name (#107).
+ */
 function isOverviewMilestone(value: unknown): value is OverviewMilestone {
   if (!isRecord(value)) return false;
   return (
     typeof value.id === 'number' &&
     typeof value.title === 'string' &&
-    typeof value.version === 'string' &&
+    (value.version === null || typeof value.version === 'string') &&
     typeof value.status === 'string'
   );
 }
@@ -170,6 +177,9 @@ function isNewer(a: string, b: string): boolean {
 export function latestVersion(milestones: readonly OverviewMilestone[]): string {
   let best = '';
   for (const milestone of milestones) {
+    // A milestone without a version has nothing to compare; it also does not
+    // drag `best` down — the semver hint keeps working off the rest (#107).
+    if (milestone.version === null) continue;
     if (isNewer(milestone.version, best)) best = milestone.version;
   }
   return best;
@@ -224,8 +234,10 @@ export function renderOverview(overview: MintOverview): string {
     );
   } else if (overview.milestones.length > 0) {
     const latest = latestVersion(overview.milestones);
+    // No version anywhere: drop the parenthetical instead of printing "(latest )".
+    const latestNote = latest === '' ? '' : ` (latest ${latest})`;
     lines.push(
-      `[Mint] no running milestone (latest ${latest}) — infer the next version by semver ` +
+      `[Mint] no running milestone${latestNote} — infer the next version by semver ` +
         '(patch for fixes/docs, minor for a new capability, major for a breaking change) and ' +
         'ASK the user to set it running or create it; do not set it yourself'
     );

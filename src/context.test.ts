@@ -127,6 +127,24 @@ describe('fetchOverview', () => {
     expect(overview.warnings).toBeUndefined();
   });
 
+  it('keeps a milestone whose version is null, without a shape warning (#107)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [{ id: 4, title: '无版本', version: null, status: 'running', issue_count: 0 }],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'nope' });
+
+    const overview = await fetchOverview('/proj');
+    expect(overview.milestones).toEqual([
+      { id: 4, title: '无版本', version: null, status: 'running', issue_count: 0 },
+    ]);
+    expect(overview.warnings).toBeUndefined();
+  });
+
   it('keeps the overview when the -V probe fails (#58)', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -205,6 +223,31 @@ describe('renderOverview', () => {
       { id: 3, title: 'c', version: '0.0.9', status: 'done' },
     ];
     expect(latestVersion(milestones)).toBe('0.1.0');
+  });
+
+  it('keeps a version-less milestone and skips it when ranking (#107)', () => {
+    // mint's `version` column is nullable, so `null` is a declared answer: the
+    // milestone must stay in the overview, and the semver hint must fall back to
+    // the versions that do exist.
+    const milestones = [
+      { id: 1, title: 'a', version: null, status: 'running' },
+      { id: 2, title: 'b', version: '0.3.0', status: 'open' },
+    ];
+    expect(latestVersion(milestones)).toBe('0.3.0');
+
+    const text = renderOverview({ issues: [], milestones });
+    // One running milestone: it is named even without a version (by title).
+    expect(text).toContain('[Mint] milestone a (id 1) running');
+    expect(text).toContain('mint({args:["milestone","attach","1","<id>"]})');
+  });
+
+  it('drops the latest-version parenthetical when no milestone has a version (#107)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [{ id: 1, title: 'a', version: null, status: 'open' }],
+    });
+    expect(text).toContain('no running milestone —');
+    expect(text).not.toContain('(latest )');
   });
 
   it('warns on 2+ running milestones and points at the fix', () => {
