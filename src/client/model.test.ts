@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
 import type {
-  ContainerChild,
   ContainerDetail,
   IssueDetail,
   IssueItem,
@@ -11,18 +10,19 @@ import type {
 import {
   activeContainer,
   clampPage,
-  containerChildLine,
   containerMeta,
   containerRow,
   describeLink,
   detailContainer,
   detailPlacement,
+  embeddedIssuesQuery,
   hasBody,
   issueHeadline,
   issueMeta,
   issuePlacement,
   linkLabelKey,
   milestoneVersionOf,
+  plansOfMilestone,
   priorityLabel,
   statusTone,
   toLoadState,
@@ -139,11 +139,6 @@ describe('links', () => {
 });
 
 describe('containers and pagination', () => {
-  it('lines a container child', () => {
-    const child: ContainerChild = { id: 9, title: '实现 client 打包面', kind: 'requirement', status: 'test' };
-    expect(containerChildLine(child)).toBe('#9 [requirement] 实现 client 打包面');
-  });
-
   it('joins container meta, dropping empty parts', () => {
     expect(containerMeta(['open', '0.2.0', 6, null, undefined, ''])).toBe('open · 0.2.0 · 6');
   });
@@ -155,6 +150,29 @@ describe('containers and pagination', () => {
       title: '客户端面',
       meta: 'open · 0.2.0 · 6 issues',
     });
+  });
+
+  // An embedded list is the outer list with a different source: it must ask for
+  // every associated state, not the open-only default.
+  it('asks for every associated issue of one container', () => {
+    expect(embeddedIssuesQuery('plan', 15)).toEqual({
+      plan: '15',
+      allStates: '1',
+      page: '1',
+      pageSize: '100',
+    });
+    expect(embeddedIssuesQuery('milestone', 4)).toEqual({
+      milestone: '4',
+      allStates: '1',
+      page: '1',
+      pageSize: '100',
+    });
+  });
+
+  it('lists the plans the lookup table puts in a milestone', () => {
+    expect(plansOfMilestone(META, 2)?.map((plan) => plan.id)).toEqual([3]);
+    expect(plansOfMilestone(META, 4)).toEqual([]);
+    expect(plansOfMilestone(undefined, 2)).toBeUndefined();
   });
 
   it('reads the container out of whichever key the route filled', () => {

@@ -27,6 +27,7 @@ const COPY = {
   'panel.search': '搜索',
   'panel.allStates': '含已关闭',
   'panel.truncated': '正文过长，已截断',
+  'panel.embeddedLimited': '仅显示前 {shown} 条',
 
   'state.loading': '加载中…',
   'state.empty': '暂无数据',
@@ -54,6 +55,7 @@ const COPY = {
   'detail.back': '返回',
   'detail.body': '正文',
   'detail.noBody': '（无正文）',
+  'detail.plans': '包含 plan',
   'detail.standalone': '未挂 plan',
 
   'body.copy': '复制',

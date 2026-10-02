@@ -1,42 +1,98 @@
 /**
- * One plan or milestone in full, with the issues it holds.
+ * One plan or milestone in full, with everything it holds.
  *
- * The children are links into the issue view: the route reads an issue in full
- * from `show --json`, so following one never depends on the list that happened to
- * be on screen.
+ * The embedded lists are the outer lists: same rows, same decoration, only the
+ * data source differs — they read everything the container holds (settled states
+ * included) instead of whatever the outer list's filters left on screen.
  */
 import type { ReactElement } from 'react';
 
-import type { ContainerDetail } from '../records.js';
+import type { ContainerDetail, IssueItem, MintListPayload, MintMetaPayload } from '../records.js';
 import { BodyView } from './Body.js';
+import { ContainerRowView, IssueRow } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
-import { containerChildLine, statusTone } from './model.js';
 import type { LoadState } from './model.js';
-import { BODY, BUTTON, META, NOTE, ROW, TOOLBAR, pill } from './styles.js';
+import { containerRow, plansOfMilestone, statusTone } from './model.js';
+import { BODY, BUTTON, META, NOTE, TOOLBAR, pill } from './styles.js';
 
 export interface ContainerDetailProps {
   copy: CopyTranslate;
   /** Which kind the payload holds, for the heading. */
   kind: 'plan' | 'milestone';
   state: LoadState<ContainerDetail>;
+  /** The issues the container holds, read with the embedded filter. */
+  issues: LoadState<MintListPayload<IssueItem>>;
+  /** The lookup tables the embedded rows are decorated from. */
+  meta: MintMetaPayload | undefined;
   onBack: () => void;
   onRefresh: () => void;
   onOpenIssue: (id: number) => void;
+  onOpenPlan: (id: number) => void;
+}
+
+/** One embedded list of issues, drawn with the outer row. */
+function EmbeddedIssues({
+  copy,
+  state,
+  meta,
+  onRefresh,
+  onOpenIssue,
+}: {
+  copy: CopyTranslate;
+  state: LoadState<MintListPayload<IssueItem>>;
+  meta: MintMetaPayload | undefined;
+  onRefresh: () => void;
+  onOpenIssue: (id: number) => void;
+}): ReactElement {
+  if (state.status !== 'ready') {
+    return (
+      <StateNotice
+        copy={copy}
+        state={state.status === 'loading' ? 'loading' : 'failed'}
+        message={state.status === 'failed' ? state.message : undefined}
+        stderr={state.status === 'failed' ? state.stderr : undefined}
+        onRetry={onRefresh}
+      />
+    );
+  }
+  const { items, total } = state.value;
+  if (items.length === 0) return <p style={NOTE}>{copy('state.empty')}</p>;
+  return (
+    <>
+      {items.map((item) => (
+        <IssueRow
+          key={item.id}
+          copy={copy}
+          item={item}
+          meta={meta}
+          onSelect={(next) => {
+            onOpenIssue(next.id);
+          }}
+        />
+      ))}
+      {total > items.length && (
+        <p style={NOTE}>{copy('panel.embeddedLimited', { shown: items.length })}</p>
+      )}
+    </>
+  );
 }
 
 /**
  * Render the container.
  *
- * @param props - copy, kind, loaded state, and the navigation callbacks.
+ * @param props - copy, kind, loaded state, the lookup tables, and the callbacks.
  */
 export function ContainerDetail({
   copy,
   kind,
   state,
+  issues,
+  meta,
   onBack,
   onRefresh,
   onOpenIssue,
+  onOpenPlan,
 }: ContainerDetailProps): ReactElement {
   const back = (
     <div style={TOOLBAR}>
@@ -66,6 +122,9 @@ export function ContainerDetail({
 
   const item = state.value;
   const heading = `#${String(item.id)} ${item.title}`;
+  // A milestone's plans live in the all-states lookup table; without it there is
+  // no complete read to show.
+  const plans = kind === 'milestone' ? plansOfMilestone(meta, item.id) : undefined;
 
   return (
     <>
@@ -83,24 +142,35 @@ export function ContainerDetail({
         </div>
         <BodyView copy={copy} body={item.body} />
 
-        <div style={{ ...NOTE, marginTop: 12 }}>{copy('field.issues')}</div>
-        {item.issues.length === 0 ? (
-          <p style={NOTE}>{copy('state.empty')}</p>
-        ) : (
-          item.issues.map((child) => (
-            <button
-              key={child.id}
-              type="button"
-              style={{ ...ROW, borderBottom: '1px solid var(--dsw-alias-border-l1)' }}
-              onClick={() => {
-                onOpenIssue(child.id);
-              }}
-            >
-              <span>{containerChildLine(child)}</span>
-              <span style={NOTE}>{child.status}</span>
-            </button>
-          ))
+        {kind === 'milestone' && (
+          <>
+            <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.plans')}</div>
+            {plans === undefined ? (
+              <p style={NOTE}>{copy('panel.metaUnavailable')}</p>
+            ) : plans.length === 0 ? (
+              <p style={NOTE}>{copy('state.empty')}</p>
+            ) : (
+              plans.map((plan) => (
+                <ContainerRowView
+                  key={plan.id}
+                  row={containerRow(plan)}
+                  onSelect={() => {
+                    onOpenPlan(plan.id);
+                  }}
+                />
+              ))
+            )}
+          </>
         )}
+
+        <div style={{ ...NOTE, marginTop: 12 }}>{copy('field.issues')}</div>
+        <EmbeddedIssues
+          copy={copy}
+          state={issues}
+          meta={meta}
+          onRefresh={onRefresh}
+          onOpenIssue={onOpenIssue}
+        />
       </div>
     </>
   );

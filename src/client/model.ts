@@ -6,13 +6,13 @@
  * components stay presentational: they call these and draw the result.
  */
 import type {
-  ContainerChild,
   ContainerDetail,
   IssueDetail,
   IssueItem,
   MintDetailPayload,
   MintMetaPayload,
   MintResponse,
+  PlanItem,
 } from '../records.js';
 import type { CopyKey } from './copy.js';
 
@@ -215,11 +215,6 @@ export function detailPlacement(
   };
 }
 
-/** One issue a container lists, as a single line. */
-export function containerChildLine(child: ContainerChild): string {
-  return `#${String(child.id)} [${child.kind}] ${child.title}`;
-}
-
 /** One container row's trailing meta: `open · 0.2.0 · 6`. */
 export function containerMeta(parts: readonly (string | number | null | undefined)[]): string {
   return parts
@@ -296,4 +291,45 @@ export function clampPage(page: number, pages: number): number {
   if (!Number.isFinite(page) || page < 1) return 1;
   const last = Number.isFinite(pages) && pages >= 1 ? pages : 1;
   return Math.min(Math.floor(page), last);
+}
+
+/** How many rows an embedded list asks for; the outer lists page instead. */
+export const EMBEDDED_PAGE_SIZE = 100;
+
+/**
+ * The query that reads everything one container holds.
+ *
+ * An embedded list shows every associated issue — settled states included. The
+ * outer list hides them by default, and reusing that default here would hide
+ * exactly the history a plan or milestone detail exists to show.
+ *
+ * @param kind - which container's issues to read.
+ * @param id - that container's id.
+ */
+export function embeddedIssuesQuery(kind: 'plan' | 'milestone', id: number): Record<string, string> {
+  return {
+    [kind]: String(id),
+    allStates: '1',
+    page: '1',
+    pageSize: String(EMBEDDED_PAGE_SIZE),
+  };
+}
+
+/**
+ * The plans one milestone holds.
+ *
+ * `plan list --milestone` filters the same way, but excludes settled plans unless
+ * asked, and the panel's route does not pass `--all-states`: the meta read is
+ * already the all-states table, so the milestone detail filters it here.
+ *
+ * @param meta - the lookup tables, or `undefined` when they are not loaded.
+ * @param milestoneId - the milestone whose plans to list.
+ * @returns the plans, or `undefined` when the table is missing.
+ */
+export function plansOfMilestone(
+  meta: MintMetaPayload | undefined,
+  milestoneId: number
+): PlanItem[] | undefined {
+  if (meta === undefined) return undefined;
+  return meta.plans.filter((plan) => plan.milestone_id === milestoneId);
 }

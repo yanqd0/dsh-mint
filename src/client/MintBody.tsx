@@ -28,7 +28,7 @@ import { ContainerList } from './ContainerList.js';
 import { IssueDetail } from './IssueDetail.js';
 import { IssueList } from './IssueList.js';
 import { StateNotice } from './StateNotice.js';
-import { activeContainer, clampPage, containerRow, detailContainer, toLoadState } from './model.js';
+import { activeContainer, clampPage, containerRow, detailContainer, embeddedIssuesQuery, toLoadState } from './model.js';
 import type { ContainerTarget, LoadState } from './model.js';
 import { HEADER, NOTE, SHELL, TAB, TAB_ACTIVE } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
@@ -87,6 +87,11 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [container, setContainer] = useState<LoadState<ContainerDetailRecord> | undefined>(
     undefined
   );
+  // The detail view's own container, if the open target belongs to this tab.
+  const active = kind === undefined ? undefined : activeContainer(openContainer, kind);
+  const [embeddedIssues, setEmbeddedIssues] = useState<LoadState<MintListPayload<IssueItem>>>({
+    status: 'loading',
+  });
 
   // Settle the search box before it becomes a request.
   useEffect(() => {
@@ -230,6 +235,25 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
   }, [api, openContainer, reload]);
 
+  // Everything the open container holds, read with the embedded filter: the
+  // outer list's own filters and page must not narrow what the detail shows.
+  useEffect(() => {
+    if (active === undefined) {
+      setEmbeddedIssues({ status: 'loading' });
+      return;
+    }
+    const controller = new AbortController();
+    setEmbeddedIssues({ status: 'loading' });
+    void api
+      .issues(embeddedIssuesQuery(active.kind, active.id), controller.signal)
+      .then((response) => {
+        setEmbeddedIssues(toLoadState(response));
+      });
+    return () => {
+      controller.abort();
+    };
+  }, [api, active, reload]);
+
   const refresh = (): void => {
     setReload((count) => count + 1);
   };
@@ -290,9 +314,8 @@ export function MintBody(props: MintBodyProps): ReactElement {
   };
 
   /** The plan or milestone view, list or detail. */
-  const containerView = (active: 'plan' | 'milestone'): ReactElement => {
-    const target = activeContainer(openContainer, active);
-    if (target === undefined) {
+  const containerView = (tab: 'plan' | 'milestone'): ReactElement => {
+    if (active === undefined) {
       return (
         <ContainerList
           copy={copy}
@@ -301,7 +324,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
           onRefresh={refresh}
           onPage={setContainerPage}
           onSelect={(item) => {
-            setOpenContainer({ kind: active, id: item.id });
+            setOpenContainer({ kind: tab, id: item.id });
           }}
         />
       );
@@ -315,13 +338,19 @@ export function MintBody(props: MintBodyProps): ReactElement {
     return (
       <ContainerDetail
         copy={copy}
-        kind={active}
+        kind={tab}
         state={container}
+        issues={embeddedIssues}
+        meta={tables}
         onBack={back}
         onRefresh={refresh}
         onOpenIssue={(id) => {
           setView('view.issues');
           setOpenIssueId(id);
+        }}
+        onOpenPlan={(id) => {
+          setView('view.plans');
+          setOpenContainer({ kind: 'plan', id });
         }}
       />
     );
