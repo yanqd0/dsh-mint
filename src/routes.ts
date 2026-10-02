@@ -26,6 +26,7 @@ import {
   parseDetail,
   parseItems,
 } from './mint-json.js';
+import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
 import type { IssuePlacement } from './records.js';
@@ -197,6 +198,11 @@ export function parseId(params: URLSearchParams): number {
 /**
  * Build the argv for one `list` route.
  *
+ * This is the pass-through form: whatever the flags can express in one call.
+ * The container routes go through {@link containerListRequest} instead, which
+ * overrides it when the panel's "open or running" default needs a full-table
+ * read; the issue route is the only caller of this function directly.
+ *
  * @param kind - which collection to read.
  * @param params - the request's query.
  * @param page - validated pagination.
@@ -216,13 +222,102 @@ export function buildListArgv(kind: ListKind, params: URLSearchParams, page: Pag
     pushFilter(argv, params, 'plan', '--plan');
     pushFilter(argv, params, 'milestone', '--milestone');
     pushFilter(argv, params, 'search', '--search');
-  } else if (kind === 'plan') {
-    pushFilter(argv, params, 'status', '--status');
+  } else {
+    // Containers (plan | milestone): `--all-states` wins over `--status`, the
+    // same precedence the issue branch takes — the two contradict each other and
+    // the panel never sends both.
+    if (params.get('allStates') === '1') argv.push('--all-states');
+    else pushFilter(argv, params, 'status', '--status');
     pushFilter(argv, params, 'milestone', '--milestone');
     pushFilter(argv, params, 'search', '--search');
   }
   argv.push('--page', String(page.page), '--page-size', String(page.pageSize));
   return argv;
+}
+
+/**
+ * The container states the panel treats as settled.
+ *
+ * mint's own `plan list` / `milestone list` hide only `done`, but `partial`
+ * (every issue settled, never released) and `dropped` (cancelled) are the rest
+ * of a container's end states. Only these three are named: a state mint grows
+ * later stays visible rather than disappearing silently.
+ */
+export const CONTAINER_END_STATES: readonly string[] = ['partial', 'dropped', 'done'];
+
+/** One container list request: the argv to run, and how to read its answer. */
+export interface ContainerListRequest {
+  argv: string[];
+  /**
+   * True when {@link argv} read the whole table (`--no-page`): the route must
+   * drop the settled containers and cut the requested page itself.
+   */
+  filterSettled: boolean;
+}
+
+/**
+ * Build the request behind `/dsh-mint/plans` or `/dsh-mint/milestones`.
+ *
+ * The panel's default is "open or running", which mint cannot be asked for: its
+ * own default hides only `done`, and `--status` accepts a single value (a
+ * repeated flag is a usage error). So the default path reads the whole
+ * all-states table — the same read the meta route already makes — and
+ * {@link settledContainerPage} filters and pages it here.
+ *
+ * An explicit `status` or `allStates` is expressible as one CLI call and passes
+ * straight through.
+ *
+ * @param kind - which container list to read.
+ * @param params - the request's query.
+ * @param page - validated pagination.
+ * @throws {RouteRequestError} on a malformed filter value.
+ */
+export function containerListRequest(
+  kind: 'plan' | 'milestone',
+  params: URLSearchParams,
+  page: PageQuery
+): ContainerListRequest {
+  if (params.get('allStates') === '1' || filterValue(params, 'status') !== undefined) {
+    return { argv: buildListArgv(kind, params, page), filterSettled: false };
+  }
+  const argv = [kind, 'list', '--all-states', '--json', '--no-page'];
+  pushFilter(argv, params, 'milestone', '--milestone');
+  pushFilter(argv, params, 'search', '--search');
+  return { argv, filterSettled: true };
+}
+
+/** The page a list route answers with, once its selection is applied. */
+export interface ListPage<T> {
+  items: T[];
+  page: number;
+  pageSize: number;
+  pages: number;
+  total: number;
+}
+
+/**
+ * Drop the settled containers and cut the requested page out of the rest.
+ *
+ * `--no-page` still carries mint's counters for the *unfiltered* table, so both
+ * the total and the slice are recomputed here.
+ *
+ * @param items - every container the CLI returned.
+ * @param page - the page the caller asked for.
+ */
+export function settledContainerPage<T extends { status: string }>(
+  items: readonly T[],
+  page: PageQuery
+): ListPage<T> {
+  const active = items.filter((item) => !CONTAINER_END_STATES.includes(item.status));
+  const total = active.length;
+  const start = (page.page - 1) * page.pageSize;
+  return {
+    items: active.slice(start, start + page.pageSize),
+    page: page.page,
+    pageSize: page.pageSize,
+    pages: total === 0 ? 1 : Math.ceil(total / page.pageSize),
+    total,
+  };
 }
 
 function pushFilter(
@@ -321,7 +416,12 @@ export function createMintHandler(
     scope: RequestScope,
     argv: string[],
     source: string,
-    isItem: (value: unknown) => value is T
+    isItem: (value: unknown) => value is T,
+    /**
+     * Optional selection: maps the parsed page onto the one to answer with.
+     * Absent means "the CLI's own page is the answer".
+     */
+    select?: (parsed: ParsedItems<T>) => ListPage<T>
   ): Promise<void> => {
     const result = await runForRequest(scope, argv);
     if (result === undefined) return;
@@ -330,15 +430,41 @@ export function createMintHandler(
       return;
     }
     const parsed = parseItems(source, result.text, isItem, { noun: 'list' });
+    const page = select === undefined ? parsed : select(parsed);
     sendJson(scope.res, 200, {
       ok: true,
-      items: parsed.items,
-      page: parsed.page,
-      page_size: parsed.pageSize,
-      pages: parsed.pages,
-      total: parsed.total,
+      items: page.items,
+      page: page.page,
+      page_size: page.pageSize,
+      pages: page.pages,
+      total: page.total,
       ...(parsed.warning === undefined ? {} : { warnings: [parsed.warning] }),
     });
+  };
+
+  /**
+   * Serve one container list through the panel's settled-state default.
+   *
+   * @param kind - which container table to read.
+   * @param params - the request's query.
+   * @param page - validated pagination.
+   * @param isItem - the guard for that table's records.
+   */
+  const sendContainerList = async <T extends { status: string }>(
+    scope: RequestScope,
+    kind: 'plan' | 'milestone',
+    params: URLSearchParams,
+    page: PageQuery,
+    isItem: (value: unknown) => value is T
+  ): Promise<void> => {
+    const request = containerListRequest(kind, params, page);
+    await sendList(
+      scope,
+      request.argv,
+      `${kind} list --json`,
+      isItem,
+      request.filterSettled ? (parsed) => settledContainerPage(parsed.items, page) : undefined
+    );
   };
 
   /**
@@ -457,15 +583,10 @@ export function createMintHandler(
             await sendList(scope, buildListArgv('issue', params, page), 'list --json', isIssueItem);
             return;
           case 'plans':
-            await sendList(scope, buildListArgv('plan', params, page), 'plan list --json', isPlanItem);
+            await sendContainerList(scope, 'plan', params, page, isPlanItem);
             return;
           case 'milestones':
-            await sendList(
-              scope,
-              buildListArgv('milestone', params, page),
-              'milestone list --json',
-              isMilestoneItem
-            );
+            await sendContainerList(scope, 'milestone', params, page, isMilestoneItem);
             return;
           case 'meta':
             await sendMeta(scope);

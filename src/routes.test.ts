@@ -16,11 +16,13 @@ import {
   buildIssueDetailArgv,
   buildListArgv,
   buildMilestoneIssuesArgv,
+  containerListRequest,
   createMintHandler,
   filterValue,
   installMintRoutes,
   parseId,
   parsePageQuery,
+  settledContainerPage,
   truncateBody,
 } from './routes.js';
 import type { MintRouteDeps } from './routes.js';
@@ -214,19 +216,56 @@ describe('route argv builders', () => {
     expect(argv).not.toContain('--status');
   });
 
-  it('keeps plan and milestone lists filter-free where mint offers none', () => {
+  it('maps container filters onto the flags mint offers', () => {
     expect(buildListArgv('milestone', new URLSearchParams({ status: 'open' }), { page: 1, pageSize: 20 })).toEqual([
       'milestone',
       'list',
       '--json',
+      '--status',
+      'open',
       '--page',
       '1',
       '--page-size',
       '20',
     ]);
-    expect(buildListArgv('plan', new URLSearchParams({ status: 'open' }), { page: 1, pageSize: 20 })).toContain(
-      '--status'
-    );
+    expect(
+      buildListArgv('plan', new URLSearchParams({ status: 'open', search: '面板' }), {
+        page: 2,
+        pageSize: 10,
+      })
+    ).toEqual([
+      'plan',
+      'list',
+      '--json',
+      '--status',
+      'open',
+      '--search',
+      '面板',
+      '--page',
+      '2',
+      '--page-size',
+      '10',
+    ]);
+  });
+
+  it('reads every container state when the settled ones are asked for', () => {
+    for (const kind of ['plan', 'milestone'] as const) {
+      const argv = buildListArgv(kind, new URLSearchParams({ allStates: '1', status: 'partial' }), {
+        page: 2,
+        pageSize: 10,
+      });
+      // allStates wins over status: the two flags contradict each other.
+      expect(argv).toEqual([
+        kind,
+        'list',
+        '--json',
+        '--all-states',
+        '--page',
+        '2',
+        '--page-size',
+        '10',
+      ]);
+    }
   });
 
   it('never builds a mutating command', () => {
@@ -235,6 +274,8 @@ describe('route argv builders', () => {
       buildListArgv('issue', params, { page: 1, pageSize: 20 }),
       buildListArgv('plan', params, { page: 1, pageSize: 20 }),
       buildListArgv('milestone', params, { page: 1, pageSize: 20 }),
+      containerListRequest('plan', params, { page: 1, pageSize: 20 }).argv,
+      containerListRequest('milestone', new URLSearchParams(), { page: 1, pageSize: 20 }).argv,
       buildIssueDetailArgv(9),
       buildDetailArgv('plan', 3),
       buildDetailArgv('milestone', 2),
@@ -297,6 +338,100 @@ describe('route argv builders', () => {
   });
 });
 
+describe('container list policy', () => {
+  it('reads the whole table and filters settled containers itself by default', () => {
+    for (const kind of ['plan', 'milestone'] as const) {
+      const request = containerListRequest(
+        kind,
+        new URLSearchParams({ milestone: '2', search: '面板' }),
+        { page: 1, pageSize: 20 }
+      );
+      expect(request.filterSettled).toBe(true);
+      expect(request.argv).toEqual([
+        kind,
+        'list',
+        '--all-states',
+        '--json',
+        '--no-page',
+        '--milestone',
+        '2',
+        '--search',
+        '面板',
+      ]);
+    }
+  });
+
+  it('passes an explicit status or all-states straight through to mint', () => {
+    expect(
+      containerListRequest('plan', new URLSearchParams({ status: 'partial' }), {
+        page: 1,
+        pageSize: 20,
+      })
+    ).toEqual({
+      argv: ['plan', 'list', '--json', '--status', 'partial', '--page', '1', '--page-size', '20'],
+      filterSettled: false,
+    });
+    expect(
+      containerListRequest('milestone', new URLSearchParams({ allStates: '1' }), {
+        page: 3,
+        pageSize: 5,
+      })
+    ).toEqual({
+      argv: ['milestone', 'list', '--json', '--all-states', '--page', '3', '--page-size', '5'],
+      filterSettled: false,
+    });
+  });
+
+  it('refuses a status that could become a flag', () => {
+    for (const kind of ['plan', 'milestone'] as const) {
+      expect(() =>
+        containerListRequest(kind, new URLSearchParams({ status: '--all-states' }), {
+          page: 1,
+          pageSize: 20,
+        })
+      ).toThrow(RouteRequestError);
+    }
+  });
+
+  it('drops the settled states and pages the remainder itself', () => {
+    const open = { id: 1, status: 'open' };
+    const running = { id: 3, status: 'running' };
+    const later = { id: 6, status: 'open' };
+    const containers = [
+      open,
+      { id: 2, status: 'partial' },
+      running,
+      { id: 4, status: 'dropped' },
+      { id: 5, status: 'done' },
+      later,
+    ];
+    expect(settledContainerPage(containers, { page: 1, pageSize: 2 })).toEqual({
+      items: [open, running],
+      page: 1,
+      pageSize: 2,
+      pages: 2,
+      total: 3,
+    });
+    expect(settledContainerPage(containers, { page: 2, pageSize: 2 }).items).toEqual([later]);
+  });
+
+  it('keeps a filtered page well-shaped when it is empty', () => {
+    // Past the end: the requested number survives, the client's clampPage
+    // converges on the next render.
+    expect(
+      settledContainerPage([{ id: 1, status: 'open' }], { page: 9, pageSize: 20 })
+    ).toMatchObject({ items: [], page: 9, pages: 1, total: 1 });
+    // Only settled containers: one empty page, never zero pages.
+    expect(settledContainerPage([{ id: 7, status: 'done' }], { page: 1, pageSize: 20 })).toEqual({
+      items: [],
+      page: 1,
+      pageSize: 20,
+      pages: 1,
+      total: 0,
+    });
+  });
+});
+
 describe('mint routes', () => {
   it('reads the session project, never a browser-supplied path', async () => {
     const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify({ items: [ISSUE_ITEM] }) });
@@ -340,6 +475,58 @@ describe('mint routes', () => {
     const detail = await invoke(detailRun.handler, `${ROUTE_PREFIX}/plan?session=s1&id=3`);
     expect(detailRun.runs[0]?.argv).toEqual(['plan', 'show', '3', '--json']);
     expect(detail.json()).toMatchObject({ ok: true, plan: { id: 3, body: '## 范围' } });
+  });
+
+  it('hides the settled containers unless the panel asks for them', async () => {
+    const containers = [
+      { ...PLAN_ITEM, id: 1, status: 'open' },
+      { ...PLAN_ITEM, id: 2, status: 'partial' },
+      { ...PLAN_ITEM, id: 3, status: 'dropped' },
+      { ...PLAN_ITEM, id: 4, status: 'done' },
+      { ...PLAN_ITEM, id: 5, status: 'running' },
+    ];
+    const run = harness({
+      cwd: '/proj',
+      result: JSON.stringify({ items: containers, page: 1, page_size: 5, pages: 1, total: 5 }),
+    });
+    const filtered = await invoke(run.handler, `${ROUTE_PREFIX}/plans?session=s1`);
+    expect(run.runs[0]?.argv).toEqual(['plan', 'list', '--all-states', '--json', '--no-page']);
+    expect(filtered.json()).toMatchObject({
+      ok: true,
+      items: [{ id: 1, status: 'open' }, { id: 5, status: 'running' }],
+      page: 1,
+      page_size: 20,
+      pages: 1,
+      total: 2,
+    });
+
+    const all = await invoke(
+      run.handler,
+      `${ROUTE_PREFIX}/plans?session=s1&allStates=1&page=2&pageSize=2`
+    );
+    expect(run.runs[1]?.argv).toEqual([
+      'plan',
+      'list',
+      '--json',
+      '--all-states',
+      '--page',
+      '2',
+      '--page-size',
+      '2',
+    ]);
+    expect(all.json()).toMatchObject({ ok: true, page: 1, page_size: 5, pages: 1, total: 5 });
+  });
+
+  it('applies the same settled-state policy to the milestone table', async () => {
+    const run = harness({
+      cwd: '/proj',
+      result: JSON.stringify({
+        items: [{ ...MILESTONE_ITEM, id: 3, status: 'dropped' }, MILESTONE_ITEM],
+      }),
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/milestones?session=s1&pageSize=10`);
+    expect(run.runs[0]?.argv).toEqual(['milestone', 'list', '--all-states', '--json', '--no-page']);
+    expect(res.json()).toMatchObject({ ok: true, items: [{ id: 2 }], page_size: 10, total: 1 });
   });
 
   it('serves one issue in full, truncating a body that is too large', async () => {
