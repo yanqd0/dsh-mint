@@ -1,6 +1,6 @@
 {
   "name": "@yanqd0/dsh-mint",
-  "version": "0.2.0",
+  "version": "0.3.0-alpha.1",
   "description": "DSH plugin: mint issue tracking integration — session context injection, event reminders, plan binding, a zero-approval `mint` tool, and a read-only mint panel in the right sidebar.",
   "type": "module",
   "license": "MIT",
