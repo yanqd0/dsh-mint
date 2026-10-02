@@ -11,7 +11,7 @@ import { IssueRow } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
 import type { LoadState } from './model.js';
-import { BODY, BUTTON, INPUT, NOTE, TAB_ACTIVE, TOOLBAR } from './styles.js';
+import { BODY, BUTTON, FILTER_LABEL, INPUT, NOTE, TAB_ACTIVE, TOOLBAR } from './styles.js';
 
 export interface IssueListProps {
   copy: CopyTranslate;
@@ -65,7 +65,7 @@ export function IssueList(props: IssueListProps): ReactElement {
             onSearch(event.target.value);
           }}
         />
-        <label style={{ ...NOTE, display: 'flex', alignItems: 'center', gap: 4 }}>
+        <label style={FILTER_LABEL}>
           <input
             type="checkbox"
             checked={allStates}

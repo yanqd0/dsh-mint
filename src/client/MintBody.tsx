@@ -67,7 +67,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [meta, setMeta] = useState<LoadState<MintMetaPayload>>({ status: 'loading' });
 
   // Issue view.
-  const [allStates, setAllStates] = useState(false);
+  const [issueAllStates, setIssueAllStates] = useState(false);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [issuePage, setIssuePage] = useState(1);
@@ -75,9 +75,12 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [openIssueId, setOpenIssueId] = useState<number | undefined>(undefined);
   const [issue, setIssue] = useState<LoadState<MintIssuePayload> | undefined>(undefined);
 
-  // Plan / milestone views.
+  // Plan / milestone views. Both tabs read a container list and share one
+  // filter: the settled-state default is a property of the list, not of the
+  // table it reads.
   const kind: 'plan' | 'milestone' | undefined =
     view === 'view.plans' ? 'plan' : view === 'view.milestones' ? 'milestone' : undefined;
+  const [containerAllStates, setContainerAllStates] = useState(false);
   const [containerPage, setContainerPage] = useState(1);
   const [containers, setContainers] = useState<
     LoadState<MintListPayload<PlanItem | MilestoneItem>>
@@ -136,7 +139,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
     void api
       .issues(
         {
-          ...(allStates ? { allStates: '1' } : {}),
+          ...(issueAllStates ? { allStates: '1' } : {}),
           ...(search === '' ? {} : { search }),
           page: String(issuePage),
           pageSize: String(PAGE_SIZE),
@@ -150,7 +153,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
       signal?.removeEventListener('abort', abort);
       controller.abort();
     };
-  }, [api, view, allStates, search, issuePage, reload, signal]);
+  }, [api, view, issueAllStates, search, issuePage, reload, signal]);
 
   // Read one plan or milestone page when that view is showing.
   useEffect(() => {
@@ -162,9 +165,15 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
     signal?.addEventListener('abort', abort);
     setContainers({ status: 'loading' });
-    const query = { page: String(containerPage), pageSize: String(PAGE_SIZE) };
+    const query = {
+      page: String(containerPage),
+      pageSize: String(PAGE_SIZE),
+      ...(containerAllStates ? { allStates: '1' } : {}),
+    };
     const request: Promise<MintResponse<MintListPayload<PlanItem | MilestoneItem>>> =
-      kind === 'plan' ? api.plans(query, controller.signal) : api.milestones(controller.signal);
+      kind === 'plan'
+        ? api.plans(query, controller.signal)
+        : api.milestones(query, controller.signal);
     void request.then((response) => {
       setContainers(toLoadState(response));
     });
@@ -172,7 +181,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
       signal?.removeEventListener('abort', abort);
       controller.abort();
     };
-  }, [api, kind, containerPage, reload, signal]);
+  }, [api, kind, containerPage, containerAllStates, reload, signal]);
 
   // A filter change can leave the caller on a page that no longer exists.
   useEffect(() => {
@@ -270,10 +279,10 @@ export function MintBody(props: MintBodyProps): ReactElement {
           state={issues}
           meta={tables}
           search={draft}
-          allStates={allStates}
+          allStates={issueAllStates}
           onSearch={setDraft}
           onAllStates={(next) => {
-            setAllStates(next);
+            setIssueAllStates(next);
             setIssuePage(1);
           }}
           onRefresh={refresh}
@@ -321,6 +330,11 @@ export function MintBody(props: MintBodyProps): ReactElement {
           copy={copy}
           row={containerRow}
           state={containers}
+          allStates={containerAllStates}
+          onAllStates={(next) => {
+            setContainerAllStates(next);
+            setContainerPage(1);
+          }}
           onRefresh={refresh}
           onPage={setContainerPage}
           onSelect={(item) => {

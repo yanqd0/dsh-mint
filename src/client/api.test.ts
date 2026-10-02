@@ -59,7 +59,7 @@ describe('createApi', () => {
     expect(calls[0]?.method).toBe('GET');
   });
 
-  it('forwards the abort signal', async () => {
+  it('forwards the abort signal and the container list query', async () => {
     const calls: Call[] = [];
     const controller = new AbortController();
     const api = createApi({
@@ -67,9 +67,9 @@ describe('createApi', () => {
       baseUri: 'http://host/',
       fetch: fetchStub('{"ok":true,"items":[],"page":1,"page_size":20,"pages":0,"total":0}', 200, calls),
     });
-    await api.milestones(controller.signal);
+    await api.milestones({ page: '2', pageSize: '10', allStates: '1' }, controller.signal);
     expect(calls[0]?.signal).toBe(controller.signal);
-    expect(calls[0]?.url).toBe('/dsh-mint/milestones?session=s1');
+    expect(calls[0]?.url).toBe('/dsh-mint/milestones?session=s1&page=2&pageSize=10&allStates=1');
   });
 
   it('passes a failure envelope through untouched', async () => {

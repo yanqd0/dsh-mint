@@ -114,7 +114,10 @@ export interface MintApiLike {
     query: Record<string, string | undefined>,
     signal?: AbortSignal
   ): Promise<MintResponse<MintListPayload<PlanItem>>>;
-  milestones(signal?: AbortSignal): Promise<MintResponse<MintListPayload<MilestoneItem>>>;
+  milestones(
+    query: Record<string, string | undefined>,
+    signal?: AbortSignal
+  ): Promise<MintResponse<MintListPayload<MilestoneItem>>>;
   /** One issue in full: the list fields plus the body. */
   issue(id: number, signal?: AbortSignal): Promise<MintResponse<MintIssuePayload>>;
   /**

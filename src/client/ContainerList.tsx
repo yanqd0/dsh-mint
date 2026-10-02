@@ -12,13 +12,16 @@ import { ContainerRowView } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
 import type { ContainerRow, LoadState } from './model.js';
-import { BODY, BUTTON, NOTE, TOOLBAR } from './styles.js';
+import { BODY, BUTTON, FILTER_LABEL, NOTE, TOOLBAR } from './styles.js';
 
 export interface ContainerListProps<T> {
   copy: CopyTranslate;
   /** Project one CLI record onto a row. */
   row: (item: T) => ContainerRow;
   state: LoadState<MintListPayload<T>>;
+  /** Whether the hide-settled default is off. */
+  allStates: boolean;
+  onAllStates: (next: boolean) => void;
   onRefresh: () => void;
   onPage: (next: number) => void;
   onSelect: (item: T) => void;
@@ -27,12 +30,14 @@ export interface ContainerListProps<T> {
 /**
  * Render the list.
  *
- * @param props - copy, the row projection, loaded state, and the callbacks.
+ * @param props - copy, the row projection, loaded state, filters, and the callbacks.
  */
 export function ContainerList<T>({
   copy,
   row,
   state,
+  allStates,
+  onAllStates,
   onRefresh,
   onPage,
   onSelect,
@@ -55,6 +60,16 @@ export function ContainerList<T>({
     <>
       <div style={TOOLBAR}>
         <span style={{ ...NOTE, flex: 1 }}>{copy('pager.summary', { page, pages, total })}</span>
+        <label style={FILTER_LABEL}>
+          <input
+            type="checkbox"
+            checked={allStates}
+            onChange={(event) => {
+              onAllStates(event.target.checked);
+            }}
+          />
+          {copy('panel.allStates')}
+        </label>
         <button type="button" style={BUTTON} onClick={onRefresh}>
           {copy('panel.refresh')}
         </button>

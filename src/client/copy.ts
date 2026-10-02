@@ -25,7 +25,7 @@ const COPY = {
 
   'panel.refresh': '刷新',
   'panel.search': '搜索',
-  'panel.allStates': '含已关闭',
+  'panel.allStates': '含已结束',
   'panel.truncated': '正文过长，已截断',
   'panel.embeddedLimited': '仅显示前 {shown} 条',
 

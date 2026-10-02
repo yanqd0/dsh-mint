@@ -14,6 +14,12 @@ describe('panel copy', () => {
     }
   });
 
+  // Both lists hide their end states by default, so the switch names the state
+  // class, not one status: `dropped` and `partial` count as ended too.
+  it('names the end-state switch for both lists', () => {
+    expect(ZH['panel.allStates']).toBe('含已结束');
+  });
+
   it('interpolates named placeholders, leaving unknown ones written', () => {
     expect(interpolate('第 {page}/{pages} 页', { page: 2, pages: 5 })).toBe('第 2/5 页');
     expect(interpolate('第 {page} 页')).toBe('第 {page} 页');

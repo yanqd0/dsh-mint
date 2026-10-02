@@ -83,6 +83,14 @@ export const NOTE: CSSProperties = {
   fontSize: 12,
 };
 
+/** The label that wraps one filter checkbox, so both lists sit the same way. */
+export const FILTER_LABEL: CSSProperties = {
+  ...NOTE,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+};
+
 export const ROW: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
