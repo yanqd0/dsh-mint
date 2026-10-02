@@ -34,15 +34,51 @@ describe('planBindListener', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json']);
   });
 
-  it('allows exit_plan_mode when an active plan exists', async () => {
+  it('allows exit_plan_mode when a running plan exists (#59)', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
-      text: '{"items":[{"id":5,"status":"open","title":"x"}]}',
+      text: '{"items":[{"id":5,"status":"running","issue_count":2,"title":"x"}]}',
     });
     const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
     const decision = await planBindListener(exec, spy);
 
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('denies an open, issue-less plan instead of passing the gate (#59)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"open","issue_count":0,"title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(decision.kind).toBe('deny');
+    expect(decision.reason).toContain('mint({args:["plan","plan"');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('denies a partial plan (done + dropped is a completion state)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"partial","title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const decision = await planBindListener(exec, vi.fn(next));
+    expect(decision.kind).toBe('deny');
+  });
+
+  it('fails open when the plan list carries no derived status', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
   });
