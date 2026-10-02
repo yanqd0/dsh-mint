@@ -134,7 +134,9 @@ export function ContainerDetail({
         <div style={{ ...META, marginTop: 6 }}>
           <span>{copy(kind === 'plan' ? 'container.plan' : 'container.milestone')}</span>
           <span style={pill(statusTone(item.status))}>{item.status}</span>
-          <span>{`${copy('field.version')} ${item.version}`}</span>
+          {item.version !== null && (
+            <span>{`${copy('field.version')} ${item.version}`}</span>
+          )}
           {item.milestone_id !== null && (
             <span>{`${copy('field.milestone')} #${String(item.milestone_id)}`}</span>
           )}

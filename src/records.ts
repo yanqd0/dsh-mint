@@ -26,8 +26,12 @@ export interface IssueItem {
 
 /** One `show <id> --json` issue: everything `list --json` carries, plus the body. */
 export interface IssueDetail extends IssueItem {
-  /** The issue's markdown body, truncated by the route at its byte budget. */
-  body: string;
+  /**
+   * The issue's markdown body, or `null` when it was created without one (mint
+   * serializes the column's `Option`). The route truncates a string at its byte
+   * budget; the panel renders both `null` and `''` as "no body" (#94).
+   */
+  body: string | null;
   /** Always present here, where a list row may fold it into its plan. */
   milestone_id: number | null;
   uid?: string;
@@ -39,7 +43,11 @@ export interface PlanItem {
   id: number;
   title: string;
   status: string;
-  version: string;
+  /**
+   * The plan's version, which follows its milestone: a plan attached to no
+   * milestone answers `null` (#96).
+   */
+  version: string | null;
   milestone_id: number | null;
   issue_count: number;
   created_at: string;
@@ -51,7 +59,8 @@ export interface MilestoneItem {
   id: number;
   title: string;
   status: string;
-  version: string;
+  /** `null` for a milestone created without a version. */
+  version: string | null;
   issue_count: number;
   created_at: string;
   updated_at: string;
@@ -107,9 +116,11 @@ export interface ContainerDetail {
   id: number;
   title: string;
   status: string;
-  version: string;
+  /** `null` for a plan whose milestone is absent (the version comes from it). */
+  version: string | null;
   milestone_id: number | null;
-  body: string;
+  /** `null` when the container was created without a body (#95). */
+  body: string | null;
   issues: ContainerChild[];
   created_at: string;
   updated_at: string;

@@ -328,13 +328,16 @@ describe('route argv builders', () => {
 
   it('truncates a body on a byte boundary', () => {
     expect(truncateBody('短')).toEqual({ body: '短', truncated: false });
+    // mint's own "no body" answer passes through untouched (#94/#95).
+    expect(truncateBody(null)).toEqual({ body: null, truncated: false });
     const long = 'a'.repeat(BODY_MAX_BYTES + 1);
     expect(truncateBody(long)).toEqual({ body: 'a'.repeat(BODY_MAX_BYTES), truncated: true });
     // Multi-byte characters must not be cut in half.
     const wide = '汉'.repeat(BODY_MAX_BYTES);
     const cut = truncateBody(wide);
     expect(cut.truncated).toBe(true);
-    expect(Buffer.byteLength(cut.body, 'utf8')).toBeLessThanOrEqual(BODY_MAX_BYTES);
+    expect(cut.body).not.toBeNull();
+    expect(Buffer.byteLength(cut.body ?? '', 'utf8')).toBeLessThanOrEqual(BODY_MAX_BYTES);
   });
 });
 
@@ -527,6 +530,50 @@ describe('mint routes', () => {
     const res = await invoke(run.handler, `${ROUTE_PREFIX}/milestones?session=s1&pageSize=10`);
     expect(run.runs[0]?.argv).toEqual(['milestone', 'list', '--all-states', '--json', '--no-page']);
     expect(res.json()).toMatchObject({ ok: true, items: [{ id: 2 }], page_size: 10, total: 1 });
+  });
+
+  it('keeps records mint answers with null fields (#94/#95/#96)', async () => {
+    // `plan create` without --milestone leaves version null; a container or
+    // issue created without --body answers body null. Those are declared
+    // answers, not shape drift: requiring a string dropped whole records and
+    // raised a false "missing required fields" warning.
+    const plan = { ...PLAN_ITEM, id: 9, version: null, milestone_id: null };
+    const planRun = harness({
+      cwd: '/proj',
+      result: JSON.stringify({ items: [plan], page: 1, page_size: 5, pages: 1, total: 1 }),
+    });
+    const plans = await invoke(planRun.handler, `${ROUTE_PREFIX}/plans?session=s1`);
+    expect(plans.json()).toMatchObject({ ok: true, items: [plan], total: 1 });
+    expect(plans.json().warnings).toBeUndefined();
+
+    const milestone = { ...MILESTONE_ITEM, version: null };
+    const msRun = harness({ cwd: '/proj', result: JSON.stringify({ items: [milestone] }) });
+    const milestones = await invoke(msRun.handler, `${ROUTE_PREFIX}/milestones?session=s1`);
+    expect(milestones.json()).toMatchObject({ ok: true, items: [milestone] });
+
+    const container = { ...PLAN_DETAIL, version: null, body: null };
+    const detailRun = harness({ cwd: '/proj', result: JSON.stringify(container) });
+    const planDetail = await invoke(detailRun.handler, `${ROUTE_PREFIX}/plan?session=s1&id=3`);
+    expect(planDetail.json()).toMatchObject({ ok: true, plan: { version: null, body: null } });
+
+    const issue = { ...ISSUE_DETAIL, body: null };
+    const issueRun = harness({ cwd: '/proj', result: JSON.stringify(issue) });
+    const issueDetail = await invoke(issueRun.handler, `${ROUTE_PREFIX}/issue?session=s1&id=9`);
+    expect(issueDetail.json()).toEqual({ ok: true, item: issue, truncated: false });
+
+    // The same plan must survive into the lookup tables /meta builds.
+    const metaRun = harness({
+      cwd: '/proj',
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone') return JSON.stringify({ items: [milestone] });
+        if (argv[0] === 'plan') return JSON.stringify({ items: [plan] });
+        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
+        return JSON.stringify({ items: [] });
+      },
+    });
+    const meta = await invoke(metaRun.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(meta.json()).toMatchObject({ ok: true, plans: [plan] });
+    expect(meta.json().warnings).toBeUndefined();
   });
 
   it('serves one issue in full, truncating a body that is too large', async () => {

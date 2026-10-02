@@ -93,6 +93,9 @@ describe('issue lines', () => {
     expect(hasBody('## 范围')).toBe(true);
     expect(hasBody('')).toBe(false);
     expect(hasBody('   \n\t ')).toBe(false);
+    // mint's declared "no body" answer (#94/#95).
+    expect(hasBody(null)).toBe(false);
+    expect(hasBody(undefined)).toBe(false);
   });
 
   it('summarizes position as priority, status and plan', () => {
@@ -163,6 +166,16 @@ describe('containers and pagination', () => {
       id: 3,
       title: '客户端面',
       meta: 'open · 0.2.0 · 6 issues',
+    });
+  });
+
+  it('omits a version mint does not have instead of printing null (#96)', () => {
+    expect(
+      containerRow({ id: 9, title: '无里程碑的 plan', status: 'open', version: null, issue_count: 0 })
+    ).toEqual({
+      id: 9,
+      title: '无里程碑的 plan',
+      meta: 'open · 0 issues',
     });
   });
 
@@ -318,6 +331,26 @@ describe('issue placement', () => {
     expect(milestoneVersionOf(META, 7)).toBeUndefined();
     expect(milestoneVersionOf(undefined, 2)).toBeUndefined();
     expect(milestoneVersionOf(META, null)).toBeUndefined();
+    // A milestone answered without a version is the same "nothing to show".
+    expect(
+      milestoneVersionOf(
+        {
+          ...META,
+          milestones: [
+            {
+              id: 2,
+              title: '无版本 milestone',
+              status: 'running',
+              version: null,
+              issue_count: 0,
+              created_at: '2026-10-02 20:00:00',
+              updated_at: '2026-10-02 20:00:00',
+            },
+          ],
+        },
+        2
+      )
+    ).toBeUndefined();
   });
 
   it('trusts the detail read for a standalone milestone', () => {

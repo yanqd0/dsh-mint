@@ -38,6 +38,20 @@ function isNumberOrNull(value: unknown): value is number | null {
   return value === null || isNumber(value);
 }
 
+/**
+ * True for a `string` or an explicit `null`.
+ *
+ * mint serializes most optional columns straight from `Option<String>` /
+ * `Option<i64>`, so `null` is a **declared** answer for them, not shape drift:
+ * an issue or container without a `body`, a plan whose `version` follows an
+ * absent `milestone_id`, a label without a recorded `color` (#94/#95/#96/#108).
+ * Requiring a string here dropped those whole records and reported them as
+ * "missing required fields".
+ */
+function isStringOrNull(value: unknown): value is string | null {
+  return value === null || isString(value);
+}
+
 /** True for an array of strings. */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
@@ -61,12 +75,13 @@ export function isIssueItem(value: unknown): value is IssueItem {
 }
 
 /** A `plan list --json` record must carry every field the panel renders. */
-export function isPlanItem(value: unknown): value is PlanItem {  if (!isRecord(value)) return false;
+export function isPlanItem(value: unknown): value is PlanItem {
+  if (!isRecord(value)) return false;
   return (
     isNumber(value.id) &&
     isString(value.title) &&
     isString(value.status) &&
-    isString(value.version) &&
+    isStringOrNull(value.version) &&
     isNumberOrNull(value.milestone_id) &&
     isNumber(value.issue_count) &&
     isString(value.created_at) &&
@@ -81,7 +96,7 @@ export function isMilestoneItem(value: unknown): value is MilestoneItem {
     isNumber(value.id) &&
     isString(value.title) &&
     isString(value.status) &&
-    isString(value.version) &&
+    isStringOrNull(value.version) &&
     isNumber(value.issue_count) &&
     isString(value.created_at) &&
     isString(value.updated_at)
@@ -109,9 +124,9 @@ export function isContainerDetail(value: unknown): value is ContainerDetail {
     isNumber(value.id) &&
     isString(value.title) &&
     isString(value.status) &&
-    isString(value.version) &&
+    isStringOrNull(value.version) &&
     isNumberOrNull(value.milestone_id) &&
-    isString(value.body) &&
+    isStringOrNull(value.body) &&
     Array.isArray(value.issues) &&
     value.issues.every(
       (issue: unknown) =>
@@ -130,11 +145,13 @@ export function isContainerDetail(value: unknown): value is ContainerDetail {
  * `show <id> --json` must carry the list fields plus the body.
  *
  * `list --json` folds an issue's milestone into its plan and omits the body, so
- * the detail read is the only place a panel can see both.
+ * the detail read is the only place a panel can see both. An issue created
+ * without `--body` answers `"body": null`, which the panel shows as "no body"
+ * rather than as an unreadable record (#94).
  */
 export function isIssueDetail(value: unknown): value is IssueDetail {
   if (!isRecord(value)) return false;
-  return isIssueItem(value) && isString(value.body) && isNumberOrNull(value.milestone_id);
+  return isIssueItem(value) && isStringOrNull(value.body) && isNumberOrNull(value.milestone_id);
 }
 
 export interface ParsedItems<T> {

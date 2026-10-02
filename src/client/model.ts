@@ -64,9 +64,9 @@ export function issueHeadline(item: IssueItem): string {
   return `#${String(item.id)} ${item.title}`;
 }
 
-/** True when a body has anything to show; mint bodies are often empty. */
-export function hasBody(body: string): boolean {
-  return body.trim().length > 0;
+/** True when a body has anything to show; mint bodies are often empty or `null`. */
+export function hasBody(body: string | null | undefined): body is string {
+  return typeof body === 'string' && body.trim().length > 0;
 }
 
 /** The copy key for a mint link relation, when the panel knows it. */
@@ -153,13 +153,19 @@ export interface PlacementView {
   direct: boolean;
 }
 
-/** The version a milestone id renders as; `undefined` when the table lacks it. */
+/**
+ * The version a milestone id renders as; `undefined` when the table lacks it.
+ *
+ * A milestone answered without a version is the same "nothing to show" as an
+ * absent one, so `null` collapses into `undefined` here and every row/detail
+ * consumer keeps its single existing check (#96).
+ */
 export function milestoneVersionOf(
   meta: MintMetaPayload | undefined,
   id: number | null
 ): string | undefined {
   if (meta === undefined || id === null) return undefined;
-  return meta.milestones.find((milestone) => milestone.id === id)?.version;
+  return meta.milestones.find((milestone) => milestone.id === id)?.version ?? undefined;
 }
 
 /**
@@ -259,7 +265,8 @@ export interface ContainerRecordLike {
   id: number;
   title: string;
   status: string;
-  version: string;
+  /** `null` when mint has none for this container; the row simply omits it. */
+  version: string | null;
   issue_count: number;
 }
 

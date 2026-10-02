@@ -363,8 +363,17 @@ function failure(result: MintRunResult): Record<string, unknown> {
   return stderr !== undefined && stderr.length > 0 ? { error, stderr } : { error };
 }
 
-/** Truncate a body on a UTF-8 boundary, reporting whether it was cut. */
-export function truncateBody(text: string): { body: string; truncated: boolean } {
+/**
+ * Truncate a body on a UTF-8 boundary, reporting whether it was cut.
+ *
+ * `null` is mint's own "no body" answer (#94/#95) and passes through untouched:
+ * the panel already renders both `null` and `''` as the empty state, so there is
+ * nothing to normalize here and nothing to fabricate.
+ *
+ * @param text - the record's body, or `null` when it has none.
+ */
+export function truncateBody(text: string | null): { body: string | null; truncated: boolean } {
+  if (text === null) return { body: null, truncated: false };
   if (Buffer.byteLength(text, 'utf8') <= BODY_MAX_BYTES) return { body: text, truncated: false };
   // Byte length is monotonic in the prefix length, so binary-search the longest
   // prefix that fits instead of trimming one character at a time.

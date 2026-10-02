@@ -20,8 +20,8 @@ export const BODY_LANGUAGE = 'markdown';
 
 export interface BodyViewProps {
   copy: CopyTranslate;
-  /** The record's source, exactly as mint stores it. */
-  body: string;
+  /** The record's source exactly as mint stores it, or `null` when it has none. */
+  body: string | null;
 }
 
 /**
