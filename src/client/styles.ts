@@ -106,11 +106,6 @@ export const ROW: CSSProperties = {
   cursor: 'pointer',
 };
 
-export const ROW_ACTIVE: CSSProperties = {
-  ...ROW,
-  background: 'var(--dsw-alias-bg-layer-1)',
-};
-
 export const META: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
