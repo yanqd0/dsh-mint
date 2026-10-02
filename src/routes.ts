@@ -30,18 +30,14 @@ import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
 import type { IssuePlacement } from './records.js';
+import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
 import type { AgentsLike, DshContext, WebServerLike } from './types.js';
 
 /**
- * Every route lives under this prefix; one registration owns the whole space.
- *
- * **No trailing slash.** The host matches a `prefix` route with
- * `pathname === prefix || pathname.startsWith(prefix + '/')`, so a registered
- * `/dsh-mint/` would only ever match `/dsh-mint/` or `/dsh-mint//…`: a request
- * for `/dsh-mint/issues` misses it, falls through to the SPA fallback, and comes
- * back as an empty 404.
+ * Re-exported from {@link ./route-paths.js}: the prefix is shared with the
+ * browser half, which builds the same paths for its `fetch`es (#104).
  */
-export const ROUTE_PREFIX = '/dsh-mint';
+export { ROUTE_PREFIX };
 
 /** The panel truncates an issue body at this many UTF-8 bytes. */
 export const BODY_MAX_BYTES = 256 * 1024;
@@ -62,17 +58,6 @@ const MAX_FILTER_LENGTH = 200;
  * bug — `label` is here for the color dictionary only, never `label set`.
  */
 export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone', 'label'] as const;
-
-/** The seven routes this prefix answers; anything else is a 404. */
-const ROUTE_NAMES: readonly string[] = [
-  'issues',
-  'plans',
-  'milestones',
-  'issue',
-  'plan',
-  'milestone',
-  'meta',
-];
 
 /**
  * How many milestones the meta route scans for issue placement.
@@ -627,7 +612,7 @@ export function createMintHandler(
     res.on('close', onClose);
 
     try {
-      if (ROUTE_NAMES.includes(name)) {
+      if (isRouteName(name)) {
         const sessionId = params.get('session') ?? '';
         const cwd = deps.getCwd(sessionId);
         if (cwd === undefined) {

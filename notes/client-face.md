@@ -113,7 +113,10 @@ ctx.inject(['webServer'], (scoped) => {
 dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（`show --json` 全量，含 body）、
 `/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`、`/dsh-mint/meta`，
 均带 `session=<SessionId>`，宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录
-（**不接受浏览器给的路径**）。每次 CLI run 共享**本请求的一个 AbortController**（`RequestScope`），
+（**不接受浏览器给的路径**）。**前缀与路由名单只有一份**：`src/route-paths.ts`（`ROUTE_PREFIX` /
+`ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/routes.ts` 与浏览器 `src/client/api.ts` 各自
+派生——`src/route-paths.test.ts` 比对两表防漂移（#104）。每次 CLI run 共享**本请求的一个
+AbortController**（`RequestScope`），
 浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
 `MaxListeners`，且只能取消其中一个。
 

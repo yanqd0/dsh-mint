@@ -21,17 +21,23 @@ import type {
   MintResponse,
   PlanItem,
 } from '../records.js';
+import { routePath } from '../route-paths.js';
 import type { MintApiLike } from './types.js';
 
-/** One route's path, relative to the served page. */
-const ROUTES = {
-  issues: '/dsh-mint/issues',
-  plans: '/dsh-mint/plans',
-  milestones: '/dsh-mint/milestones',
-  issue: '/dsh-mint/issue',
-  plan: '/dsh-mint/plan',
-  milestone: '/dsh-mint/milestone',
-  meta: '/dsh-mint/meta',
+/**
+ * One route's path, derived from the host's own route table (#104).
+ *
+ * Exported for the drift guard: the host's `ROUTE_NAMES` and this table must
+ * describe the same seven paths, and only a comparison can keep it that way.
+ */
+export const ROUTES = {
+  issues: routePath('issues'),
+  plans: routePath('plans'),
+  milestones: routePath('milestones'),
+  issue: routePath('issue'),
+  plan: routePath('plan'),
+  milestone: routePath('milestone'),
+  meta: routePath('meta'),
 } as const;
 
 /**
