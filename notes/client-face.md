@@ -135,9 +135,19 @@ milestone + 是否直连）。
 > **`list --json` 也不含 issue 的 effective milestone**（0.9.0-alpha.1 实测：只有 `plan_id`），
 > label 的 color 更是只存在于 `label list`。所以 meta 的 placement 目前**逐 milestone 反查**
 > （`list --all-states --milestone <M>`，上限 30，M 次 spawn），上游 mint 在 list 输出补上该字段即可
-> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录）。milestone 详情的「包含 plan」仍用 meta
-> 的 all-states plans 按 `milestone_id` 过滤，而不是再打一次计划路由（那里只回应当前筛选下的分页，
-> 已收口的 plan 会消失）。
+> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录，dsh-mint #90/#105 关联）。**当前缓解
+> （#105）**：三张字典表每次请求实读，placement 这张昂贵的表按 (entry, cwd) 在宿主进程内缓存
+> `PLACEMENT_TTL_MS`（默认 10s，`MintRouteDeps.now` 是测试时钟缝）；面板的显式刷新走
+> `/dsh-mint/meta?...&refresh=1` 强制重扫（`createApi` 的 `meta(signal, fresh)`）。milestone 详情的
+> 「包含 plan」仍用 meta 的 all-states plans 按 `milestone_id` 过滤，而不是再打一次计划路由（那里
+> 只回应当前筛选下的分页，已收口的 plan 会消失）。
+
+> **mint 的可空字段是「合法答案」，不是形状漂移（#94/#95/#96/#107/#108）**：`show --json` 的 issue /
+> container `body`、plan/milestone 的 `version`、`label list` 的 `color` 都来自 `Option<…>`，未设时为
+> `null`。守卫（`src/mint-json.ts` 的 `isStringOrNull`）接受 `null`，路由**原样透传**（`truncateBody(null)`
+> 返回 `{body:null,truncated:false}`），由展示层消化：`hasBody(null)`/`BodyView` 显示空态、
+> `containerMeta`/`milestoneVersionOf` 丢弃 `null` 版本、`labelBadge(label?.color ?? '')` 退回中性徽章。
+> 千万不要把「要求 string」当严格性——那会把整条记录从列表里丢掉并报假的 `missing required fields`。
 
 ## 4. locale
 

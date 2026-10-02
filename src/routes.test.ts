@@ -9,6 +9,7 @@ import {
   META_MILESTONE_LIMIT,
   META_MILESTONES_ARGV,
   META_PLANS_ARGV,
+  PLACEMENT_TTL_MS,
   READ_ONLY_SUBCOMMANDS,
   ROUTE_PREFIX,
   RouteRequestError,
@@ -59,6 +60,8 @@ function harness(options: {
   /** Per-argv result; takes precedence over the single {@link options.result}. */
   byArgv?: (argv: readonly string[]) => unknown;
   entry?: string;
+  /** Clock seam for the placement TTL (#105). */
+  now?: () => number;
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   runs: RecordedRun[];
@@ -74,6 +77,7 @@ function harness(options: {
       return Promise.resolve({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
     },
     ...(options.entry === undefined ? {} : { entry: options.entry }),
+    ...(options.now === undefined ? {} : { now: options.now }),
   };
   return { handler: createMintHandler(deps), runs };
 }
@@ -680,6 +684,39 @@ describe('mint routes', () => {
     const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: false, error: 'boom' });
+  });
+
+  it('memoizes the placement scan and lets refresh=1 bypass it (#105)', async () => {
+    let clock = 1_000;
+    const run = harness({
+      cwd: '/proj',
+      now: () => clock,
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
+        if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
+        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
+        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
+      },
+    });
+    const placementRuns = (): number =>
+      run.runs.filter((entry) => entry.argv[0] === 'list').length;
+
+    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(placementRuns()).toBe(2);
+    // Same handler, same project, inside the TTL: the dictionaries are re-read,
+    // the (expensive) placement scan is not.
+    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(placementRuns()).toBe(2);
+    expect(run.runs.filter((entry) => entry.argv[0] === 'milestone')).toHaveLength(2);
+
+    // The panel's own refresh must not wait for the TTL.
+    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1&refresh=1`);
+    expect(placementRuns()).toBe(4);
+
+    // Once the TTL lapses the next request rescans by itself.
+    clock += PLACEMENT_TTL_MS;
+    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(placementRuns()).toBe(6);
   });
 
   it('caps how many milestones it scans for placement', async () => {

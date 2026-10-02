@@ -83,6 +83,18 @@ const ROUTE_NAMES: readonly string[] = [
  */
 export const META_MILESTONE_LIMIT = 30;
 
+/**
+ * How long one placement scan answers further panel requests (#105).
+ *
+ * Placement has no bulk read (see {@link buildMilestoneIssuesArgv}), so a single
+ * request costs one CLI run per milestone, up to {@link META_MILESTONE_LIMIT}.
+ * The three dictionary tables are still re-read on every request — they are what
+ * the panel navigates — while the issue→milestone map is remembered for this
+ * window. The panel's explicit refresh sends `refresh=1` and bypasses it, so a
+ * user who just changed an attachment never waits for the TTL.
+ */
+export const PLACEMENT_TTL_MS = 10_000;
+
 /** The three whole-table reads the meta route always performs, unpaginated. */
 export const META_MILESTONES_ARGV: readonly string[] = [
   'milestone',
@@ -134,6 +146,8 @@ export interface MintRouteDeps {
   entry?: string;
   /** Defaults to {@link runMint}; tests replace it. */
   run?: MintRunner;
+  /** Clock seam for the placement TTL (#105); defaults to `Date.now`. */
+  now?: () => number;
 }
 
 /**
@@ -399,6 +413,19 @@ export function createMintHandler(
   deps: MintRouteDeps
 ): (req: IncomingMessage, res: ServerResponse) => Promise<void> {
   const run = deps.run ?? runMint;
+  const now = deps.now ?? Date.now;
+
+  /**
+   * The issue→milestone map, per project, for {@link PLACEMENT_TTL_MS} (#105).
+   *
+   * Scoped to the handler (i.e. the plugin's lifetime) rather than to a request:
+   * the expensive part is the per-milestone fan-out, and a panel that reopens or
+   * switches views asks for it again within seconds.
+   */
+  const placementCache = new Map<
+    string,
+    { at: number; placement: Record<string, IssuePlacement> }
+  >();
 
   /**
    * Run mint under the request's lifetime; `undefined` once the client left.
@@ -484,8 +511,11 @@ export function createMintHandler(
    * is an independent child process. A per-milestone failure costs that
    * milestone's placement and a warning, never the whole response: the panel can
    * still draw every row it already has.
+   *
+   * The scan is memoized for {@link PLACEMENT_TTL_MS} per project (#105); the
+   * caller's `refresh=1` forces a fresh one.
    */
-  const sendMeta = async (scope: RequestScope): Promise<void> => {
+  const sendMeta = async (scope: RequestScope, params: URLSearchParams): Promise<void> => {
     const [milestones, plans, labels] = await Promise.all([
       runForRequest(scope, [...META_MILESTONES_ARGV]),
       runForRequest(scope, [...META_PLANS_ARGV]),
@@ -520,6 +550,20 @@ export function createMintHandler(
       );
     }
 
+    const cacheKey = `${deps.entry ?? ''}\u0000${scope.cwd}`;
+    const cached = placementCache.get(cacheKey);
+    if (params.get('refresh') !== '1' && cached !== undefined && now() - cached.at < PLACEMENT_TTL_MS) {
+      sendJson(scope.res, 200, {
+        ok: true,
+        plans: planPage.items,
+        milestones: milestonePage.items,
+        labels: labelPage.items,
+        placement: cached.placement,
+        ...(warnings.length === 0 ? {} : { warnings }),
+      });
+      return;
+    }
+
     const members = await Promise.all(
       scan.map(async (milestone) => ({
         id: milestone.id,
@@ -543,6 +587,11 @@ export function createMintHandler(
         // without a plan is the direct case and everyone else is via that plan.
         placement[String(item.id)] = { milestone: id, direct: item.plan_id === null };
       }
+    }
+    // A client that disconnected mid-scan keeps no answer (#105): `placement`
+    // would then be a partial map that reads as real data for the whole TTL.
+    if (!scope.signal.aborted) {
+      placementCache.set(cacheKey, { at: now(), placement });
     }
 
     sendJson(scope.res, 200, {
@@ -598,7 +647,7 @@ export function createMintHandler(
             await sendContainerList(scope, 'milestone', params, page, isMilestoneItem);
             return;
           case 'meta':
-            await sendMeta(scope);
+            await sendMeta(scope, params);
             return;
           case 'issue': {
             const id = parseId(params);

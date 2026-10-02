@@ -123,8 +123,11 @@ export interface MintApiLike {
   /**
    * The panel's lookup tables in one read: plans, milestones, labels, and where
    * each issue sits. Nothing a row needs per item lives on the item itself.
+   *
+   * `fresh` bypasses the host's short placement memo (#105): the panel's own
+   * refresh action sets it, so an attachment changed a second ago shows up now.
    */
-  meta(signal?: AbortSignal): Promise<MintResponse<MintMetaPayload>>;
+  meta(signal?: AbortSignal, fresh?: boolean): Promise<MintResponse<MintMetaPayload>>;
   plan(id: number, signal?: AbortSignal): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
   milestone(
     id: number,

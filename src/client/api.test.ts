@@ -125,5 +125,11 @@ describe('createApi', () => {
     const result = await api.meta();
     expect(result.ok).toBe(true);
     expect(calls[0]?.url).toBe('/app/dsh-mint/meta?session=s1');
+
+    // The panel's own refresh asks the host to skip its placement memo (#105).
+    await api.meta(undefined, true);
+    expect(calls[1]?.url).toBe('/app/dsh-mint/meta?session=s1&refresh=1');
+    await api.meta(undefined, false);
+    expect(calls[2]?.url).toBe('/app/dsh-mint/meta?session=s1');
   });
 });
