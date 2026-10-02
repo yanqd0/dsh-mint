@@ -64,6 +64,11 @@ export function issueHeadline(item: IssueItem): string {
   return `#${String(item.id)} ${item.title}`;
 }
 
+/** True when a body has anything to show; mint bodies are often empty. */
+export function hasBody(body: string): boolean {
+  return body.trim().length > 0;
+}
+
 /** The copy key for a mint link relation, when the panel knows it. */
 export function linkLabelKey(rel: string): CopyKey | undefined {
   switch (rel) {

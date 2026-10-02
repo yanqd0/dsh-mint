@@ -23,4 +23,23 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
 
   /** Refresh glyph, used by the panel's toolbar. */
   export const IconRefreshOutlineRegular: ComponentType<IconProps>;
+
+  /** What the panel passes to the highlighted body block it renders. */
+  export interface CodeBlockProps {
+    /** The source text, rendered verbatim. */
+    code: string;
+    /** Grammar hint; `markdown` is what mint bodies are written in. */
+    lang?: string | undefined;
+    /** Show the language and copy header. Defaults to true. */
+    showHeader?: boolean | undefined;
+    /** Extra class merged onto the wrapper. */
+    className?: string | undefined;
+    /** Copy-button idle label; this package is cordis-free, so copy is a prop. */
+    copyLabel: string;
+    /** Copy-button label during the post-copy confirmation window. */
+    copiedLabel: string;
+  }
+
+  /** One fenced block of source, syntax-highlighted and copyable. */
+  export const CodeBlock: ComponentType<CodeBlockProps>;
 }

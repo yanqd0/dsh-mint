@@ -8,11 +8,12 @@
 import type { ReactElement } from 'react';
 
 import type { ContainerDetail } from '../records.js';
+import { BodyView } from './Body.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';
 import { containerChildLine, statusTone } from './model.js';
 import type { LoadState } from './model.js';
-import { BODY, BUTTON, META, NOTE, PROSE, ROW, TOOLBAR, pill } from './styles.js';
+import { BODY, BUTTON, META, NOTE, ROW, TOOLBAR, pill } from './styles.js';
 
 export interface ContainerDetailProps {
   copy: CopyTranslate;
@@ -80,7 +81,7 @@ export function ContainerDetail({
           )}
           <span>{`${copy('field.updated')} ${item.updated_at}`}</span>
         </div>
-        <p style={PROSE}>{item.body}</p>
+        <BodyView copy={copy} body={item.body} />
 
         <div style={{ ...NOTE, marginTop: 12 }}>{copy('field.issues')}</div>
         {item.issues.length === 0 ? (

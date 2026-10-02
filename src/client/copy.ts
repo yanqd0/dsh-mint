@@ -53,7 +53,11 @@ const COPY = {
 
   'detail.back': '返回',
   'detail.body': '正文',
+  'detail.noBody': '（无正文）',
   'detail.standalone': '未挂 plan',
+
+  'body.copy': '复制',
+  'body.copied': '已复制',
 
   'link.related': '相关',
   'link.solves': '解决',

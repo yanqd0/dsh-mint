@@ -17,6 +17,7 @@ import {
   describeLink,
   detailContainer,
   detailPlacement,
+  hasBody,
   issueHeadline,
   issueMeta,
   issuePlacement,
@@ -86,6 +87,12 @@ describe('status and priority', () => {
 describe('issue lines', () => {
   it('headlines an issue without decoration', () => {
     expect(issueHeadline(ISSUE)).toBe('#12 实现 issue 视图');
+  });
+
+  it('knows a body that has nothing in it', () => {
+    expect(hasBody('## 范围')).toBe(true);
+    expect(hasBody('')).toBe(false);
+    expect(hasBody('   \n\t ')).toBe(false);
   });
 
   it('summarizes position as priority, status and plan', () => {

@@ -7,10 +7,11 @@
 import type { ReactElement } from 'react';
 
 import type { IssueDetail as IssueDetailRecord, MintMetaPayload } from '../records.js';
+import { BodyView } from './Body.js';
 import { LabelBadges, PlacementChips } from './Rows.js';
 import type { CopyTranslate } from './copy.js';
 import { describeLink, detailPlacement, priorityLabel, statusTone } from './model.js';
-import { BODY, BUTTON, META, NOTE, PROSE, TOOLBAR, pill } from './styles.js';
+import { BODY, BUTTON, META, NOTE, TOOLBAR, pill } from './styles.js';
 
 export interface IssueDetailProps {
   copy: CopyTranslate;
@@ -70,7 +71,7 @@ export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetail
         </div>
 
         <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.body')}</div>
-        <p style={PROSE}>{item.body}</p>
+        <BodyView copy={copy} body={item.body} />
         {truncated && <p style={NOTE}>{copy('panel.truncated')}</p>}
       </div>
     </>

@@ -21,3 +21,16 @@ export const IconChecklistOutlineRegular: ComponentType<IconProps> = () => null;
 
 /** Refresh glyph, used by the panel's toolbar. */
 export const IconRefreshOutlineRegular: ComponentType<IconProps> = () => null;
+
+/** What the panel passes to the highlighted body block it renders. */
+export interface CodeBlockProps {
+  code: string;
+  lang?: string | undefined;
+  showHeader?: boolean | undefined;
+  className?: string | undefined;
+  copyLabel: string;
+  copiedLabel: string;
+}
+
+/** Highlighted source block; the stub only has to be importable in Node. */
+export const CodeBlock: ComponentType<CodeBlockProps> = () => null;
