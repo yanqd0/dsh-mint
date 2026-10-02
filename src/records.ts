@@ -70,8 +70,12 @@ export interface MilestoneItem {
 export interface LabelItem {
   id: number;
   name: string;
-  /** The recorded `#rrggbb` value the panel tints the label's badge with. */
-  color: string;
+  /**
+   * The recorded `#rrggbb` value the panel tints the label's badge with, or
+   * `null` for a label mint has no color for — the panel falls back to a neutral
+   * chip instead of losing the label (#108).
+   */
+  color: string | null;
   description: string | null;
   issue_count: number;
   created_at: string;

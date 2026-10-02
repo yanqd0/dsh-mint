@@ -576,6 +576,22 @@ describe('mint routes', () => {
     expect(meta.json().warnings).toBeUndefined();
   });
 
+  it('keeps a label mint has no color for (#108)', async () => {
+    // mint types the color column as nullable; the label must stay in the
+    // dictionary so its name keeps resolving, and the panel tints it neutrally.
+    const label = { ...LABEL_ITEM, id: 20, name: 'imported', color: null };
+    const run = harness({
+      cwd: '/proj',
+      byArgv: (argv) => {
+        if (argv[0] === 'milestone' || argv[0] === 'plan') return JSON.stringify({ items: [] });
+        return JSON.stringify({ items: [label] });
+      },
+    });
+    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
+    expect(res.json()).toMatchObject({ ok: true, labels: [label] });
+    expect(res.json().warnings).toBeUndefined();
+  });
+
   it('serves one issue in full, truncating a body that is too large', async () => {
     const item = { ...ISSUE_DETAIL, body: 'short body' };
     const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify(item) });

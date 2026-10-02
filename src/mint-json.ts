@@ -109,7 +109,7 @@ export function isLabelItem(value: unknown): value is LabelItem {
   return (
     isNumber(value.id) &&
     isString(value.name) &&
-    isString(value.color) &&
+    isStringOrNull(value.color) &&
     (value.description === null || isString(value.description)) &&
     isNumber(value.issue_count) &&
     isString(value.created_at) &&
