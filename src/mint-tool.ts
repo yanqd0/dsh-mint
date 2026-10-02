@@ -103,6 +103,8 @@ export interface MintToolOutcome {
   exitCode: number;
   stdout?: string;
   stderr?: string;
+  /** The mint process was killed by the wall-clock limit (#45). */
+  timedOut?: boolean;
 }
 
 /**
@@ -118,6 +120,19 @@ export const MINT_SKEW_HINT =
   '提示：该子命令/参数不被当前 mint 识别，可能是版本偏斜（实跑的 mint 落后于该命令）。' +
   '先用 mint({args:["-V"]}) 确认版本；再用挂载行 mintEntry 或环境变量 MINT_ENTRY 指向更新的 mint' +
   '（如本地构建的 target/debug/mint）。';
+
+/**
+ * Actionable follow-up for a killed mint process (#45). `mint-faa` downloads the
+ * binary lazily on first use, and that download prints nothing on the lazy path,
+ * so a bare `exit timeout` reads like a broken mint. The first run of a process
+ * now gets a 180 s budget and concurrent first runs are serialized; a retry is
+ * the cheapest way out, and the two overrides cover a genuinely slow link.
+ */
+export const MINT_TIMEOUT_HINT =
+  '提示：mint 进程被超时中断。全新安装后的首次调用需要先下载 mint 二进制（mint-faa 按需安装，无进度输出）——' +
+  '首调预算已放宽且并发首调已串行化，直接重试通常即可；' +
+  '若仍超时：用挂载行 mintEntry 或 MINT_ENTRY 指向已装好的 mint，' +
+  '或先跑 node <插件>/dist/check-mint-entry.js --mode dependency 预热。';
 
 /**
  * Reject argv the tool refuses to run. Returns a model-readable reason, or
@@ -240,7 +255,9 @@ export async function executeMintTool(
     return outcome;
   }
   const exitCode = result.exitCode ?? (result.aborted === true ? 130 : 1);
-  return { ok: false, exitCode, stderr: result.error ?? 'mint 执行失败' };
+  const failed: MintToolOutcome = { ok: false, exitCode, stderr: result.error ?? 'mint 执行失败' };
+  if (result.timedOut === true) failed.timedOut = true;
+  return failed;
 }
 
 /**
@@ -255,8 +272,10 @@ export function renderMintOutcome(outcome: MintToolOutcome): string {
       .filter((part) => part.length > 0);
     return parts.length > 0 ? parts.join('\n') : '(mint 无输出)';
   }
-  const message = `[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`;
-  return SKEW_ERROR_PATTERN.test(outcome.stderr ?? '') ? `${message}\n${MINT_SKEW_HINT}` : message;
+  const lines = [`[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`];
+  if (outcome.timedOut === true) lines.push(MINT_TIMEOUT_HINT);
+  if (SKEW_ERROR_PATTERN.test(outcome.stderr ?? '')) lines.push(MINT_SKEW_HINT);
+  return lines.join('\n');
 }
 
 /**

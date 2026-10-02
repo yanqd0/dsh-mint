@@ -6,6 +6,7 @@ import { dirname, join } from 'node:path';
 import { afterEach, describe, expect, it, vi, beforeEach } from 'vitest';
 
 import {
+  MINT_COLD_TIMEOUT_MS,
   MINT_ENTRY_DEPENDENCY,
   MINT_ENTRY_HINT,
   MINT_TIMEOUT_MS,
@@ -13,6 +14,7 @@ import {
   expandMintEntry,
   mintCommand,
   parseMintVersion,
+  resetMintWarmState,
   resolveDependencyEntry,
   resolveMintEntry,
   runMint,
@@ -49,6 +51,19 @@ function fakeChild(script: {
     if (script.stderr) child.stderr.emit('data', Buffer.from(script.stderr));
     child.emit('close', script.exitCode === undefined ? 0 : script.exitCode);
   });
+  return child;
+}
+
+/**
+ * A spawned child the test drives by hand: no auto-close, so a test can hold a
+ * run open (cold-start serialization) or abort it mid-flight.
+ */
+function manualChild(): FakeChild {
+  const child = new EventEmitter() as FakeChild;
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = vi.fn();
+  spawnMock.mockReturnValueOnce(child as never);
   return child;
 }
 
@@ -220,10 +235,11 @@ describe('mint entry override', () => {
 describe('runMint', () => {
   beforeEach(() => {
     spawnMock.mockReset();
+    resetMintWarmState();
     delete process.env.MINT_ENTRY;
   });
 
-  it('spawns node with the mint entry, args, cwd and timeout', async () => {
+  it('spawns node with the mint entry, args, cwd and cold-start timeout (#45)', async () => {
     fakeChild({ stdout: '{"items":[]}' });
     const result = await runMint('/proj', ['list', '--json']);
 
@@ -232,7 +248,64 @@ describe('runMint', () => {
     expect(cmd).toBe(process.execPath);
     expect(argv?.[0]).toContain('run-mint.js');
     expect(argv).toEqual([resolveMintEntry(), 'list', '--json']);
-    expect(options).toMatchObject({ cwd: '/proj', timeout: MINT_TIMEOUT_MS });
+    // First run of the process: mint-faa may still have to download the binary.
+    expect(options).toMatchObject({ cwd: '/proj', timeout: MINT_COLD_TIMEOUT_MS });
+  });
+
+  it('drops back to the normal budget once a run succeeded (#45)', async () => {
+    fakeChild({ stdout: 'ok' });
+    await runMint('/proj', ['list']);
+    fakeChild({ stdout: 'ok' });
+    await runMint('/proj', ['list']);
+
+    const [, , first] = spawnMock.mock.calls[0] ?? [];
+    const [, , second] = spawnMock.mock.calls[1] ?? [];
+    expect(first).toMatchObject({ timeout: MINT_COLD_TIMEOUT_MS });
+    expect(second).toMatchObject({ timeout: MINT_TIMEOUT_MS });
+  });
+
+  it('keeps the cold budget when the first run failed (#45)', async () => {
+    fakeChild({ exitCode: 2, stderr: 'download failed' });
+    await runMint('/proj', ['list']);
+    fakeChild({ stdout: 'ok' });
+    await runMint('/proj', ['list']);
+
+    const [, , second] = spawnMock.mock.calls[1] ?? [];
+    expect(second).toMatchObject({ timeout: MINT_COLD_TIMEOUT_MS });
+  });
+
+  it('serializes concurrent first runs so they cannot race the installer (#45)', async () => {
+    // Both children stay open on purpose: the second run may not spawn until the
+    // first — the one that owns the cold slot — has settled.
+    const held = manualChild();
+    const queued = manualChild();
+
+    const first = runMint('/proj', ['list']);
+    const second = runMint('/proj', ['list']);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(spawnMock).toHaveBeenCalledTimes(1);
+
+    held.emit('close', 0);
+    await vi.waitFor(() => expect(spawnMock).toHaveBeenCalledTimes(2));
+    queued.emit('close', 0);
+
+    const [r1, r2] = await Promise.all([first, second]);
+    expect(r1.ok).toBe(true);
+    expect(r2.ok).toBe(true);
+    const [, , firstOpts] = spawnMock.mock.calls[0] ?? [];
+    const [, , queuedOpts] = spawnMock.mock.calls[1] ?? [];
+    expect(firstOpts).toMatchObject({ timeout: MINT_COLD_TIMEOUT_MS });
+    expect(queuedOpts).toMatchObject({ timeout: MINT_TIMEOUT_MS });
+  });
+
+  it('flags a killed process whose limit elapsed as timedOut (#45)', async () => {
+    const held = manualChild();
+
+    const pending = runMint('/proj', ['list'], { timeoutMs: 5 });
+    await new Promise((resolve) => setTimeout(resolve, 25));
+    held.emit('close', null);
+
+    expect(await pending).toMatchObject({ ok: false, timedOut: true, error: 'exit timeout' });
   });
 
   it('spawns an explicit entry override directly when it is a native binary', async () => {
@@ -271,7 +344,8 @@ describe('runMint', () => {
   it('keeps advisory stderr on success — mint writes hints there (#56)', async () => {
     fakeChild({
       stdout: 'ID\tSTATUS\n1\topen\n# Page 1/1 (5 per page, 1 total)\n',
-      stderr: 'mint: hint: merged by title similarity; use --force-new to create a separate issue\n',
+      stderr:
+        'mint: hint: merged by title similarity; use --force-new to create a separate issue\n',
     });
     const result = await runMint('/proj', ['list']);
     expect(result.ok).toBe(true);
@@ -320,8 +394,10 @@ describe('runMint', () => {
 
   it('kills the child and reports aborted when the signal fires', async () => {
     const controller = new AbortController();
-    const child = fakeChild({ stdout: 'partial' });
+    const child = manualChild();
     const pending = runMint('/proj', ['list'], { signal: controller.signal });
+    // The cold slot resolves on a microtask, so let the spawn happen first.
+    await new Promise((resolve) => setImmediate(resolve));
     controller.abort();
     const result = await pending;
     expect(result).toMatchObject({ ok: false, aborted: true, error: 'aborted' });
@@ -330,8 +406,9 @@ describe('runMint', () => {
 
   it('ignores a late close event after aborting', async () => {
     const controller = new AbortController();
-    const child = fakeChild({ exitCode: 0, stdout: 'late' });
+    const child = manualChild();
     const pending = runMint('/proj', ['list'], { signal: controller.signal });
+    await new Promise((resolve) => setImmediate(resolve));
     controller.abort();
     await pending;
     child.emit('close', 0);

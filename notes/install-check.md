@@ -15,7 +15,8 @@
   `link:` 安装不把被 link 包的依赖装进 profile，曾直接报 `Cannot find module 'mint-faa/run-mint.js'`。
   两条链各一条命令自检：`node dist/check-mint-entry.js --mode dependency` /
   `node dist/check-mint-entry.js --mode local --entry ~/bin/mint`。
-  mint-faa 内嵌二进制走 GitHub release postinstall，失败可忽略（首次运行会按需下载，可能超 30s）。
+  mint-faa 内嵌二进制走 GitHub release postinstall，失败可忽略：首次运行按需下载，插件给冷启动
+  首调 180 s 预算并串行化并发首调（#45，详见 `mounting.md` §5.1）。
 
 ## 1. 安装：包在 profile 依赖里（预期：link 行）
 

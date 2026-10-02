@@ -151,6 +151,12 @@ describe('executeMintTool', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['list'], { signal: controller.signal });
   });
 
+  it('propagates the timeout flag from a killed process (#45)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: false, timedOut: true, error: 'exit timeout' });
+    const outcome = await executeMintTool('/proj', ['list']);
+    expect(outcome).toMatchObject({ ok: false, timedOut: true, stderr: 'exit timeout' });
+  });
+
   it('reports a rejected argv without running mint', async () => {
     const outcome = await executeMintTool('/proj', ['delete', '42']);
     expect(outcome.ok).toBe(false);
@@ -246,6 +252,24 @@ describe('renderMintOutcome', () => {
     expect(
       renderMintOutcome({ ok: false, exitCode: 1, stderr: 'invalid transition: open -> dev' })
     ).not.toContain('版本偏斜');
+  });
+
+  it('explains a killed process and points at the cold download (#45)', () => {
+    const timeout = renderMintOutcome({
+      ok: false,
+      exitCode: 1,
+      stderr: 'exit timeout',
+      timedOut: true,
+    });
+    expect(timeout).toContain('[mint] exit 1: exit timeout');
+    expect(timeout).toContain('首次调用需要先下载 mint 二进制');
+    expect(timeout).toContain('mintEntry');
+    expect(timeout).toContain('check-mint-entry.js');
+
+    // Without the flag it stays a plain failure — the hint is evidence-based.
+    expect(renderMintOutcome({ ok: false, exitCode: 1, stderr: 'exit timeout' })).not.toContain(
+      'mintEntry'
+    );
   });
 });
 

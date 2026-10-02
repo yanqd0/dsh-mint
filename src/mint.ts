@@ -10,6 +10,16 @@ const require = createRequire(import.meta.url);
 
 export const MINT_TIMEOUT_MS = 30_000;
 
+/**
+ * Wall-clock limit for the **first** mint run of a process (#45).
+ *
+ * A fresh install has no mint binary yet: `mint-faa` downloads the GitHub
+ * release lazily on first use, and that download can exceed 30 s on a slow link.
+ * The first run therefore gets a much larger budget; every later run is warm and
+ * stays on {@link MINT_TIMEOUT_MS}.
+ */
+export const MINT_COLD_TIMEOUT_MS = 180_000;
+
 /** Environment override for the mint entry, consulted before the mint-faa default. */
 export const MINT_ENTRY_ENV = 'MINT_ENTRY';
 
@@ -200,8 +210,62 @@ export interface MintRunResult {
   error?: string;
   /** Process exit code when the CLI ran and failed; absent on abort/timeout. */
   exitCode?: number;
+  /**
+   * True when the child was killed by the wall-clock limit (#45). Only set on the
+   * failure path: a run that finished within its budget never carries it. Callers
+   * turn it into the cold-download hint instead of a bare `exit timeout`.
+   */
+  timedOut?: boolean;
   /** True when the run was cancelled through `options.signal`. */
   aborted?: boolean;
+}
+
+/**
+ * Process-wide cold-start bookkeeping (#45).
+ *
+ * The session-start overview fires three mint calls concurrently, and
+ * `mint-faa`'s lazy installer removes the binary directory before downloading
+ * with no lock — parallel first runs would destroy each other's install. So the
+ * **first** run holds a slot: concurrent callers wait for it instead of spawning
+ * a second cold install. The slot is released on every settle, and only a
+ * *successful* cold run marks the process warm, so a failed download does not
+ * downgrade the next attempt to the 30 s budget.
+ */
+let mintWarmed = false;
+let coldRun: Promise<void> | undefined;
+let releaseColdRun: (() => void) | undefined;
+
+/** Test seam: forget the process-wide cold-start state. */
+export function resetMintWarmState(): void {
+  mintWarmed = false;
+  coldRun = undefined;
+  releaseColdRun = undefined;
+}
+
+/**
+ * Take the cold slot, or wait for the run that holds it (and re-check afterwards:
+ * a failed holder hands the slot on instead of leaving callers warm).
+ */
+async function acquireColdSlot(): Promise<boolean> {
+  while (!mintWarmed) {
+    if (coldRun === undefined) {
+      coldRun = new Promise<void>((resolve) => {
+        releaseColdRun = resolve;
+      });
+      return true;
+    }
+    await coldRun;
+  }
+  return false;
+}
+
+/** Release the cold slot taken by {@link acquireColdSlot}. */
+function settleColdSlot(ok: boolean): void {
+  if (ok) mintWarmed = true;
+  const release = releaseColdRun;
+  coldRun = undefined;
+  releaseColdRun = undefined;
+  release?.();
 }
 
 /**
@@ -213,13 +277,19 @@ export interface MintRunResult {
  *
  * Nonzero exits and spawn failures resolve (not reject) with an error message,
  * matching the old shell-backed contract so callers never need to catch.
+ *
+ * `options.timeoutMs` is the caller's own budget and opts out of the cold-start
+ * bookkeeping (#45); otherwise the first run of the process gets
+ * {@link MINT_COLD_TIMEOUT_MS} and later ones {@link MINT_TIMEOUT_MS}.
  */
-export function runMint(
+export async function runMint(
   cwd: string,
   args: readonly string[],
   options: MintRunOptions = {}
 ): Promise<MintRunResult> {
-  const timeoutMs = options.timeoutMs ?? MINT_TIMEOUT_MS;
+  const explicitTimeout = options.timeoutMs;
+  const cold = explicitTimeout === undefined ? await acquireColdSlot() : false;
+  const timeoutMs = explicitTimeout ?? (cold ? MINT_COLD_TIMEOUT_MS : MINT_TIMEOUT_MS);
   const { signal } = options;
 
   return new Promise((resolvePromise) => {
@@ -227,12 +297,15 @@ export function runMint(
     let stdout = '';
     let stderr = '';
     let aborted = signal?.aborted === true;
+    let timedOut = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
     let child: ChildProcess | undefined;
 
     const settle = (result: MintRunResult): void => {
       if (settled) return;
       settled = true;
       cleanup();
+      if (cold) settleColdSlot(result.ok === true);
       resolvePromise(result);
     };
 
@@ -247,6 +320,10 @@ export function runMint(
     }
 
     function cleanup(): void {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
       signal?.removeEventListener('abort', onAbort);
     }
 
@@ -254,6 +331,14 @@ export function runMint(
       settle({ ok: false, aborted: true, error: 'aborted' });
       return;
     }
+
+    // Armed before spawn so it is registered ahead of spawn's own timeout timer
+    // for the same deadline: by the time the killed child closes, the flag is
+    // already set and `code === null` can be reported as a timeout rather than a
+    // bare crash (#45).
+    timer = setTimeout(() => {
+      timedOut = true;
+    }, timeoutMs);
 
     try {
       const { command, prefix } = mintCommand(resolveMintEntry(options));
@@ -288,7 +373,7 @@ export function runMint(
         return;
       }
       if (code === null) {
-        settle({ ok: false, error: 'exit timeout' });
+        settle({ ok: false, ...(timedOut ? { timedOut: true } : {}), error: 'exit timeout' });
         return;
       }
       settle({ ok: false, exitCode: code, error: stderr.trim() || `exit ${code}` });

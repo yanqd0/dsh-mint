@@ -180,7 +180,7 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 
 | 模式 | 写法 | 实际跑什么 |
 | --- | --- | --- |
-| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 会按需下载，可能超 30 s 工具超时 = #45） |
+| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 按需下载——见下方 #45 口径） |
 | 本地构建 | `mintEntry: ~/bin/mint`、绝对路径、或裸名 `mint`（走 `PATH`） | 直接 spawn 该可执行程序 |
 
 - `dependency` 是哨兵：任一旋钮写了它都强制走依赖链，即使另一个旋钮有路径（开发 profile 钉在本地构建、
@@ -189,6 +189,12 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 - 依赖区间 `>=0.8.0 <1.0.0`：用户升级/新装即可取到区间内的新 `mint-faa`，无需本插件跟发；但 mint 仓库
   HEAD 的新子命令（尚未发布）经工具执行仍报 `unrecognized subcommand`——默认跑的是「插件依赖的 mint」，
   不是「你在开发的 mint」。
+- **冷启动口径（#45）**：全新安装后 `mint-faa` 没有二进制，首次 `run()` 会 `rmSync` 安装目录再下载（该惰性
+  路径不打进度日志），而 mint-faa 的安装**没有锁**——插件在会话启动时并行发 3 个 mint 调用（overview 的
+  list / milestone list / -V），并发首次安装会互相破坏。故 `runMint` 取进程内「冷槽」：**首个**调用拿
+  180 s 预算（`MINT_COLD_TIMEOUT_MS`），并发调用等它 settle 后才允许 spawn；只有冷启动**成功**才转热
+  （后续 30 s），失败则下一次仍享冷预算。超时会带 `timedOut` 标记，工具面追加可行动提示
+  （重试 / `mintEntry` 预热 / `node dist/check-mint-entry.js --mode dependency`）。
 
 ```yaml
 - id: mint
