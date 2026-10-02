@@ -11,6 +11,7 @@ import {
   renderMintOutcome,
   validateMintArgs,
 } from './mint-tool.js';
+import type { MintToolOutcome } from './mint-tool.js';
 import type { DshContext, ToolDefinitionLike, ToolExecutionLike } from './types.js';
 
 vi.mock('./mint.js', () => ({ runMint: vi.fn() }));
@@ -293,6 +294,43 @@ describe('installMintTool', () => {
     expect(definition?.name).toBe('mint');
     expect(definition?.description).toBe(MINT_TOOL_DESCRIPTION);
     expect(definition?.parameters).toMatchObject({ required: ['args'] });
+  });
+
+  it('declares every key the outcome can carry, so the host schema check passes (#100)', async () => {
+    // The host validates `execute`'s return value against `output.schema` at
+    // runtime, and `additionalProperties: false` makes an undeclared key fatal:
+    // an undeclared `timedOut` replaced the timeout hint with
+    // `INVALID_TOOL_OUTPUT` and `render` was never called.
+    const registered: ToolDefinitionLike[] = [];
+    installMintTool({
+      on: () => () => {},
+      tools: {
+        register: (definition) => {
+          registered.push(definition);
+          return () => {};
+        },
+      },
+    });
+    const schema = registered[0]?.output.schema as {
+      properties?: Record<string, unknown>;
+      additionalProperties?: boolean;
+    };
+    expect(schema.additionalProperties).toBe(false);
+    // The richest outcome there is: every optional field set at once.
+    const richest: MintToolOutcome = {
+      ok: false,
+      exitCode: 130,
+      stdout: 'out',
+      stderr: 'err',
+      timedOut: true,
+    };
+    for (const key of Object.keys(richest)) {
+      expect(Object.keys(schema.properties ?? {})).toContain(key);
+    }
+    // And the timeout path really does produce one of those keys.
+    runMintMock.mockResolvedValueOnce({ ok: false, timedOut: true, error: 'exit timeout' });
+    const value = await registered[0]?.execute({ args: ['list'] }, makeExec());
+    expect(value).toEqual({ ok: false, exitCode: 1, stderr: 'exit timeout', timedOut: true });
   });
 
   it('degrades to a no-op without a tools service', () => {

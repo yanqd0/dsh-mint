@@ -37,6 +37,7 @@
 - `tools/post-execute`（enrich）：`(exec, result, next)` → `{ kind: 'accept', content: [...result.content, 追加块] }`；实测 commit 提醒生效。
 - `tools/result`：emit-only 观察，失败信号写 stderr。
 - `ctx.tools.register(definition)`：`definition.execute(args, exec)` 有**第二参数 exec**；项目目录取 `exec.agent.session.header.cwd`。
+- **`output.schema` 是运行时契约，不是文档**（#100 实测）：execute 的返回值先 `snapshotToolValue` → 按 `output.schema` 校验，**违规抛 `ToolOutputError`（`INVALID_TOOL_OUTPUT`）且 `render` 根本不被调用**；`additionalProperties: false` 下任何未声明键都是硬违规（`@deepseek-ai/dsh-tools` 0.2.0-rc.2 `lib/index.js:3542-3548, 467-469`）。`render(args, value)` 拿到的是原始（快照+deepFreeze）值，不是裁剪副本。改 `execute` 返回形状时**必须同步 schema**，并留「返回键集 ⊆ schema properties」的测试。
 - 写码前先 grep 本机 lib（或 clone 的 TS 源）核对签名，`cordis_inspect_list/query` 本机未见，需要时从源码仓找。
 
 ## 沙箱（dsh-sandbox / sandbox-policy / sandbox-local）

@@ -319,6 +319,11 @@ export function installMintTool(ctx: DshContext, entry?: string): (() => void) |
           exitCode: { type: 'integer' },
           stdout: { type: 'string' },
           stderr: { type: 'string' },
+          // The host validates this schema against every successful return value
+          // and `additionalProperties: false` makes an undeclared key fatal
+          // (`INVALID_TOOL_OUTPUT`, render never runs). `timedOut` is part of the
+          // timeout answer, so it must be declared here (#100).
+          timedOut: { type: 'boolean' },
         },
         required: ['ok', 'exitCode'],
         additionalProperties: false,
