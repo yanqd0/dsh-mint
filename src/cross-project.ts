@@ -1,6 +1,7 @@
 import { runMint } from './mint.js';
 import type { MintRunOptions } from './mint.js';
 import { isRecord } from './mint-json.js';
+import { hasControlCharacter, isControlChar } from './text.js';
 
 /**
  * Cross-project mint calls: `--project` parsing, read/write classification and
@@ -89,11 +90,6 @@ export interface Invocation {
 /** {@link Invocation} as built incrementally by {@link parseInvocation}. */
 type MutableInvocation = { -readonly [K in keyof Invocation]: Invocation[K] };
 
-function isControlChar(char: string): boolean {
-  const code = char.codePointAt(0) ?? 0;
-  return code < 0x20 || code === 0x7f;
-}
-
 /**
  * Mirror of mint's `validate_project_name` (trimmed emptiness, `.`/`..`, path
  * separators, control characters). mint validates the trimmed value but builds
@@ -107,7 +103,7 @@ export function projectNameProblem(name: string): string | undefined {
   if (trimmed === '.' || trimmed === '..') {
     return `项目名非法：'${trimmed}'`;
   }
-  if ([...name].some((char) => char === '/' || char === '\\' || isControlChar(char))) {
+  if (name.includes('/') || name.includes('\\') || hasControlCharacter(name)) {
     return `项目名不能包含路径分隔符或控制字符（--project 只接受项目名，不是路径）：'${name}'`;
   }
   return undefined;

@@ -31,6 +31,7 @@ import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
 import type { IssuePlacement } from './records.js';
 import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
+import { hasControlCharacter } from './text.js';
 import type { AgentsLike, DshContext, WebServerLike } from './types.js';
 
 /**
@@ -176,15 +177,6 @@ export function filterValue(params: URLSearchParams, name: string): string | und
   if (value.startsWith('-')) throw new RouteRequestError(`${name} must not start with "-"`);
   if (hasControlCharacter(value)) throw new RouteRequestError(`${name} has control characters`);
   return value;
-}
-
-/** True when the value carries C0/DEL control characters. */
-function hasControlCharacter(value: string): boolean {
-  for (const char of value) {
-    const code = char.codePointAt(0) ?? 0;
-    if (code < 0x20 || code === 0x7f) return true;
-  }
-  return false;
 }
 
 /** Read the numeric `id` a detail route addresses. */
