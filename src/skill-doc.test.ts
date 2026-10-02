@@ -51,7 +51,21 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
   // #81: cross-project registration carries its source, and the tool gate is
   // one confirmation per session and target project — not per call.
-  ['references/cross-project.md', ['--project', '来源：', '同一会话', '子代理']],
+  // #91: the target project is confirmed first, kind is problem/requirement, the
+  // title may stay free of the source, and the report avoids prescribing a fix.
+  [
+    'references/cross-project.md',
+    [
+      '--project',
+      '来源：',
+      '同一会话',
+      '子代理',
+      'project list',
+      '`problem`',
+      '`requirement`',
+      '不要给具体实现方案',
+    ],
+  ],
 ];
 
 describe('skill layout (#71)', () => {
