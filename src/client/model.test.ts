@@ -118,6 +118,20 @@ describe('links', () => {
   });
 
   it('describes a recognized link and keeps an unknown relation verbatim', () => {
+    // The real `show --json` shape: `other_id` + `other_title`, no id/uid (#97).
+    expect(
+      describeLink({
+        rel: 'blocks',
+        other_id: 42,
+        other_title: 'the cited issue',
+        created_at: '2026-10-02 20:00:00',
+      })
+    ).toEqual({
+      rel: 'blocks',
+      labelKey: 'link.blocks',
+      target: '#42',
+    });
+    // Older/other shapes stay readable.
     expect(describeLink({ rel: 'blocks', id: 42 })).toEqual({
       rel: 'blocks',
       labelKey: 'link.blocks',

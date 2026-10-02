@@ -105,7 +105,9 @@ export interface LinkLine {
  *
  * `list --json` carries links as opaque records and the panel only ever needs
  * "what relation, to which issue"; a shape this does not recognize is dropped
- * rather than guessed at.
+ * rather than guessed at. mint 0.8+ names the cited issue `other_id` (serialized
+ * straight from its `Link` struct, next to `other_title`); `id`/`uid` stay as
+ * fallbacks for other answer shapes (#97).
  *
  * @param value - one element of `IssueItem.links`.
  */
@@ -115,9 +117,10 @@ export function describeLink(value: unknown): LinkLine | undefined {
   const rel = typeof record.rel === 'string' ? record.rel : undefined;
   if (rel === undefined) return undefined;
   const labelKey = linkLabelKey(rel);
+  const other = record.other_id ?? record.id;
   const target =
-    typeof record.id === 'number'
-      ? `#${String(record.id)}`
+    typeof other === 'number'
+      ? `#${String(other)}`
       : typeof record.uid === 'string'
         ? record.uid
         : '';
