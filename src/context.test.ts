@@ -3,6 +3,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import {
   MINT_TOOL_GUIDANCE,
   fetchOverview,
+  installOverviewChannel,
   latestVersion,
   registerMintContext,
   renderOverview,
@@ -410,5 +411,115 @@ describe('registerMintContext', () => {
     const dispose = registerMintContext(ctx, '/proj');
     dispose?.();
     expect(disposed).toEqual(['context', 'section']);
+  });
+});
+
+describe('installOverviewChannel (#113)', () => {
+  type Payload = { agent?: unknown };
+
+  function makeRootCtx(): { ctx: DshContext; listeners: Record<string, (payload: Payload) => void> } {
+    const listeners: Record<string, (payload: Payload) => void> = {};
+    const ctx: DshContext = {
+      on: (event, listener) => {
+        listeners[event] = listener as (payload: Payload) => void;
+        return () => {};
+      },
+    };
+    return { ctx, listeners };
+  }
+
+  function makeAgent(
+    header: { cwd?: string; delegationDepth?: number } = { cwd: '/proj' },
+    sessionId?: string
+  ): { agent: unknown; registered: Array<{ name: string }>; sections: Array<{ name: string }> } {
+    const { ctx, registered, sections } = makeAgentCtx();
+    return {
+      agent: { ctx, session: { ...(sessionId === undefined ? {} : { id: sessionId }), header } },
+      registered,
+      sections,
+    };
+  }
+
+  it('wires the host event and the legacy name', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    expect(listeners['agent/created']).toBeTypeOf('function');
+    expect(listeners['agent/session-start']).toBeTypeOf('function');
+  });
+
+  it('registers the overview and the guidance when an agent is created', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    const { agent, registered, sections } = makeAgent({ cwd: '/proj' }, 'sess-1');
+
+    listeners['agent/created']?.({ agent });
+
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
+    expect(sections.map((s) => s.name)).toEqual(['mint:tool-guidance']);
+  });
+
+  it('registers once per session when both events fire', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    const { agent, registered } = makeAgent({ cwd: '/proj' }, 'sess-1');
+
+    listeners['agent/created']?.({ agent });
+    listeners['agent/session-start']?.({ agent });
+
+    expect(registered).toHaveLength(1);
+  });
+
+  it('skips subagent sessions, which already inherit the mint tool', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    const { agent, registered } = makeAgent({ cwd: '/proj', delegationDepth: 1 }, 'sub-1');
+
+    listeners['agent/created']?.({ agent });
+
+    expect(registered).toEqual([]);
+  });
+
+  it('waits for the systemPrompt service instead of burning the session id', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    const bare: DshContext = { on: () => () => {} };
+
+    listeners['agent/created']?.({
+      agent: { ctx: bare, session: { id: 'sess-1', header: { cwd: '/proj' } } },
+    });
+    // The same session id arrives again with a usable ctx: it must still register.
+    const { agent, registered } = makeAgent({ cwd: '/proj' }, 'sess-1');
+    listeners['agent/created']?.({ agent });
+
+    expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
+  });
+
+  it('never throws out of a listener: agent/created is serial', () => {
+    const { ctx, listeners } = makeRootCtx();
+    installOverviewChannel(ctx);
+    const agent = {
+      ctx: {
+        on: () => () => {},
+        systemPrompt: {
+          context: () => {
+            throw new Error('prompt registry closed');
+          },
+        },
+      },
+      session: { id: 'sess-1', header: { cwd: '/proj' } },
+    };
+
+    expect(() => listeners['agent/created']?.({ agent })).not.toThrow();
+    expect(() => listeners['agent/created']?.({})).not.toThrow();
+  });
+
+  it('disposes both listeners', () => {
+    const offs: string[] = [];
+    const ctx: DshContext = {
+      on: (event) => () => offs.push(event),
+    };
+    const dispose = installOverviewChannel(ctx);
+    dispose();
+    expect(offs).toEqual(['agent/created', 'agent/session-start']);
   });
 });

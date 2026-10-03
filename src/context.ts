@@ -7,7 +7,8 @@ import {
 } from './mint.js';
 import type { MintRunResult } from './mint.js';
 import { isRecord, parseItems } from './mint-json.js';
-import type { DshContext } from './types.js';
+import { sessionIdOf } from './session-id.js';
+import type { AgentLike, DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
 /** Tool guidance band is 100–199 (`notes/dsh/0.1.0/17-system-prompt-assembly.md`). */
@@ -318,5 +319,68 @@ export function registerMintContext(
   return () => {
     offOverview();
     offGuidance();
+  };
+}
+
+/**
+ * How many session ids the channel remembers; matches the other bounded
+ * session maps (approval grants, cross-project grants).
+ */
+const MAX_REGISTERED_SESSIONS = 100;
+
+/**
+ * Register the overview/guidance channel (#113).
+ *
+ * The host's lifecycle event is **`agent/created`** (payload
+ * `{ agent, source, signal? }`, `dsh-agent` `Registry.announce`). The name this
+ * plugin used through 0.2.0 — `agent/session-start` — is published by no harness
+ * package of 0.2.0-rc.2, so the listener never ran and neither the overview nor
+ * the tool-first guidance ever reached a session. The old name stays wired for
+ * hosts that do publish it; both events are handled by the same function.
+ *
+ * Three guards, each with a reason:
+ *
+ * - **Dedup by session id.** Both events can fire for one session; registering
+ *   twice would inject the overview and the guidance twice. The id is only
+ *   consumed once the agent has a `systemPrompt` to register on, so an event
+ *   that arrives too early does not burn the session.
+ * - **Skip subagents.** The overview costs three mint spawns per session plus a
+ *   per-request section, and a subagent already inherits the `mint` tool: its
+ *   session header carries `delegationDepth > 0` (`origin: 'subagent'`).
+ * - **Never throw.** `agent/created` is a *serial* event — a throwing listener
+ *   rejects agent creation itself. A missing overview is the acceptable failure.
+ */
+export function installOverviewChannel(ctx: DshContext, entry?: string): () => void {
+  const registered = new Set<string>();
+
+  const onAgent = (payload: { agent?: AgentLike }): void => {
+    try {
+      const agent = payload?.agent;
+      const cwd = agent?.session?.header?.cwd;
+      if (agent === undefined || !agent.ctx || cwd === undefined) return;
+      if ((agent.session.header.delegationDepth ?? 0) > 0) return;
+      // Registering without the service would silently do nothing and (worse)
+      // mark the session as done, so wait for the host to hand it over.
+      if (agent.ctx.systemPrompt === undefined) return;
+      const sessionId = sessionIdOf(agent);
+      if (sessionId !== undefined) {
+        if (registered.has(sessionId)) return;
+        if (registered.size >= MAX_REGISTERED_SESSIONS) {
+          const oldest = registered.values().next().value;
+          if (oldest !== undefined) registered.delete(oldest);
+        }
+        registered.add(sessionId);
+      }
+      registerMintContext(agent.ctx, cwd, entry);
+    } catch {
+      // Contained on purpose: see the `agent/created` note above.
+    }
+  };
+
+  const offCreated = ctx.on('agent/created', onAgent);
+  const offLegacy = ctx.on('agent/session-start', onAgent);
+  return () => {
+    offCreated();
+    offLegacy();
   };
 }

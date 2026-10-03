@@ -29,3 +29,5 @@
 
 - 动态概览（issue 列表 + running milestone）与静态工具指引由插件 `systemPrompt` 注入承载；
   skill 不重复这些内容，只写流程与纪律。
+- 注入在 **agent 创建**时挂到该 agent 的 ctx 上（宿主事件 `agent/created`；`agent/session-start`
+  是 0.2.x 不存在的旧名，只作兼容回退）；**子代理会话不注入**（它继承 `mint` 工具即可）。

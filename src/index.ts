@@ -1,14 +1,14 @@
 import { z } from 'zod';
 
 import { installApprovalGate } from './approval-gate.js';
-import { registerMintContext } from './context.js';
+import { installOverviewChannel } from './context.js';
 import { installCrossProjectGate } from './cross-project-gate.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
 import { installCommitReminder, installFailureSignal } from './reminders.js';
 import { installMintRoutes } from './routes.js';
-import type { AgentLike, DshContext } from './types.js';
+import type { DshContext } from './types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
 export const name = 'dsh-mint';
@@ -69,13 +69,9 @@ export function apply(ctx: DshContext, config: Config): void {
     installSkill();
   }
   const mintEntry = config.mintEntry;
-  ctx.on('agent/session-start', (payload: { agent?: AgentLike }) => {
-    const agent = payload.agent;
-    const cwd = agent?.session.header.cwd;
-    if (agent?.ctx && cwd) {
-      registerMintContext(agent.ctx, cwd, mintEntry);
-    }
-  });
+  // #113: `agent/created` is the host's lifecycle event (the older
+  // `agent/session-start` name is kept as a fallback inside the installer).
+  installOverviewChannel(ctx, mintEntry);
   installCommitReminder(ctx);
   installFailureSignal(ctx);
   installPlanBinding(ctx, mintEntry);

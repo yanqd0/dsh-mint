@@ -27,12 +27,14 @@
 ## inject 与 DI（cordis）
 
 - 插件**自身 ctx** 上访问服务必须先声明：`export const inject = ['tools', ...]`，否则运行时 `cannot get property "shell" without inject`（单测 mock 测不出，实载必炸）。
-- `agent.ctx` 是 agent 作用域 ctx（session-start 时由宿主提供），其上的服务（如 `systemPrompt`）**不要**加进 root inject（root 上没有该服务会直接 apply 失败）。
+- agent 作用域的服务（如 `systemPrompt`）挂在 `agent.ctx` 上，**不要**加进 root inject（root 上没有该服务会直接 apply 失败）；agent 创建事件到达时该服务未必已就绪，注册前先判空，**不要**提前把该 session 记为已注册。
 - 教训：`inject = {}` 占位符 + mock 单测 = 实载全工具瘫痪（#16）。
 
 ## 真实事件/工具签名（实载验证过，勿凭示例）
 
-- `agent/session-start`：payload 是 **`{ agent, source }`**，不是 `{ ctx }`；用 `agent.ctx`（作用域 ctx）+ `agent.session.header.cwd`（项目目录）。
+- `agent/created`（**0.2.0-rc.2 的唯一 agent 生命周期事件**）：payload `{ agent, source, signal? }`，`source` 取 `startup|resume|clear|compact`；用 `agent.ctx`（作用域 ctx）+ `agent.session.header.cwd`（项目目录）。是 **serial** 事件：监听器抛错会 reject agent 创建（`dsh-agent/lib/index.js` `Registry.announce`），必须自带 try/catch。
+  - ⚠️ `agent/session-start` 在 0.2.0-rc.2 **不存在**（两个 v11 store 全树无该字面，同名只出现在第三方 graph-memory 源码里）——本插件挂它挂了整个 0.2.x，`[Mint]` 注入从未生效（#113）；旧名只作兼容回退保留。
+  - 子代理会话靠 `session.header.delegationDepth > 0`（日志首行 `origin: 'subagent'`）分辨。
 - `tools/pre-execute`（allow/deny/ask 门禁）：`(exec, next)`；**在检查工具名前不要碰任何服务**（监听器抛错会打断所有工具调用，见 #16）。
 - `tools/post-execute`（enrich）：`(exec, result, next)` → `{ kind: 'accept', content: [...result.content, 追加块] }`；实测 commit 提醒生效。
 - `tools/result`：emit-only 观察，失败信号写 stderr。

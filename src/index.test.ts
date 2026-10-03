@@ -24,7 +24,7 @@ describe('dsh-mint plugin', () => {
     expect(inject).toEqual(['tools']);
   });
 
-  it('registers an agent/session-start listener', () => {
+  it('registers the agent lifecycle listeners (#113)', () => {
     const events: string[] = [];
     const ctx: DshContext = {
       on: (event) => {
@@ -33,6 +33,8 @@ describe('dsh-mint plugin', () => {
       },
     };
     apply(ctx, { debug: false, autoApprove: false, autoInstallSkill: true });
+    // `agent/created` is the host's event; the older name stays as a fallback.
+    expect(events).toContain('agent/created');
     expect(events).toContain('agent/session-start');
   });
 
@@ -61,7 +63,7 @@ describe('dsh-mint plugin', () => {
     expect(events).toContain('tools/post-execute');
   });
 
-  it('registers the mint overview on the agent ctx at session start', () => {
+  it('registers the mint overview on the agent ctx at agent creation (#113)', () => {
     const listeners: Record<string, EventListener> = {};
     const ctx: DshContext = {
       on: (event, listener) => {
@@ -81,9 +83,9 @@ describe('dsh-mint plugin', () => {
         },
       },
     };
-    const onSessionStart = listeners['agent/session-start'];
-    expect(onSessionStart).toBeTypeOf('function');
-    (onSessionStart as (payload: { agent?: { ctx: DshContext; session: { header: { cwd?: string } } } }) => void)({
+    const onCreate = listeners['agent/created'];
+    expect(onCreate).toBeTypeOf('function');
+    (onCreate as (payload: { agent?: { ctx: DshContext; session: { header: { cwd?: string } } } }) => void)({
       agent: { ctx: agentCtx, session: { header: { cwd: '/proj' } } },
     });
 
@@ -99,9 +101,9 @@ describe('dsh-mint plugin', () => {
       },
     };
     apply(ctx, { debug: false, autoApprove: false, autoInstallSkill: true });
-    const onSessionStart = listeners['agent/session-start'];
+    const onCreate = listeners['agent/created'];
     expect(() =>
-      (onSessionStart as (payload: { agent?: unknown }) => void)({}),
+      (onCreate as (payload: { agent?: unknown }) => void)({}),
     ).not.toThrow();
     expect(runMintMock).not.toHaveBeenCalled();
   });

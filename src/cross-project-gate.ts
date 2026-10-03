@@ -12,6 +12,9 @@ import {
 } from './cross-project.js';
 import type { Invocation } from './cross-project.js';
 import { TOOL_NAME } from './mint-tool.js';
+import { sessionIdOf } from './session-id.js';
+
+export { sessionIdOf };
 import type {
   ApprovalOutcomeLike,
   ApprovalRequestLike,
@@ -57,11 +60,10 @@ const KEY_SEPARATOR = '\u0000';
  * Session identity of a tool execution or approval request. The runtime may hand
  * out a fresh `Agent` object per dispatch, so only the session id is stable —
  * without one, no grant is remembered and the next write asks again.
+ *
+ * Re-exported from `session-id.ts` (#113): the rule is shared with the injection
+ * channel's dedup and the mint-write ledger, so it lives in one place.
  */
-export function sessionIdOf(agent: unknown): string | undefined {
-  const sessionId = (agent as { session?: { id?: unknown } } | undefined)?.session?.id;
-  return typeof sessionId === 'string' ? sessionId : undefined;
-}
 
 /** Every mint invocation a tool execution carries, from the channels we read. */
 export function invocationsOf(exec: ToolExecutionLike): readonly Invocation[] {

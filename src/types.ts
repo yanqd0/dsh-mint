@@ -88,10 +88,22 @@ export interface SystemPromptLike {
   section?(spec: SystemPromptSectionSpec): () => void;
 }
 
-/** Subset of the host `Agent` published by `agent/session-start`. */
+/** Subset of the host `Agent` published by `agent/created` (and `agent/session-start`). */
 export interface AgentLike {
+  /** Session id, shared by the agent and its session (the session-scoped key). */
+  id?: string;
   ctx: DshContext;
-  session: { header: { cwd?: string } };
+  session: {
+    id?: string;
+    header: {
+      cwd?: string;
+      /**
+       * `0` or absent for a top-level session, `> 0` for a subagent session —
+       * the injection channel uses it to skip subagents (#113).
+       */
+      delegationDepth?: number;
+    };
+  };
 }
 
 /** Subset of the host's `ApprovalRequest` (approval/request waterfall). */
