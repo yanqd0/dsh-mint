@@ -27,7 +27,9 @@ plan always has a mint plan behind it.
   is refused with the candidate list instead of silently creating one, and
   `autoApprove` never silences this gate.
 - **Plan-mode binding** — `exit_plan_mode` is refused while the project has no
-  active mint plan, so a host plan cannot drift away from its mint plan.
+  active mint plan, so a host plan cannot drift away from its mint plan. Leaving
+  plan mode from a session that has written nothing to mint appends a reminder to
+  register the work: a running plan in the project may belong to someone else's.
 - **Reminders** — after a `git commit` — including one run through the host `uv`
   tool (`uv run git commit`) — the agent is reminded to register it
   (`issue state commit --sha`); a failed call is not mistaken for a commit, and a

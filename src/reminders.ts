@@ -1,3 +1,5 @@
+import { sessionIdOf } from './session-id.js';
+import { hasMintWrite } from './session-ledger.js';
 import type {
   ContentBlockLike,
   DshContext,
@@ -98,6 +100,57 @@ export async function commitReminderListener(
 /** Register the commit reminder on `tools/post-execute`. */
 export function installCommitReminder(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', commitReminderListener);
+}
+
+/** The plan-mode exit tool whose result carries {@link SESSION_RECORD_REMINDER}. */
+export const EXIT_PLAN_MODE = 'exit_plan_mode';
+
+/**
+ * Model-facing notice for a session that leaves plan mode with nothing recorded
+ * (#111). It names the paths, not the workflow: the mint skill owns the flow
+ * (`references/flow-impl.md`), and this text only has to make the gap visible at
+ * the moment the work starts.
+ */
+export const SESSION_RECORD_REMINDER =
+  '[mint] 本会话尚无 mint 写操作——项目里的 running plan 未必是本次工作的记录。' +
+  '若接下来会改码，按 mint skill 流程先补记录：' +
+  'plan create（挂当前 running milestone）+ 拆 issue 后 plan plan，或 plan attach 接管既有 plan；' +
+  '首个改码 issue 先 mint({args:["issue","state","start","<id>"]})；' +
+  '已完成的 commit 逐条 mint({args:["issue","state","commit","<id>","--sha","<前7位>"]})。';
+
+/**
+ * `tools/post-execute` listener: when `exit_plan_mode` is approved and this
+ * session has performed no mint write, append the notice (#111).
+ *
+ * Why a notice and not a denial: the plan gate already requires a running mint
+ * plan, but that is a project-level fact — a session can exit plan mode while
+ * the only running plan belongs to someone else's work, and that is how six
+ * commits once landed without a trace. The intent stays "records must exist,
+ * order may vary", so the session is told rather than trapped; the same ledger is
+ * what a future hard gate would read.
+ *
+ * A session whose id is unknown gets no notice (nothing can be attributed), and
+ * a rejected or cancelled exit (`isError`) is left alone.
+ */
+export async function sessionRecordReminderListener(
+  exec: ToolExecutionLike,
+  result: ToolResultLike,
+  next: () => Promise<PostToolDecisionLike>,
+): Promise<PostToolDecisionLike> {
+  if (result.isError || exec.name !== EXIT_PLAN_MODE) {
+    return next();
+  }
+  const sessionId = sessionIdOf(exec.agent);
+  if (sessionId === undefined || hasMintWrite(sessionId)) {
+    return next();
+  }
+  const reminder: ContentBlockLike = { type: 'text', text: SESSION_RECORD_REMINDER };
+  return { kind: 'accept', content: [...result.content, reminder] };
+}
+
+/** Register the plan-mode record notice on `tools/post-execute`. */
+export function installSessionRecordReminder(ctx: DshContext): () => void {
+  return ctx.on('tools/post-execute', sessionRecordReminderListener);
 }
 
 /**

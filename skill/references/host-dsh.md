@@ -18,6 +18,9 @@
 
 - 宿主 `exit_plan_mode` 在项目**无活跃 mint plan** 时被拒绝（对应 SKILL.md「plan 双向绑定」）。
 - 门禁在 `tools/pre-execute` 实现；被拒时按提示先建/挂 mint plan 再退出计划模式。
+- **会话级软信号（#111）**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
+  结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；
+  见到提示按 `flow-impl.md` 的补登记路径处理。
 
 ## skill 安装与生效
 

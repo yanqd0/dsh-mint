@@ -6,8 +6,13 @@ import { installCrossProjectGate } from './cross-project-gate.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
-import { installCommitReminder, installFailureSignal } from './reminders.js';
+import {
+  installCommitReminder,
+  installFailureSignal,
+  installSessionRecordReminder,
+} from './reminders.js';
 import { installMintRoutes } from './routes.js';
+import { installSessionLedger } from './session-ledger.js';
 import type { DshContext } from './types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
@@ -74,6 +79,9 @@ export function apply(ctx: DshContext, config: Config): void {
   installOverviewChannel(ctx, mintEntry);
   installCommitReminder(ctx);
   installFailureSignal(ctx);
+  // #111: session-scoped mint-write ledger, read by the plan-mode exit notice.
+  installSessionLedger(ctx);
+  installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
   installMintTool(ctx, mintEntry);
   installApprovalGate(ctx, config);

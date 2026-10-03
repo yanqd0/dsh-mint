@@ -23,7 +23,8 @@ plan。
   之后同一会话同一项目不再询问。目标项目不存在时报候选清单而不是静默新建，
   且 `autoApprove` 不会让它免确认。
 - **plan 双向绑定** —— 项目没有活跃 mint plan 时 `exit_plan_mode` 被拒，宿主
-  plan 不会与 mint plan 脱钩。
+  plan 不会与 mint plan 脱钩；本会话对 mint **零写操作**地离开计划模式时，结果里会附
+  一条补登记提示——项目里的 running plan 未必是本次工作的记录。
 - **提醒** —— `git commit`（含经宿主 `uv` 工具执行的 `uv run git commit`）后提醒 agent
   登记（`issue state commit --sha`）；提交失败不会误提醒；工具调用失败时提示登记 issue。
 - **内置 mint skill** —— 随包发布的 `mint` skill 在插件加载时 content-sync 到

@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  SESSION_RECORD_REMINDER,
   commitReminderListener,
   installCommitReminder,
   installFailureSignal,
+  installSessionRecordReminder,
   isCommitArgv,
   isGitCommit,
+  sessionRecordReminderListener,
 } from './reminders.js';
+import { recordMintWrite, resetSessionLedger } from './session-ledger.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
 
 function makeCtx(): {
@@ -120,6 +124,76 @@ describe('installCommitReminder', () => {
   it('registers a tools/post-execute listener', () => {
     const { ctx, listeners } = makeCtx();
     installCommitReminder(ctx);
+    expect(listeners['tools/post-execute']).toBeTypeOf('function');
+  });
+});
+
+describe('sessionRecordReminderListener (#111)', () => {
+  const exitExec = (sessionId?: string): ToolExecutionLike => ({
+    name: 'exit_plan_mode',
+    arguments: { plan: '# plan' },
+    ...(sessionId === undefined
+      ? {}
+      : { agent: { session: { id: sessionId, header: { cwd: '/proj' } } } }),
+  });
+
+  afterEach(() => {
+    resetSessionLedger();
+  });
+
+  it('appends the notice when the session recorded nothing', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await sessionRecordReminderListener(
+      exitExec('sess-1'),
+      successResult,
+      next
+    );
+
+    expect(next).not.toHaveBeenCalled();
+    expect(decision.content?.[1]?.text).toBe(SESSION_RECORD_REMINDER);
+    expect(decision.content?.[0]).toBe(successResult.content[0]);
+  });
+
+  it('stays silent once the session wrote to its own project', async () => {
+    recordMintWrite('sess-1');
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await sessionRecordReminderListener(exitExec('sess-1'), successResult, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(decision.content).toBeUndefined();
+  });
+
+  it('leaves a rejected exit alone', async () => {
+    const failed: ToolResultLike = { isError: true, content: [{ type: 'text', text: 'keep planning' }] };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await sessionRecordReminderListener(exitExec('sess-1'), failed, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('says nothing it cannot attribute to a session', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await sessionRecordReminderListener(exitExec(), successResult, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('ignores every other tool', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await sessionRecordReminderListener(
+      { name: 'bash', arguments: { command: 'ls' }, agent: { session: { id: 'sess-1' } } },
+      successResult,
+      next
+    );
+
+    expect(next).toHaveBeenCalled();
+  });
+});
+
+describe('installSessionRecordReminder', () => {
+  it('registers a tools/post-execute listener', () => {
+    const { ctx, listeners } = makeCtx();
+    installSessionRecordReminder(ctx);
     expect(listeners['tools/post-execute']).toBeTypeOf('function');
   });
 });
