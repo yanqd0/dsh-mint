@@ -28,8 +28,10 @@ plan always has a mint plan behind it.
   `autoApprove` never silences this gate.
 - **Plan-mode binding** — `exit_plan_mode` is refused while the project has no
   active mint plan, so a host plan cannot drift away from its mint plan.
-- **Reminders** — after a `git commit` the agent is reminded to register it
-  (`issue state commit --sha`); a failed tool call suggests filing an issue.
+- **Reminders** — after a `git commit` — including one run through the host `uv`
+  tool (`uv run git commit`) — the agent is reminded to register it
+  (`issue state commit --sha`); a failed call is not mistaken for a commit, and a
+  failed tool call suggests filing an issue.
 - **Bundled mint skill** — the `mint` skill shipped in this package is
   content-synced into `$DSH_HOME/skills/mint` on load, so the agent knows the
   issue/plan/milestone workflow without a manual skill install.

@@ -24,8 +24,8 @@ plan。
   且 `autoApprove` 不会让它免确认。
 - **plan 双向绑定** —— 项目没有活跃 mint plan 时 `exit_plan_mode` 被拒，宿主
   plan 不会与 mint plan 脱钩。
-- **提醒** —— `git commit` 后提醒 agent 登记（`issue state commit --sha`）；
-  工具调用失败时提示登记 issue。
+- **提醒** —— `git commit`（含经宿主 `uv` 工具执行的 `uv run git commit`）后提醒 agent
+  登记（`issue state commit --sha`）；提交失败不会误提醒；工具调用失败时提示登记 issue。
 - **内置 mint skill** —— 随包发布的 `mint` skill 在插件加载时 content-sync 到
   `$DSH_HOME/skills/mint`，无需手工安装 skill，agent 即知 issue/plan/milestone
   流程。
