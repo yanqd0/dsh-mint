@@ -42,3 +42,21 @@
 
 每个 phase 结束用 `mint({ args: ["list","--plan","<plan>"] })` 复查状态；违反门禁视为「未接管」，
 下次 session 必须补登记。
+
+## 6. 先跑后建：记录必须有，顺序可换
+
+两种顺序都合法，**记录必须有**（写给未来的自己、隔壁项目的 agent 或人类看）：
+
+- **先建再跑（默认）**：进计划模式 → 建/挂 plan + 拆 issue + `plan plan` → 出计划模式 →
+  逐 issue `state start` → 改码。
+- **先跑后建（补登记）**：已在**无记录**状态下改了码/提交了 commit → 停下来补：
+  建/挂 plan → 按实测现象与 commit 范围建 issue → `plan plan` → `issue state start <id>` →
+  **对每个既有 commit 逐条** `issue state commit <id> --sha <前7位>`（sha 用 `git log --oneline` 回看）→
+  统一测试 → `plan close`。
+  - 补登记不是重写历史：`state commit` 记的就是当时那个 commit，几个就登记几条。
+  - 已经跑完才发现根本没有 plan：第一件事是 `plan create`（挂当前 running milestone），
+    别让 issue 散落（散落时转 `flow-sweep.md`）。
+
+- plan 模式**内**可以写 mint（DSH 不裁剪工具目录），所以「出计划模式前建 plan + 拆 issue」是
+  可执行的推荐第一步；反过来，本会话零 mint 写操作就 `exit_plan_mode`，结果里会附一条补登记提示
+  （插件实现，见 `host-dsh.md`）。

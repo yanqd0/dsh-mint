@@ -44,14 +44,11 @@ description: >-
 | 约束红线（delete/清理/去重） | `references/constraints.md` |
 | 本宿主集成 | `references/host-dsh.md` |
 
-排序：`blocks` 其它 issue 的先行；同层 priority 升序（P0→P3），同 priority 按 id 升序。
-
 ## 不可跳过（强制；细节见 `references/flow-impl.md`、`references/state-machine.md`）
 
 - **plan 双向绑定**：宿主 plan ⟷ mint plan 一一对应；无活跃 mint plan 时 `exit_plan_mode` 被拒。
   从存量 plan 接管时**必须先进入宿主 plan 模式**，禁止 auto 直接跑完。
-- **无 plan 不写码**：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue +
-  `plan plan` 锁定（不留 open）。
+- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue + `plan plan` 锁定（不留 open）；先跑后建见 `references/flow-impl.md`。
 - **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（planned → dev）；open/planned 直接改码 = 违反。
 - **commit 后立即**：`args: ["issue","state","commit","<id>","--sha","<前7位>"]`
   （sha 用 bash `git rev-parse --short=7 HEAD`）。

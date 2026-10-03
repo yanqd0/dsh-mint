@@ -32,6 +32,7 @@ const skill = read('SKILL.md');
 const SKILL_MARKERS: readonly string[] = [
   'plan 双向绑定',
   'exit_plan_mode',
+  '记录必须有，顺序可换',
   '"issue","state","start"',
   '"issue","state","commit"',
   'plan close',
@@ -49,6 +50,11 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
   ['references/flow-planning.md', ['dev-clean', 'task']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
+  // #112: both legal orders (build-then-run / run-then-backfill) live in
+  // flow-impl, and the issue ordering rule left SKILL.md's body for the place
+  // that already carried it (flow-session's step 4).
+  ['references/flow-impl.md', ['先跑后建', '记录必须有', '顺序可换']],
+  ['references/flow-session.md', ['priority 升序', '按 id 升序']],
   // #81: cross-project registration carries its source, and the tool gate is
   // one confirmation per session and target project — not per call.
   // #91: the target project is confirmed first, kind is problem/requirement, the
