@@ -1,7 +1,12 @@
 import { runMint } from './mint.js';
 import type { DshContext, PreToolDecisionLike, ToolExecutionLike } from './types.js';
 
-const EXIT_PLAN_MODE = 'exit_plan_mode';
+/**
+ * The host's plan-mode exit tool. Both listeners that care about it (this gate
+ * and the plan-mode record notice in `reminders.ts`) read the name from here, so
+ * the host contract has one home.
+ */
+export const EXIT_PLAN_MODE = 'exit_plan_mode';
 
 /**
  * The only plan status that satisfies the gate (#59).

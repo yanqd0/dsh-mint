@@ -1,5 +1,6 @@
 import { sessionIdOf } from './session-id.js';
 import { hasMintWrite } from './session-ledger.js';
+import { EXIT_PLAN_MODE } from './planbind.js';
 import type {
   ContentBlockLike,
   DshContext,
@@ -101,9 +102,6 @@ export async function commitReminderListener(
 export function installCommitReminder(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', commitReminderListener);
 }
-
-/** The plan-mode exit tool whose result carries {@link SESSION_RECORD_REMINDER}. */
-export const EXIT_PLAN_MODE = 'exit_plan_mode';
 
 /**
  * Model-facing notice for a session that leaves plan mode with nothing recorded
