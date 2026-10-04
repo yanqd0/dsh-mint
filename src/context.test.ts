@@ -9,6 +9,7 @@ import {
   renderOverview,
 } from './context.js';
 import { MINT_ENTRY_WARNING, resolveMintEntry, runMint } from './mint.js';
+import { ownProjectOf, resetOwnProjectCache } from './own-project.js';
 import type { DshContext } from './types.js';
 
 vi.mock('./mint.js', () => ({
@@ -23,6 +24,7 @@ const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
   runMintMock.mockReset();
+  resetOwnProjectCache();
 });
 
 function makeAgentCtx(): {
@@ -84,6 +86,44 @@ describe('fetchOverview', () => {
     expect(runMintMock).toHaveBeenNthCalledWith(1, '/proj', ['list', '--json', '--no-page']);
     expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['milestone', 'list', '--json']);
     expect(runMintMock).toHaveBeenNthCalledWith(3, '/proj', ['-V']);
+  });
+
+  it('reads the resolved project name off the issue rows (#114)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [
+            {
+              id: 1,
+              title: '实现上下文注入',
+              kind: 'requirement',
+              status: 'dev',
+              priority: 1,
+              labels: [],
+              project: 'dsh-mint',
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'nope' });
+
+    expect((await fetchOverview('/proj')).project).toBe('dsh-mint');
+  });
+
+  it('leaves the project unknown when no row names one (#114)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [{ id: 1, title: 'a', kind: 'task', status: 'open', priority: 2, labels: [] }],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'nope' });
+
+    expect((await fetchOverview('/proj')).project).toBeUndefined();
   });
 
   it('flags an unrecognized list shape instead of reporting an empty backlog (#65)', async () => {
@@ -295,6 +335,21 @@ describe('renderOverview', () => {
     const text = renderOverview({ issues: [], milestones: [], cliVersion: '0.8.0-alpha.1' });
     expect(text).toBe('[Mint] mint 0.8.0-alpha.1');
   });
+
+  it('names the resolved project ahead of the version (#114)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      project: 'dsh-mint',
+      cliVersion: '0.8.0-alpha.1',
+    });
+    expect(text.split('\n')[0]).toBe('[Mint] dsh-mint · mint 0.8.0-alpha.1');
+  });
+
+  it('still names the project when the -V probe failed (#114)', () => {
+    const text = renderOverview({ issues: [], milestones: [], project: 'dsh-mint' });
+    expect(text).toBe('[Mint] dsh-mint');
+  });
 });
 
 describe('registerMintContext', () => {
@@ -338,6 +393,37 @@ describe('registerMintContext', () => {
     // cache: provider returns without extra mint calls
     expect(provider()).toBe(text);
     expect(runMintMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('remembers the project the overview resolved, keyed by directory (#114)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [
+            {
+              id: 3,
+              title: '实现上下文注入',
+              kind: 'requirement',
+              status: 'dev',
+              priority: 1,
+              labels: [],
+              project: 'dsh-mint',
+            },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
+    const provider = registered[0]?.text as () => string;
+
+    provider();
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    expect(ownProjectOf('/proj', undefined)).toBe('dsh-mint');
+    expect(ownProjectOf('/elsewhere', undefined)).toBeUndefined();
   });
 
   it('degrades to empty text on mint failure', async () => {
@@ -417,7 +503,10 @@ describe('registerMintContext', () => {
 describe('installOverviewChannel (#113)', () => {
   type Payload = { agent?: unknown };
 
-  function makeRootCtx(): { ctx: DshContext; listeners: Record<string, (payload: Payload) => void> } {
+  function makeRootCtx(): {
+    ctx: DshContext;
+    listeners: Record<string, (payload: Payload) => void>;
+  } {
     const listeners: Record<string, (payload: Payload) => void> = {};
     const ctx: DshContext = {
       on: (event, listener) => {

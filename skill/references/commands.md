@@ -168,6 +168,8 @@ mint({ args: ["project","get","1","git"] })   // 字段：name/description/git/a
 
 ## 跨项目（`-p` / `--project`，须在子命令之前）
 
+本项目操作**不带 `-p`**：目标项目默认取会话 cwd。只有写/读**别的**项目才用 `-p`：
+
 ```js
 mint({ args: ["-p","dsh-dev-dsh","list","--status","open"] })                          // 读：直接放行
 mint({ args: ["-p","dsh-dev-dsh","issue","add","<标题>","--label","docs,dsh-mint"] })  // 写：弹一次确认

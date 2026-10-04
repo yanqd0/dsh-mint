@@ -8,12 +8,14 @@ description: >-
   计划 里程碑 同步 推送 拉取 合并 下一步。
 ---
 
-用 mint 管理开发 issue 与流程：**解析意图 → 读对应 reference → 用 `mint` 工具执行 → 验证**。
-位置参数 `<description>` 是一句话意图；未传参进入接管；不明确时用文本反问。
+用 mint 管理开发 issue 与流程：**解析意图 → 读 reference → 用 `mint` 工具执行 → 验证**。
+`<description>` 是一句话意图；未传参即接管。
 
 ## 执行面
 
-一律用宿主 `mint` 工具（零授权）；`args: [...]` 即 `mint({ args: [...] })`。
+一律用宿主 `mint` 工具；`args: [...]` 即 `mint({ args: [...] })`。
+
+项目默认取会话 cwd：本项目操作不带 `-p`，跨项目才加（`references/cross-project.md`）。
 
 ## 三层模型
 

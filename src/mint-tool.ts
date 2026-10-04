@@ -86,13 +86,19 @@ export const DENIED_FLAGS: readonly string[] = ['--db'];
  * Documents the **mechanism** (args semantics, output shape, what is available)
  * and nothing else: the tool-first policy lives in `MINT_TOOL_GUIDANCE` and the
  * workflow in `skill/SKILL.md` (#62). Every byte here ships on every request, so
- * the three-line examples are the whole cheat sheet (#61).
+ * the examples are the whole cheat sheet (#61).
+ *
+ * The default-project rule is stated here on purpose (#114). `-p <项目>` used to
+ * be a co-equal example, and a session that saw only this description read it as
+ * "name the project explicitly, like `git -C`" — sessions in *mint-managed*
+ * projects then prefixed their **own** project with `-p <self>`. The rule
+ * "default = session cwd, so own-project calls take no `-p`" is what every
+ * request must see, and it costs less than the example it replaced.
  */
 export const MINT_TOOL_DESCRIPTION = [
-  '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，命令在插件进程内执行，零授权。',
-  '例：["list","--status","open"]、["issue","state","start","42"]、["-p","<项目>","list"]',
-  '输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `# Page x/y` 页脚（stdout）给总数。参考 ["--help-llm"]，版本 ["-V"]。',
-  '跨项目 ["-p","<项目>",…] 置于子命令前；写操作同会话首次确认后免问。',
+  '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，插件进程内执行（零授权）。',
+  '项目默认取会话 cwd：本项目操作不要带 -p；跨项目才加 ["-p","<项目>",…]（置于子命令前；写首次确认）。',
+  '例：["list","--status","open"]、["issue","state","start","42"]。输出原生 TSV；list 每页 5 条（--page/--page-size/--no-page），末行 `# Page x/y` 页脚（stdout）给总数。参考 ["--help-llm"]，版本 ["-V"]。',
   '不可用：delete/import/sync/export/tui、--db。',
 ].join('\n');
 

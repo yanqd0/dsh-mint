@@ -428,7 +428,7 @@ export function resetProjectCache(): void {
 }
 
 /** Cache key: both the cwd and the entry decide what the probe sees. */
-function projectCacheKey(cwd: string, entry: string | undefined): string {
+export function projectCacheKey(cwd: string, entry: string | undefined): string {
   return `${entry ?? ''}\u0000${cwd}`;
 }
 

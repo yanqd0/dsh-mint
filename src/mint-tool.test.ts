@@ -412,4 +412,13 @@ describe('tool description', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('不可用：delete/import/sync/export/tui、--db');
     expect(MINT_TOOL_DESCRIPTION).not.toContain('--db/--project');
   });
+
+  it('states the default project rule instead of a bare -p example (#114)', () => {
+    // Every request must carry: the default is the session cwd, so own-project
+    // calls take no `-p`. The old co-equal `["-p","<项目>","list"]` example is
+    // what made sessions prefix their own project.
+    expect(MINT_TOOL_DESCRIPTION).toContain('项目默认取会话 cwd');
+    expect(MINT_TOOL_DESCRIPTION).toContain('本项目操作不要带 -p');
+    expect(MINT_TOOL_DESCRIPTION).not.toContain('["-p","<项目>","list"]');
+  });
 });

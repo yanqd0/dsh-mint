@@ -20,11 +20,12 @@ plan always has a mint plan behind it.
   call, no sandbox write access and no approval prompt. Subagents inherit the
   tool too (their bash is pinned to `never`). Destructive subcommands (`delete`,
   `import`, `sync`, `export`, `tui`) and the global `--db` flag are refused.
-- **Cross-project work** — `-p` / `--project` (before the subcommand) reaches
-  another project's ledger in the same session: reads pass straight through, and
-  a **write** asks once, naming the target project and the action, then stays
-  quiet for that project in that session. A target that is not a known project
-  is refused with the candidate list instead of silently creating one, and
+- **Cross-project work** — the target project defaults to the session's own cwd,
+  so **own-project calls take no `-p`**; `-p` / `--project` (before the subcommand)
+  reaches another project's ledger in the same session: reads pass straight
+  through, and a **write** asks once, naming the target project and the action,
+  then stays quiet for that project in that session. A target that is not a known
+  project is refused with the candidate list instead of silently creating one, and
   `autoApprove` never silences this gate.
 - **Plan-mode binding** — `exit_plan_mode` is refused while the project has no
   active mint plan, so a host plan cannot drift away from its mint plan. Leaving

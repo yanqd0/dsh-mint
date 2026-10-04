@@ -92,6 +92,7 @@ const SAMPLE_MILESTONES = [
 
 function sampleOverview(): string {
   return renderOverview({
+    project: 'dsh-mint',
     issues: SAMPLE_ISSUES,
     milestones: SAMPLE_MILESTONES,
     cliVersion: '0.8.0-alpha.1',
@@ -112,6 +113,12 @@ describe('per-request injection budget (#61)', () => {
 
   it('keeps the overview under 700 bytes', () => {
     expect(bytes(sampleOverview())).toBeLessThanOrEqual(700);
+  });
+
+  it('names the resolved project, so own-project calls need no -p (#114)', () => {
+    expect(sampleOverview().split('\n')[0]).toBe(
+      '[Mint] dsh-mint · mint 0.8.0-alpha.1 via mint-faa@0.8.0'
+    );
   });
 
   it('keeps the tool-first guidance to one sentence', () => {

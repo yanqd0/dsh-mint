@@ -7,6 +7,7 @@ import {
 } from './mint.js';
 import type { MintRunResult } from './mint.js';
 import { isRecord, parseItems } from './mint-json.js';
+import { noteOwnProject } from './own-project.js';
 import { sessionIdOf } from './session-id.js';
 import type { AgentLike, DshContext } from './types.js';
 
@@ -47,6 +48,12 @@ interface OverviewIssue {
   status: string;
   priority: number;
   labels: string[];
+  /**
+   * Project the item belongs to. Optional because an older/subset `list --json`
+   * may omit it, but it is the **only** way this plugin learns its own project
+   * name without reading mint's database (#114).
+   */
+  project?: string;
 }
 
 interface OverviewMilestone {
@@ -67,7 +74,8 @@ function isOverviewIssue(value: unknown): value is OverviewIssue {
     typeof value.status === 'string' &&
     typeof value.priority === 'number' &&
     Array.isArray(value.labels) &&
-    value.labels.every((label) => typeof label === 'string')
+    value.labels.every((label) => typeof label === 'string') &&
+    (value.project === undefined || typeof value.project === 'string')
   );
 }
 
@@ -91,6 +99,14 @@ function isOverviewMilestone(value: unknown): value is OverviewMilestone {
 export interface MintOverview {
   issues: OverviewIssue[];
   milestones: OverviewMilestone[];
+  /**
+   * Project the session's cwd resolves to, read off the issue rows (#114).
+   *
+   * Absent when the project has no issues (nothing to read it from) — a real
+   * "unknown", not "no project": the consumers (the injection line and the
+   * own-project memo) are both optional.
+   */
+  project?: string;
   /** Version the resolved entry reported through `-V`; absent when the probe failed. */
   cliVersion?: string;
   /** Short label for the entry that answered `-V` (build skew: debug vs release). */
@@ -146,6 +162,10 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   const issues = parseItems('list --json', issuesRes.text, isOverviewIssue);
   const milestones = parseItems('milestone list --json', msRes.text, isOverviewMilestone);
   const overview: MintOverview = { issues: issues.items, milestones: milestones.items };
+  // The project name rides on the rows themselves (`"project":"dsh-mint"`); the
+  // first row that names one is authoritative — all rows come from one ledger.
+  const project = issues.items.find((item) => item.project !== undefined)?.project;
+  if (project !== undefined) overview.project = project;
   const warnings = [issues.warning, milestones.warning].filter(
     (warning): warning is string => warning !== undefined
   );
@@ -189,13 +209,21 @@ export function latestVersion(milestones: readonly OverviewMilestone[]): string 
 /** Render the overview into compact model-facing text. */
 export function renderOverview(overview: MintOverview): string {
   const lines: string[] = [];
+  // Identity line: the resolved project, then the CLI version. Both are optional
+  // and independent — a failed `-V` probe still leaves the project name worth
+  // stating, and a project with no issues still has its CLI version (#114, #58).
+  // The project name is what lets a session check "am I already in my project?"
+  // instead of defensively prefixing `-p <self>`.
+  const identity: string[] = [];
+  if (overview.project !== undefined) identity.push(overview.project);
   if (overview.cliVersion !== undefined) {
     // One short line, first: a command that the running build does not know
     // ("unrecognized subcommand") is otherwise indistinguishable from a typo,
     // and `-V` alone cannot tell a debug build from a release one (#58).
     const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
-    lines.push(`[Mint] mint ${overview.cliVersion}${via}`);
+    identity.push(`mint ${overview.cliVersion}${via}`);
   }
+  if (identity.length > 0) lines.push(`[Mint] ${identity.join(' · ')}`);
   // Surface a CLI shape mismatch instead of letting it read as "no issues" (#65).
   for (const warning of overview.warnings ?? []) {
     lines.push(`[Mint] WARNING: ${warning}`);
@@ -286,6 +314,12 @@ export function registerMintContext(
     try {
       const overview = await fetchOverview(cwd, resolved);
       cached = renderOverview(overview);
+      // Remember which project this directory *is*, so `-p <self>` can be
+      // recognised as own-project work rather than a cross-project write (#114).
+      // Keyed by the mount-line `entry`, the same key the gate probes with.
+      if (overview.project !== undefined) {
+        noteOwnProject(cwd, entry, overview.project);
+      }
     } catch {
       cached = '';
     }

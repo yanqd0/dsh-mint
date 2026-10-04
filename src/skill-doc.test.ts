@@ -41,6 +41,10 @@ const SKILL_MARKERS: readonly string[] = [
   '须走 bash',
   'references/labels.md',
   '跨项目登记',
+  // #114: the default project is the session cwd, so own-project calls take no
+  // `-p`. Pinned as a marker because trimming it re-opens the exact behaviour
+  // this plan fixed.
+  '本项目操作不带 `-p`',
 ];
 
 /** Rules that moved out of SKILL.md must still exist in their home file. */
