@@ -78,6 +78,33 @@ export function isGitCommit(exec: ToolExecutionLike): boolean {
 }
 
 /**
+ * Failure markers a host or tool appends to a model-facing result.
+ *
+ * `isError` alone does **not** mean "the command failed": the bash tool reports a
+ * non-zero command exit as a *completed* call whose text ends with
+ * `[exit code: N]` (`dsh-tool-bash` `renderResult`, and its own description tells
+ * the model to check the marker). The `uv` tool — a foreign plugin — reports its
+ * own failures the same way through `notes` (`dsh-dev-dsh` `src/uv/run.ts`), which
+ * is how `uv run git commit` renders a rejected commit. Verified live (#110): a
+ * commit that failed with "nothing to commit" still carried no `isError`.
+ */
+const RESULT_FAILURE =
+  /\[(?:exit code: [1-9]\d*|killed by signal: [^\]]+|timed out after \d+ms|stopped: [^\]]+)\]/;
+
+/**
+ * True when a tool result reports a failed run, not merely a host-level error.
+ *
+ * Searched for anywhere in the text rather than anchored at its end: both hosts
+ * of this signal append further marker lines, and a missing marker (an unknown
+ * format) must fail *open* to the existing behaviour — no reminder — instead of
+ * claiming a commit that may not exist.
+ */
+export function isFailedResult(result: ToolResultLike): boolean {
+  if (result.isError) return true;
+  return result.content.some((block) => block.type === 'text' && RESULT_FAILURE.test(block.text));
+}
+
+/**
  * `tools/post-execute` listener: after a git commit, append a mint registration
  * reminder to the model-facing content. Accept + content keeps the original
  * tool value and content — only a text block is appended (enrich, not replace).
@@ -91,7 +118,7 @@ export async function commitReminderListener(
   result: ToolResultLike,
   next: () => Promise<PostToolDecisionLike>,
 ): Promise<PostToolDecisionLike> {
-  if (result.isError || !isGitCommit(exec)) {
+  if (isFailedResult(result) || !isGitCommit(exec)) {
     return next();
   }
   const reminder: ContentBlockLike = { type: 'text', text: COMMIT_REMINDER };
@@ -128,14 +155,15 @@ export const SESSION_RECORD_REMINDER =
  * what a future hard gate would read.
  *
  * A session whose id is unknown gets no notice (nothing can be attributed), and
- * a rejected or cancelled exit (`isError`) is left alone.
+ * a rejected or cancelled exit is left alone (see {@link isFailedResult} — the
+ * host reports that as an error, and the guard covers a marker-only failure too).
  */
 export async function sessionRecordReminderListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
   next: () => Promise<PostToolDecisionLike>,
 ): Promise<PostToolDecisionLike> {
-  if (result.isError || exec.name !== EXIT_PLAN_MODE) {
+  if (exec.name !== EXIT_PLAN_MODE || isFailedResult(result)) {
     return next();
   }
   const sessionId = sessionIdOf(exec.agent);

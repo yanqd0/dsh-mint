@@ -7,6 +7,7 @@ import {
   installFailureSignal,
   installSessionRecordReminder,
   isCommitArgv,
+  isFailedResult,
   isGitCommit,
   sessionRecordReminderListener,
 } from './reminders.js';
@@ -110,6 +111,30 @@ describe('commitReminderListener', () => {
     expect(decision.content).toBeUndefined();
   });
 
+  it('stays silent when the failure only shows as an exit-code marker (#110)', async () => {
+    // Live probe result: the uv tool reports `ok:false` as an ordinary tool
+    // value, so the host's `isError` stays false and the marker is the only
+    // evidence — a rejected commit must not look like a successful one.
+    const exec: ToolExecutionLike = {
+      name: 'uv',
+      arguments: { args: ['run', 'git', 'commit', '-m', 'x'] },
+    };
+    const failed: ToolResultLike = {
+      isError: false,
+      content: [
+        {
+          type: 'text',
+          text: 'On branch master\nnothing to commit, working tree clean\n[exit code: 1]',
+        },
+      ],
+    };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await commitReminderListener(exec, failed, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(decision.content).toBeUndefined();
+  });
+
   it('defers to next() on a non-commit call', async () => {
     const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'git log' } };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
@@ -117,6 +142,32 @@ describe('commitReminderListener', () => {
 
     expect(next).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'accept' });
+  });
+});
+
+describe('isFailedResult (#110)', () => {
+  const text = (value: string): ToolResultLike => ({
+    isError: false,
+    content: [{ type: 'text', text: value }],
+  });
+
+  it('reads the host error flag', () => {
+    expect(isFailedResult({ isError: true, content: [] })).toBe(true);
+  });
+
+  it('reads the exit-code, kill, timeout and stop markers', () => {
+    expect(isFailedResult(text('boom\n[exit code: 1]'))).toBe(true);
+    expect(isFailedResult(text('boom\n[exit code: 130]'))).toBe(true);
+    expect(isFailedResult(text('[killed by signal: SIGTERM]'))).toBe(true);
+    expect(isFailedResult(text('[timed out after 600000ms]'))).toBe(true);
+    expect(isFailedResult(text('[stopped: user]'))).toBe(true);
+  });
+
+  it('treats a plain success as success', () => {
+    expect(isFailedResult(successResult)).toBe(false);
+    expect(isFailedResult(text('[master abc1234] probe: x\n 1 file changed'))).toBe(false);
+    // Zero is never emitted as a failure marker.
+    expect(isFailedResult(text('[exit code: 0]'))).toBe(false);
   });
 });
 
