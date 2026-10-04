@@ -20,7 +20,7 @@
 | T3 | `body-templates/3.md` | 单点 task（一句话） |
 | T4 | `body-templates/4.md` | 遗留/观察（来源） |
 | T5 | `body-templates/5.md` | 审查发现 |
-| T6 | `body-templates/6.md` | plan 执行方案（目标/步骤/验收） |
+| T6 | `body-templates/6.md` | plan 执行方案（目标/拆解/并行批次/验收） |
 | T7 | `body-templates/7.md` | plan 版本计划（范围） |
 | T8 | `body-templates/8.md` | milestone（版本） |
 | T9–T16 | `body-templates/9.md`…`16.md` | 决策 / 疑问 / 状态变更 / 跨文件方案 / 验证 / 依赖 / 发布 / 兜底 |

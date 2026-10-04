@@ -21,6 +21,18 @@
   - phase 已对应既有 issue（收口/合并 plan）→ **直接 attach，不重复建**。
 - 挂入后统一排期锁定：`mint({ args: ["plan","plan","<plan>"] })`（plan 下不留 open）。
 
+## 2.5 并行批次执行
+
+批次判据与派发协议见 `references/parallel-exec.md`；plan 阶段在这里已经产出 `## 并行批次`。
+
+- 一批在**同一条 assistant message** 里批量派 `subagent`（一 issue 一个）：并行启动，不要一条条等；
+  提示词禁令必须写全（子代理看不到本对话）。
+- 子代理**只改文件**；git 提交与一切 mint 写由主 agent **逐 issue 串行**做
+  （避免 git index 竞态与互相夹带）。
+- 等待**不 `sleep`**、不轮询 `list_agents`：默认继续自己的独立工作，结算通知会自动到；
+  真被阻塞才 `job_output(<id>, wait: true)`（**仅一次性后台 job**，不用于子代理）。
+- 重命令（build / test:coverage / 装依赖）与串行独占生成物（`CHANGELOG.md`、lockfile）归主 agent。
+
 ## 3. 每个逻辑变更
 
 1. 改码前 `mint({ args: ["issue","state","start","<id>"] })`（planned → dev），**保持 dev**。

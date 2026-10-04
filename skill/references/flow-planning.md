@@ -22,7 +22,13 @@
    **phase 已对应既有 issue（收口/合并计划）直接 attach，不重复建**。
    **挂入后统一排期锁定**：`mint({ args: ["plan","plan","<PLAN>"] })`
    （plan 下 issue 一律 planned，不留 open）。
-4. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**第一步先建 mint plan + 拆 issues 再执行**；
+4. **判并行批次**：按 `references/parallel-exec.md` §1 的判据（文件集两两不相交等五轴）给 issue 分批，
+   把批次表写进 plan body 的 `## 并行批次` 段 —— `plan create --body` 时**就带该段**；
+   细化用 `mint({ args: ["plan","set","<PLAN>","--body-section","并行批次","--body-file","<文件>"] })`
+   （标题不存在报 `section not found`；以 `- ` 开头的值**必须经 `--body-file`**，
+   直接 `--body "- …"` 会被 CLI 当成参数）；宿主 plan 正文同步该表。
+   无并行机会写「单批串行」+ 一句理由；执行侧见 `flow-impl.md` 并行批次小节。
+5. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**第一步先建 mint plan + 拆 issues 再执行**；
    每个 issue 走状态机到 done（关联对应 commit）。
 
 ## 维护（改名 / 迁移 / 清理）
