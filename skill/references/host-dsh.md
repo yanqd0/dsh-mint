@@ -8,6 +8,9 @@
   `args` 即 CLI 参数数组，输出原生 TSV（页脚 `# Page x/y` 在 stdout）。
 - 工具注册在 **root ctx（global layer）**，所有 agent 继承；**子代理也继承**，但子代理 approval 被
   pin 为 `never`，**bash 路径对子代理不可用**——子代理只能用 `mint` 工具。
+- **子代理继承什么**：工作区 cwd、`AGENTS.md` 指令、通用工具、`mint` 工具与 skill catalog；但**没有 `[Mint]` 注入**
+  （`delegationDepth > 0` 跳过），审批 pin `never` 且**不可提权**（跨项目写、工作区外写必失败）。
+  故派活提示词须显式给目标/文件范围/验收/既有结论/禁令，不能指望它从父对话自取。
 - 工具拒绝的根命令：`delete` / `import` / `sync` / `export` / `tui`，以及全局 `--db`；
   这些须经用户确认后走 bash（常规沙箱提权审批）。
 - **本项目不带 `-p`**：目标项目默认取会话 cwd；`-p` / `--project` 只用于指向**别的**项目。
