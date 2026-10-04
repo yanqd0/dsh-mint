@@ -9,19 +9,19 @@ description: >-
 ---
 
 用 mint 管理开发 issue 与流程：**解析意图 → 读 reference → 用 `mint` 工具执行 → 验证**。
-`<description>` 是一句话意图；未传参即接管。
+未传参即接管。
 
 ## 执行面
 
-一律用宿主 `mint` 工具；`args: [...]` 即 `mint({ args: [...] })`。
+一律用宿主 `mint` 工具（`args` 即 CLI 参数数组）。
 
 项目默认取会话 cwd：本项目操作不带 `-p`，跨项目才加（`references/cross-project.md`）。
 
 ## 三层模型
 
-- **issue**：问题/需求，六态生命周期；最小可执行单位。
-- **plan**：一次开发计划，下挂 issue；**对应 DSH plan 模式**（宿主 plan ⟷ mint plan 一一对应）。
-- **milestone**：项目功能版本（create 必带 `--version`）；**同刻仅 1 个 running**，plan 与独立 issue 默认挂它。
+- **issue**：问题/需求，六态；最小执行单位。
+- **plan**：一次开发计划，下挂 issue；**对应 DSH plan 模式**（一一对应）。
+- **milestone**：功能版本（create 必带 `--version`）；**同刻仅 1 个 running**，plan 与独立 issue 默认挂它。
 
 ## 流程索引（按触发读）
 
@@ -32,7 +32,7 @@ description: >-
 | 遗留 / TODO / 观察项 | `references/flow-todo.md` |
 | 审查 / 测试报告 | `references/flow-review.md` |
 | 版本 / 计划 / 里程碑 / 拆解 | `references/flow-planning.md` |
-| 写码实施（门禁详解） | `references/flow-impl.md` |
+| 写码实施（门禁详解） | `references/flow-impl.md`、`references/parallel-exec.md` |
 | 无参接管 | `references/flow-session.md` |
 | 散落 issue 收口 | `references/flow-sweep.md` |
 | 分支决策（挂载/测试/git/link/kind） | `references/flow-conditions.md` |
@@ -46,10 +46,11 @@ description: >-
 | 约束红线（delete/清理/去重） | `references/constraints.md` |
 | 本宿主集成 | `references/host-dsh.md` |
 
-## 不可跳过（强制；细节见 `references/flow-impl.md`、`references/state-machine.md`）
+## 不可跳过（强制；见 `references/flow-impl.md`、`references/state-machine.md`）
 
 - **plan 双向绑定**：宿主 plan ⟷ mint plan 一一对应；无活跃 mint plan 时 `exit_plan_mode` 被拒。
-  从存量 plan 接管时**必须先进入宿主 plan 模式**，禁止 auto 直接跑完。
+  从存量 plan 接管须先进入宿主 plan 模式，禁止 auto 直接跑完。
+- **并行批次**：plan 必带批次表（同批文件不相交）；见 `references/parallel-exec.md`。
 - **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue + `plan plan` 锁定（不留 open）；先跑后建见 `references/flow-impl.md`。
 - **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（planned → dev）；open/planned 直接改码 = 违反。
 - **commit 后立即**：`args: ["issue","state","commit","<id>","--sha","<前7位>"]`
@@ -62,6 +63,6 @@ description: >-
 ## 记录与检索
 
 - 正文用 `args: ["issue","get","<id>","body"]`（裸值最准）；命令与输出见 `references/commands.md`。
-- 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`（禁 `- [ ]` checkbox）；
+- 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`；
   改写/追加既有 body 见 `references/body-editing.md`。
 - 约束红线与 label：见 `references/constraints.md`、`references/labels.md`。

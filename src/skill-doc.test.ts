@@ -45,6 +45,9 @@ const SKILL_MARKERS: readonly string[] = [
   // `-p`. Pinned as a marker because trimming it re-opens the exact behaviour
   // this plan fixed.
   '本项目操作不带 `-p`',
+  // #122: parallel batches are the plan-level constraint that keeps
+  // concurrently delegated work off the same files.
+  '并行批次',
 ];
 
 /** Rules that moved out of SKILL.md must still exist in their home file. */
@@ -59,6 +62,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // that already carried it (flow-session's step 4).
   ['references/flow-impl.md', ['先跑后建', '记录必须有', '顺序可换']],
   ['references/flow-session.md', ['priority 升序', '按 id 升序']],
+  // #122: the parallel-execution contract (batch table, subagent dispatch, no
+  // sleeps, state commit) lives in its own reference.
+  ['references/parallel-exec.md', ['并行批次', 'subagent', '不 sleep', 'state commit']],
   // #81: cross-project registration carries its source, and the tool gate is
   // one confirmation per session and target project — not per call.
   // #91: the target project is confirmed first, kind is problem/requirement, the
