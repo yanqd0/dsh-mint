@@ -12,6 +12,7 @@ import {
 } from './cross-project.js';
 import type { Invocation } from './cross-project.js';
 import { TOOL_NAME } from './mint-tool.js';
+import { isOwnProject } from './own-project.js';
 import { sessionIdOf } from './session-id.js';
 
 export { sessionIdOf };
@@ -98,6 +99,11 @@ async function decide(
     return { kind: 'deny', reason: missingProjectMessage(project, candidates) };
   }
   if (!isWriteInvocation(invocation)) return undefined;
+  // `-p <本项目>` is the session's own ledger under an explicit name: it writes
+  // exactly where the default path writes, so it is not a cross-project write
+  // and must not ask (#114). An unknown own name keeps the ask — the caller
+  // fails closed. The `mint` tool separately answers with a correction hint.
+  if (isOwnProject(cwd, entry, project)) return undefined;
   const sessionId = sessionIdOf(exec?.agent);
   if (sessionId !== undefined && granted.has(`${sessionId}${KEY_SEPARATOR}${project}`)) {
     return undefined;

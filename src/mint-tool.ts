@@ -8,6 +8,7 @@ import {
 } from './cross-project.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions } from './mint.js';
+import { isOwnProject, resetOwnProjectCache } from './own-project.js';
 import type {
   ContentBlockLike,
   DshContext,
@@ -113,6 +114,21 @@ export interface MintToolOutcome {
   stderr?: string;
   /** The mint process was killed by the wall-clock limit (#45). */
   timedOut?: boolean;
+  /**
+   * Model-facing correction for the argv itself (not for mint's answer), e.g.
+   * a redundant `-p <本项目>` (#114). Rendered on its own line; declared in the
+   * output schema because `additionalProperties: false` makes an undeclared key
+   * fatal (`INVALID_TOOL_OUTPUT`, #100).
+   */
+  hint?: string;
+}
+
+/** Corrective line for a `-p <本项目>` call, which needs no `-p` (#114). */
+export function redundantProjectHint(project: string): string {
+  return (
+    `[mint] 提示：-p ${project} 就是本会话的项目，属冗余；` +
+    '本项目操作不要带 -p（项目默认取会话 cwd）。'
+  );
 }
 
 /**
@@ -240,15 +256,24 @@ export async function executeMintTool(
       return { ok: false, exitCode: 1, stderr: missingProjectMessage(target, candidates) };
     }
   }
+  // `-p <本项目>` is the default path under an explicit name. The call is left
+  // untouched (thin pass-through), but the answer carries the correction so the
+  // model stops writing it — and the cross-project gate does not ask (#114).
+  const ownHint =
+    target !== undefined && isOwnProject(cwd, entry, target)
+      ? redundantProjectHint(target)
+      : undefined;
   const options: MintRunOptions = signal === undefined ? {} : { signal };
   if (entry !== undefined) {
     options.entry = entry;
   }
   const result = await runMint(cwd, argv as string[], options);
   // A call that can change `project list` must not leave a stale answer behind:
-  // the gate and this re-check both read through that memo (#106).
+  // the gate, this re-check and the own-project memo all read through those
+  // memos (#106, #114).
   if (result.ok && mutatesProjectList(invocation)) {
     resetProjectCache();
+    resetOwnProjectCache();
   }
   if (result.ok) {
     // mint writes advisories to stderr even on success — `mint: hint: …` lines
@@ -265,11 +290,13 @@ export async function executeMintTool(
     if (advisory.length > 0) {
       outcome.stderr = truncate(advisory);
     }
+    if (ownHint !== undefined) outcome.hint = ownHint;
     return outcome;
   }
   const exitCode = result.exitCode ?? (result.aborted === true ? 130 : 1);
   const failed: MintToolOutcome = { ok: false, exitCode, stderr: result.error ?? 'mint 执行失败' };
   if (result.timedOut === true) failed.timedOut = true;
+  if (ownHint !== undefined) failed.hint = ownHint;
   return failed;
 }
 
@@ -280,12 +307,13 @@ export async function executeMintTool(
  */
 export function renderMintOutcome(outcome: MintToolOutcome): string {
   if (outcome.ok) {
-    const parts = [outcome.stdout ?? '', outcome.stderr ?? '']
+    const parts = [outcome.stdout ?? '', outcome.stderr ?? '', outcome.hint ?? '']
       .map((part) => part.trim())
       .filter((part) => part.length > 0);
     return parts.length > 0 ? parts.join('\n') : '(mint 无输出)';
   }
   const lines = [`[mint] exit ${outcome.exitCode}: ${outcome.stderr ?? 'unknown error'}`];
+  if (outcome.hint !== undefined) lines.push(outcome.hint);
   if (outcome.timedOut === true) lines.push(MINT_TIMEOUT_HINT);
   if (SKEW_ERROR_PATTERN.test(outcome.stderr ?? '')) lines.push(MINT_SKEW_HINT);
   return lines.join('\n');
@@ -335,8 +363,10 @@ export function installMintTool(ctx: DshContext, entry?: string): (() => void) |
           // The host validates this schema against every successful return value
           // and `additionalProperties: false` makes an undeclared key fatal
           // (`INVALID_TOOL_OUTPUT`, render never runs). `timedOut` is part of the
-          // timeout answer, so it must be declared here (#100).
+          // timeout answer, so it must be declared here (#100); `hint` is the
+          // redundant-`-p` correction (#114).
           timedOut: { type: 'boolean' },
+          hint: { type: 'string' },
         },
         required: ['ok', 'exitCode'],
         additionalProperties: false,

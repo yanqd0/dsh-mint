@@ -1,5 +1,6 @@
 import { isWriteInvocation } from './cross-project.js';
 import { invocationsOf, sessionIdOf } from './cross-project-gate.js';
+import { isOwnProject } from './own-project.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
 
 /**
@@ -24,7 +25,8 @@ import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
  *   is why the `mint` tool itself needs no change here.
  *
  * A cross-project write (`-p <project>` / `MINT_PROJECT`) is **not** a record of
- * this session's work in this project, so it does not count.
+ * this session's work in this project, so it does not count — but `-p <本项目>`
+ * is, because it writes to the very ledger the default path writes (#114).
  */
 
 /** How many sessions are remembered; matches the other bounded session maps. */
@@ -61,12 +63,22 @@ export function resetSessionLedger(): void {
 }
 
 /** True when a tool result carries an own-project mint write. */
-export function isOwnProjectMintWrite(exec: ToolExecutionLike, result?: ToolResultLike): boolean {
+export function isOwnProjectMintWrite(
+  exec: ToolExecutionLike,
+  result?: ToolResultLike,
+  entry?: string
+): boolean {
   if (result?.isError === true) return false;
   try {
-    return invocationsOf(exec).some(
-      (invocation) => invocation.project === undefined && isWriteInvocation(invocation)
-    );
+    const cwd = exec?.agent?.session?.header?.cwd;
+    return invocationsOf(exec).some((invocation) => {
+      if (!isWriteInvocation(invocation)) return false;
+      if (invocation.project === undefined) return true;
+      // `-p <本项目>` writes to this session's own ledger, so it *is* a record of
+      // this session's work — unlike a real cross-project write (#114). An
+      // unknown own name keeps the old answer: no evidence.
+      return cwd !== undefined && isOwnProject(cwd, entry, invocation.project);
+    });
   } catch {
     // An unreadable call is not evidence of a record.
     return false;
@@ -80,9 +92,9 @@ export function isOwnProjectMintWrite(exec: ToolExecutionLike, result?: ToolResu
  * tool name is checked inside `invocationsOf` before any work, so unrelated
  * calls cost nothing.
  */
-export function installSessionLedger(ctx: DshContext): () => void {
+export function installSessionLedger(ctx: DshContext, entry?: string): () => void {
   return ctx.on('tools/result', (exec: ToolExecutionLike, result: ToolResultLike) => {
-    if (isOwnProjectMintWrite(exec, result)) {
+    if (isOwnProjectMintWrite(exec, result, entry)) {
       recordMintWrite(sessionIdOf(exec?.agent));
     }
   });

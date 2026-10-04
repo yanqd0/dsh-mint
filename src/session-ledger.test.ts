@@ -8,6 +8,7 @@ import {
   recordMintWrite,
   resetSessionLedger,
 } from './session-ledger.js';
+import { noteOwnProject, resetOwnProjectCache } from './own-project.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
 
 const success: ToolResultLike = { isError: false, content: [{ type: 'text', text: 'ok' }] };
@@ -27,29 +28,51 @@ function bashExec(command: string, sessionId = 'sess-1'): ToolExecutionLike {
 
 afterEach(() => {
   resetSessionLedger();
+  resetOwnProjectCache();
 });
 
 describe('isOwnProjectMintWrite', () => {
   it('counts own-project writes from the tool and from bash', () => {
     expect(isOwnProjectMintWrite(mintExec(['issue', 'state', 'start', '42']), success)).toBe(true);
     expect(isOwnProjectMintWrite(mintExec(['plan', 'attach', '20', '113']), success)).toBe(true);
-    expect(isOwnProjectMintWrite(bashExec('mint issue state commit 42 --sha abc1234'), success)).toBe(
-      true
-    );
+    expect(
+      isOwnProjectMintWrite(bashExec('mint issue state commit 42 --sha abc1234'), success)
+    ).toBe(true);
   });
 
   it('ignores reads, foreign tools and errored calls', () => {
     expect(isOwnProjectMintWrite(mintExec(['list']), success)).toBe(false);
     expect(isOwnProjectMintWrite(mintExec(['plan', 'list', '--json']), success)).toBe(false);
-    expect(isOwnProjectMintWrite({ name: 'uv', arguments: { args: ['run', 'pytest'] }, agent: agent('s') }, success)).toBe(
-      false
-    );
+    expect(
+      isOwnProjectMintWrite(
+        { name: 'uv', arguments: { args: ['run', 'pytest'] }, agent: agent('s') },
+        success
+      )
+    ).toBe(false);
     expect(isOwnProjectMintWrite(mintExec(['issue', 'state', 'start', '42']), failure)).toBe(false);
   });
 
   it('ignores cross-project writes: another ledger is not this session’s record', () => {
     expect(
       isOwnProjectMintWrite(mintExec(['-p', 'other', 'issue', 'state', 'start', '42']), success)
+    ).toBe(false);
+  });
+
+  it('counts -p <本项目> as this session’s own record (#114)', () => {
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+
+    expect(
+      isOwnProjectMintWrite(mintExec(['-p', 'dsh-mint', 'issue', 'state', 'start', '42']), success)
+    ).toBe(true);
+    // A real cross-project write still does not count.
+    expect(
+      isOwnProjectMintWrite(mintExec(['-p', 'other', 'issue', 'state', 'start', '42']), success)
+    ).toBe(false);
+  });
+
+  it('treats -p <本项目> as foreign while the own project is unknown (#114)', () => {
+    expect(
+      isOwnProjectMintWrite(mintExec(['-p', 'dsh-mint', 'issue', 'state', 'start', '42']), success)
     ).toBe(false);
   });
 

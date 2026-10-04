@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { runMint } from './mint.js';
 import { resetProjectCache } from './cross-project.js';
+import { noteOwnProject, ownProjectOf, resetOwnProjectCache } from './own-project.js';
 import {
   ALLOWED_ROOT_FLAGS,
   ALLOWED_SUBCOMMANDS,
@@ -21,6 +22,7 @@ const runMintMock = vi.mocked(runMint);
 beforeEach(() => {
   runMintMock.mockReset();
   resetProjectCache();
+  resetOwnProjectCache();
   runMintMock.mockResolvedValue({ ok: true, text: 'ID\tSTATUS\n1\topen\n' });
 });
 
@@ -325,6 +327,7 @@ describe('installMintTool', () => {
       stdout: 'out',
       stderr: 'err',
       timedOut: true,
+      hint: 'hint',
     };
     for (const key of Object.keys(richest)) {
       expect(Object.keys(schema.properties ?? {})).toContain(key);
@@ -343,6 +346,7 @@ describe('installMintTool', () => {
           : { ok: true, text: 'ok' }
       )
     );
+    noteOwnProject('/proj', undefined, 'dsh-mint');
     await executeMintTool('/proj', ['-p', 'other', 'list']);
     await executeMintTool('/proj', ['project', 'create', 'brand-new']);
     await executeMintTool('/proj', ['-p', 'other', 'list']);
@@ -353,6 +357,49 @@ describe('installMintTool', () => {
     // Two probes: the memo answered the middle call's gate path, but the
     // `project create` in between must have dropped it.
     expect(probes).toHaveLength(2);
+    // The same call can re-point the cwd at another project, so the own-project
+    // memo is dropped with it (#114).
+    expect(ownProjectOf('/proj', undefined)).toBeUndefined();
+  });
+
+  it('attaches a correction hint when -p names the session’s own project (#114)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
+    runMintMock.mockResolvedValueOnce({ ok: true, text: 'started' });
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+
+    const outcome = await executeMintTool('/proj', [
+      '-p',
+      'dsh-mint',
+      'issue',
+      'state',
+      'start',
+      '5',
+    ]);
+
+    expect(outcome.ok).toBe(true);
+    expect(outcome.hint).toContain('-p dsh-mint');
+    expect(outcome.hint).toContain('不要带 -p');
+    expect(renderMintOutcome(outcome)).toContain('started\n[mint] 提示：');
+  });
+
+  it('leaves a genuine cross-project call without a hint (#114)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"},{"name":"other"}]' });
+    runMintMock.mockResolvedValueOnce({ ok: true, text: 'ok' });
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+
+    const outcome = await executeMintTool('/proj', ['-p', 'other', 'list']);
+
+    expect(outcome.hint).toBeUndefined();
+    expect(renderMintOutcome(outcome)).toBe('ok');
+  });
+
+  it('adds no hint while the own project is unknown (#114)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
+    runMintMock.mockResolvedValueOnce({ ok: true, text: 'ok' });
+
+    const outcome = await executeMintTool('/proj', ['-p', 'dsh-mint', 'list']);
+
+    expect(outcome.hint).toBeUndefined();
   });
 
   it('degrades to a no-op without a tools service', () => {

@@ -4,6 +4,7 @@ import { installCrossProjectGate, invocationsOf, sessionIdOf } from './cross-pro
 import { resetProjectCache } from './cross-project.js';
 import { executeMintTool } from './mint-tool.js';
 import { runMint } from './mint.js';
+import { noteOwnProject, resetOwnProjectCache } from './own-project.js';
 import type {
   ApprovalRequestLike,
   DshContext,
@@ -17,6 +18,7 @@ const runMintMock = vi.mocked(runMint);
 beforeEach(() => {
   runMintMock.mockReset();
   resetProjectCache();
+  resetOwnProjectCache();
   runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"dsh-mint"},{"name":"other"}]' });
 });
 
@@ -152,9 +154,10 @@ describe('installCrossProjectGate', () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     const next = allowNext();
-    const decision = await pre(
-      listeners
-    )(mintExec(['-p', 'other', 'issue', 'add', '--', '--help']), next);
+    const decision = await pre(listeners)(
+      mintExec(['-p', 'other', 'issue', 'add', '--', '--help']),
+      next
+    );
     expect(decision.kind).toBe('ask');
     if (decision.kind !== 'ask') throw new Error('expected an ask');
     expect(decision.reason).toContain('-- --help');
@@ -175,6 +178,62 @@ describe('installCrossProjectGate', () => {
     expect(decision.reason).toContain('issue state start 5');
     expect(decision.displayReason?.zh).toContain('目标项目：other');
     expect(decision.displayReason?.en).toContain('other');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('does not ask when -p names the session’s own project (#114)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+    const next = allowNext();
+
+    const decision = await pre(listeners)(
+      mintExec(['-p', 'dsh-mint', 'issue', 'state', 'start', '5']),
+      next
+    );
+
+    expect(decision.kind).toBe('allow');
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('covers the bash channel for -p <本项目> (#114)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+    const next = allowNext();
+
+    const decision = await pre(listeners)(bashExec('mint -p dsh-mint issue state start 5'), next);
+
+    expect(decision.kind).toBe('allow');
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('still asks for -p <本项目> while the own project is unknown (#114)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    const next = allowNext();
+
+    const decision = await pre(listeners)(
+      mintExec(['-p', 'dsh-mint', 'issue', 'state', 'start', '5']),
+      next
+    );
+
+    expect(decision.kind).toBe('ask');
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('still asks for another project once the own name is known (#114)', async () => {
+    const { ctx, listeners } = makeCtx();
+    installCrossProjectGate(ctx);
+    noteOwnProject('/proj', undefined, 'dsh-mint');
+    const next = allowNext();
+
+    const decision = await pre(listeners)(
+      mintExec(['-p', 'other', 'issue', 'state', 'start', '5']),
+      next
+    );
+
+    expect(decision.kind).toBe('ask');
     expect(next).not.toHaveBeenCalled();
   });
 

@@ -80,7 +80,8 @@ export function apply(ctx: DshContext, config: Config): void {
   installCommitReminder(ctx);
   installFailureSignal(ctx);
   // #111: session-scoped mint-write ledger, read by the plan-mode exit notice.
-  installSessionLedger(ctx);
+  // #114: the `mintEntry` makes `-p <本项目>` count as this session's own write.
+  installSessionLedger(ctx, mintEntry);
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
   installMintTool(ctx, mintEntry);
