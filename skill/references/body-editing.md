@@ -7,12 +7,15 @@
 
 ```js
 mint({ args: ["issue","set","42","--body-section","验证","--body","- pnpm test 全绿"] })
-mint({ args: ["issue","set","42","--body-append","- 复查：旧复现路径已失效"] })
+mint({ args: ["issue","set","42","--body-append=- 复查：旧复现路径已失效"] })
 mint({ args: ["issue","set","42","--body-file","/tmp/new-body.md"] })
 mint({ args: ["issue","set","42","--body","全新正文"] })
 ```
 
 - `--body` / `--body-append` / `--body-file` **三选一**；`--body ""` 清空整体正文。
+- **值以 `-` 开头必须用等号形式**：`--body-append=- 证据一`（同理 `--body=- 首行`、`--body-section=…`）。
+  空格形式会被 clap 当成选项，报 `error: unexpected argument '- ' found`；而 `--body-file` 与
+  `--body-append` **不能同用**（三选一），所以追加以 `-` 开头的段落只有等号形式这一条路（#124）。
 - `--body-section <HEADING>` 必须配 `--body`/`--body-file`，**不能**与 `--body-append` 同用；
   按 ATX 标题文字**精确匹配**（先 `issue get <id> body` 取准确标题），保留标题行，
   替换到下一个同级/更高级标题；**找不到标题直接报 `section not found`，不会隐式新增**。
