@@ -291,7 +291,7 @@ describe('renderOverview', () => {
     expect(text).not.toContain('(latest )');
   });
 
-  it('warns on 2+ running milestones and points at the fix', () => {
+  it('warns on 2+ running milestones with the CLI guard, not a manual reopen (#104/#118)', () => {
     const text = renderOverview({
       issues: [],
       milestones: [
@@ -300,8 +300,12 @@ describe('renderOverview', () => {
       ],
     });
     expect(text).toContain('WARNING: 2 running milestones');
-    expect(text).toContain('keep exactly one');
-    expect(text).toContain('"milestone","set","<id>","--status","open"');
+    expect(text).toContain('ask the user');
+    expect(text).toContain('--force');
+    // the pre-#104 advice (reopen the later one by hand) is what the CLI now
+    // rejects / makes moot, so it must not come back
+    expect(text).not.toContain('keep exactly one');
+    expect(text).not.toContain('"--status","open"');
   });
 
   it('renders nothing when empty', () => {

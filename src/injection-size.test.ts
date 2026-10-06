@@ -159,4 +159,20 @@ describe('per-request injection budget (#61)', () => {
     expect(text).toContain('ASK the user');
     expect(text).toContain('do not set it yourself');
   });
+
+  // #104/#118: the 2+ running branch is abnormal, so it may be longer than the
+  // one-running line — but it is still re-sent every request and must carry the
+  // CLI's own answer (`--force`, ask the user) instead of manual repair advice.
+  it('keeps the 2+ running warning within budget and aligned with the guard', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [
+        { id: 1, title: 'a', version: '0.1.0', status: 'running' },
+        { id: 2, title: 'b', version: '0.2.0', status: 'running' },
+      ],
+    });
+    const warning = text.split('\n').find((line) => line.startsWith('[Mint] WARNING:')) ?? '';
+    expect(warning).toContain('--force');
+    expect(bytes(warning)).toBeLessThanOrEqual(320);
+  });
 });

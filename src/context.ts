@@ -256,10 +256,17 @@ export function renderOverview(overview: MintOverview): string {
         `plan create --milestone ${current.id}`
     );
   } else if (running.length >= 2) {
+    // Two running milestones are no longer "fix this by hand": since mint 0.9.0
+    // the CLI refuses any write that would add one, and `--force` is the only
+    // escape hatch (#104). The injected line must not tell the model to reopen a
+    // milestone when the CLI's own answer is "ask the user about parallel
+    // versions"; the migration route stays as the non-parallel option.
     const names = running.map((m) => m.version || m.title).join(', ');
     lines.push(
-      `[Mint] WARNING: ${running.length} running milestones (${names}) — keep exactly one; ` +
-        'ask the user, then reopen the later one: mint({args:["milestone","set","<id>","--status","open"]})'
+      `[Mint] WARNING: ${running.length} running milestones (${names}) — the CLI now refuses ` +
+        'to start another without --force; ask the user whether parallel versions are intended ' +
+        '(mint({args:["milestone","set","<id>","--status","running","--force"]})) or migrate the ' +
+        'extra work and set it open'
     );
   } else if (overview.milestones.length > 0) {
     const latest = latestVersion(overview.milestones);
