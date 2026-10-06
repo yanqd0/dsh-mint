@@ -9,29 +9,55 @@ import type { DshContext, PreToolDecisionLike, ToolExecutionLike } from './types
 export const EXIT_PLAN_MODE = 'exit_plan_mode';
 
 /**
- * The only plan status that satisfies the gate (#59).
+ * Plan statuses that satisfy the gate (#59, #135).
  *
- * mint derives container status from the child set: `running` means at least one
- * active issue, while `open` covers an empty or all-open plan and `partial` is a
- * **completion** state (done + dropped mix, see the mint skill's state machine).
- * Requiring `running` is therefore the same as requiring "decomposed and still
- * active", and it closes the hole where a freshly created, issue-less plan let
- * `exit_plan_mode` through.
+ * The gate's question is "did this project produce a decomposable mint record
+ * before leaving plan mode?", so it accepts a plan that is **decomposed and not
+ * terminal**:
+ *
+ * - `running` — mint derives it from an active child (planned/dev/test), so the
+ *   plan is decomposed by construction (#59);
+ * - `open` **with at least one attached issue** — the #128 registration shape: a
+ *   freshly created plan whose children are all still `open` also derives `open`
+ *   (`mint`'s `container/derive.rs`), and demanding `running` here deadlocked
+ *   every new session that registered advice for another plan/milestone while
+ *   leaving those issues `open` (#135).
+ *
+ * `partial`/`done`/`dropped` are completion states and never satisfy the gate;
+ * an **empty** plan stays out too — zero attached issues is exactly the hole #59
+ * closed.
  */
-const ACTIVE_PLAN_STATUS = 'running';
+const DECOMPOSED_PLAN_STATUSES: ReadonlySet<string> = new Set(['running', 'open']);
+
+/**
+ * True when one `plan list --json` item is a record the gate can accept.
+ *
+ * Exported so the verdict has one home and a direct unit test (the listener only
+ * composes it with mint's answer).
+ */
+export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown }): boolean {
+  if (typeof item.status !== 'string' || !DECOMPOSED_PLAN_STATUSES.has(item.status)) return false;
+  // A derived `running` already proves an active child exists: keep the pre-#135
+  // verdict for it, byte for byte.
+  if (item.status === 'running') return true;
+  // `open` covers both "nothing attached yet" and "all children open"; only the
+  // former must keep the gate shut. An unreadable count fails open — like every
+  // other unreadable answer in this file, it must not trap plan-mode exit.
+  return typeof item.issue_count !== 'number' || item.issue_count > 0;
+}
 
 /**
  * The plan read behind the gate (#93).
  *
  * `--no-page` is required: mint pages `plan list` at five rows with the newest
- * id first, so a valid `running` plan older than the newest five read as "no
- * active plan" and trapped the session in plan mode.
+ * id first, so a valid record older than the newest five read as "no plan at
+ * all" and trapped the session in plan mode.
  *
  * `--status running` would shrink the answer further but costs the gate's two
  * distinct messages: an empty answer must keep meaning "no plan exists"
- * ({@link DENY_REASON}) while a non-empty answer without a running plan means
- * "plan exists, never decomposed" ({@link UNDECOMPOSED_DENY_REASON}). The
- * default read already hides only `done`, and the overview needs no more.
+ * ({@link DENY_REASON}) while a non-empty answer without a decomposed plan means
+ * "plans exist, none decomposed" ({@link UNDECOMPOSED_DENY_REASON}). The default
+ * read already hides only `done`, and the overview needs no more.
  */
 const PLAN_LIST_ARGV: readonly string[] = ['plan', 'list', '--json', '--no-page'];
 
@@ -50,8 +76,8 @@ const UNDECOMPOSED_DENY_REASON =
 
 /**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
- * mint plan in {@link ACTIVE_PLAN_STATUS} (`running`, i.e. decomposed with at
- * least one active issue), keeping the host plan mechanism bound to a mint plan.
+ * decomposed mint plan ({@link isDecomposedPlan}), keeping the host plan
+ * mechanism bound to a mint record.
  *
  * The tool name is checked BEFORE any service access, and the mint run sits
  * inside the try — a mint outage must never break an unrelated tool call
@@ -75,15 +101,16 @@ export async function planBindListener(
     if (!result.ok) {
       return next();
     }
-    const plans = JSON.parse(result.text ?? '{}') as { items?: Array<{ status?: string }> };
+    const plans = JSON.parse(result.text ?? '{}') as {
+      items?: Array<{ status?: unknown; issue_count?: unknown }>;
+    };
     const items = plans.items ?? [];
     // Unknown shape (e.g. a mint whose `plan list --json` carries no derived
     // status yet) fails open: an unreadable answer must not trap plan-mode exit.
     if (items.length > 0 && !items.some((plan) => typeof plan.status === 'string')) {
       return next();
     }
-    const active = items.some((plan) => plan.status === ACTIVE_PLAN_STATUS);
-    if (!active) {
+    if (!items.some(isDecomposedPlan)) {
       return { kind: 'deny', reason: items.length === 0 ? DENY_REASON : UNDECOMPOSED_DENY_REASON };
     }
   } catch {

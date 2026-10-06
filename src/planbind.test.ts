@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { installPlanBinding, planBindListener } from './planbind.js';
+import { installPlanBinding, isDecomposedPlan, planBindListener } from './planbind.js';
 import { runMint } from './mint.js';
 import type { DshContext, ToolExecutionLike } from './types.js';
 
@@ -50,12 +50,18 @@ describe('planBindListener', () => {
   it('reads the whole plan table, so an older running plan still counts (#93)', async () => {
     // Pre-#93 the gate took mint's default page of five (newest id first), so a
     // running plan older than the five newest read as "no plan at all". The argv
-    // is the fix; this six-plan answer is what that argv exists for.
+    // is the fix; this six-plan answer is what that argv exists for. The five
+    // open rows carry `issue_count: 0`, so the running one is the only record
+    // that can satisfy the gate here (#135).
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: JSON.stringify({
         items: [
-          ...Array.from({ length: 5 }, (_, index) => ({ id: 12 - index, status: 'open' })),
+          ...Array.from({ length: 5 }, (_, index) => ({
+            id: 12 - index,
+            status: 'open',
+            issue_count: 0,
+          })),
           { id: 1, status: 'running', issue_count: 2, title: 'old' },
         ],
       }),
@@ -67,6 +73,34 @@ describe('planBindListener', () => {
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
+  });
+
+  it('allows an open plan that already has an issue attached (#135)', async () => {
+    // The #128 shape: every child is still `open`, so mint derives the plan as
+    // `open` — the deadlock this case exists for.
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"open","issue_count":1,"title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('allows an open plan whose issue count is unreadable (fail-open, #135)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"open","title":"x"}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
   });
 
   it('denies an open, issue-less plan instead of passing the gate (#59)', async () => {
@@ -167,5 +201,28 @@ describe('installPlanBinding', () => {
     };
     installPlanBinding(ctx);
     expect(listeners['tools/pre-execute']).toBeTypeOf('function');
+  });
+});
+
+describe('isDecomposedPlan (#135)', () => {
+  it('accepts a running plan whatever the count says', () => {
+    expect(isDecomposedPlan({ status: 'running', issue_count: 2 })).toBe(true);
+    // `running` is derived from an active child, so an odd count must not flip it.
+    expect(isDecomposedPlan({ status: 'running', issue_count: 0 })).toBe(true);
+    expect(isDecomposedPlan({ status: 'running' })).toBe(true);
+  });
+
+  it('accepts an open plan only once it has an issue attached (#59 stays closed)', () => {
+    expect(isDecomposedPlan({ status: 'open', issue_count: 1 })).toBe(true);
+    expect(isDecomposedPlan({ status: 'open', issue_count: 0 })).toBe(false);
+    expect(isDecomposedPlan({ status: 'open' })).toBe(true);
+  });
+
+  it('rejects completion states and unreadable statuses', () => {
+    for (const status of ['partial', 'done', 'dropped', '', 'RUNNING']) {
+      expect(isDecomposedPlan({ status, issue_count: 3 }), status).toBe(false);
+    }
+    expect(isDecomposedPlan({ issue_count: 3 })).toBe(false);
+    expect(isDecomposedPlan({ status: 7, issue_count: 3 })).toBe(false);
   });
 });
