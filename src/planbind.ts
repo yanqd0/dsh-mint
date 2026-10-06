@@ -62,17 +62,21 @@ export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown
 const PLAN_LIST_ARGV: readonly string[] = ['plan', 'list', '--json', '--no-page'];
 
 const DENY_REASON =
-  'No active mint plan for this project — create one first with the mint tool: ' +
-  'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach the issues, before exiting plan mode.';
+  'No mint plan for this project — create one first with the mint tool: ' +
+  'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach at least one issue, before exiting plan mode.';
 
 /**
- * Denial used when plans exist but none is `running` — the #59 case: the plan was
- * created and never decomposed (or every child already reached a terminal state).
- * Naming the missing step beats repeating the "create a plan" advice.
+ * Denial used when plans exist but none is decomposed (#59): every plan is empty
+ * or already terminal.
+ *
+ * The gate asks for the **record**, not the schedule: `plan plan` is the
+ * start-of-work action (#128), so the message names it as a separate step
+ * instead of a prerequisite for exiting plan mode (#132).
  */
 const UNDECOMPOSED_DENY_REASON =
-  'The mint plan for this project has no active issue — a plan only counts once it is decomposed: ' +
-  'attach the issues and lock the schedule with mint({args:["plan","plan","<id>"]}) before exiting plan mode.';
+  'The mint plans for this project have no issue attached — a plan only counts once it is decomposed: ' +
+  'attach at least one with mint({args:["plan","attach","<id>","<issue>"]}); ' +
+  'lock the schedule with mint({args:["plan","plan","<id>"]}) when the work starts.';
 
 /**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no

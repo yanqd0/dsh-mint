@@ -103,7 +103,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('denies an open, issue-less plan instead of passing the gate (#59)', async () => {
+  it('denies an open, issue-less plan instead of passing the gate (#59, #132)', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: '{"items":[{"id":5,"status":"open","issue_count":0,"title":"x"}]}',
@@ -113,7 +113,10 @@ describe('planBindListener', () => {
     const decision = await planBindListener(exec, spy);
 
     expect(decision.kind).toBe('deny');
-    expect(decision.reason).toContain('mint({args:["plan","plan"');
+    expect(decision.reason).toContain('mint({args:["plan","attach"');
+    // #132: `plan plan` is the start-of-work step (#128), never a gate condition.
+    expect(decision.reason).toContain('when the work starts');
+    expect(decision.reason).not.toContain('before exiting plan mode');
     expect(spy).not.toHaveBeenCalled();
   });
 
