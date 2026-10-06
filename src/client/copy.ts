@@ -42,6 +42,8 @@ export const ZH = {
   'state.error': '加载失败',
   'state.retry': '重试',
 
+  'error.sessionNotLive': '会话已结束，请切换会话后重试',
+
   'detail.back': '返回',
   'detail.body': '正文',
   'detail.noBody': '（无正文）',
@@ -76,6 +78,9 @@ export const ZH = {
   'pager.summary': '第 {page}/{pages} 页，共 {total} 条',
   'pager.prev': '上一页',
   'pager.next': '下一页',
+
+  'count.issue.one': '{count} 个 issue',
+  'count.issue.other': '{count} 个 issue',
 } as const satisfies Record<string, string>;
 
 /** Every key the panel may ask for. A typo is a compile error, not a raw key. */
@@ -102,6 +107,8 @@ export const EN = {
   'state.empty': 'No data',
   'state.error': 'Failed to load',
   'state.retry': 'Retry',
+
+  'error.sessionNotLive': 'This session ended; switch sessions and try again',
 
   'detail.back': 'Back',
   'detail.body': 'Body',
@@ -137,6 +144,9 @@ export const EN = {
   'pager.summary': 'Page {page} of {pages} · {total} total',
   'pager.prev': 'Previous',
   'pager.next': 'Next',
+
+  'count.issue.one': '{count} issue',
+  'count.issue.other': '{count} issues',
 } as const satisfies Record<CopyKey, string>;
 
 /**

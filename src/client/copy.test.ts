@@ -122,6 +122,13 @@ describe('panel copy', () => {
     expect(EN['panel.allStates']).toBe('Include ended');
   });
 
+  // Chinese has no plural form, English does; the pair is what the count path
+  // picks from, so neither locale may collapse the other's contract.
+  it('carries a singular and a plural form for a count', () => {
+    expect(EN['count.issue.one']).not.toBe(EN['count.issue.other']);
+    expect(ZH['count.issue.one']).toBe(ZH['count.issue.other']);
+  });
+
   // The seat is a plain narrowing: whatever the bound translator answers is what
   // the panel shows, so a locale without this namespace shows the key rather
   // than silently falling back to Chinese.

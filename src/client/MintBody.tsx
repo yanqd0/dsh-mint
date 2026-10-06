@@ -330,7 +330,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
       return (
         <ContainerList
           copy={copy}
-          row={containerRow}
+          row={(item) => containerRow(item, copy)}
           state={containers}
           allStates={containerAllStates}
           onAllStates={(next) => {

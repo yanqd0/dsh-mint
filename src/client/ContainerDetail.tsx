@@ -155,7 +155,7 @@ export function ContainerDetail({
               plans.map((plan) => (
                 <ContainerRowView
                   key={plan.id}
-                  row={containerRow(plan)}
+                  row={containerRow(plan, copy)}
                   onSelect={() => {
                     onOpenPlan(plan.id);
                   }}

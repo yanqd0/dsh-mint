@@ -8,6 +8,7 @@ import type { ReactElement } from 'react';
 
 import { BODY, BUTTON, NOTE, PROSE } from './styles.js';
 import type { CopyTranslate } from './copy.js';
+import { routeErrorKey } from './model.js';
 
 export interface StateNoticeProps {
   copy: CopyTranslate;
@@ -26,12 +27,17 @@ export interface StateNoticeProps {
  * @param props - the state, its text, and the retry hook.
  */
 export function StateNotice({ copy, state, message, stderr, onRetry }: StateNoticeProps): ReactElement {
+  // A failure the panel can name in its own words is localized; any other text
+  // (mint's stderr, a shape warning) is diagnostic and shows verbatim.
+  const key = message === undefined ? undefined : routeErrorKey(message);
   const text =
     state === 'loading'
       ? copy('state.loading')
       : state === 'empty'
         ? copy('state.empty')
-        : (message ?? copy('state.error'));
+        : key === undefined
+          ? (message ?? copy('state.error'))
+          : copy(key);
 
   return (
     <div style={BODY}>

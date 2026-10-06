@@ -12,6 +12,7 @@ import {
   clampPage,
   containerMeta,
   containerRow,
+  countKey,
   describeLink,
   detailContainer,
   detailPlacement,
@@ -24,9 +25,19 @@ import {
   milestoneVersionOf,
   plansOfMilestone,
   priorityLabel,
+  routeErrorKey,
   statusTone,
   toLoadState,
 } from './model.js';
+import type { CopyTranslate } from './copy.js';
+
+/**
+ * A copy seat that renders the key it was asked for (and its params): these
+ * tests are about *which* key a projection picks, while the wording itself is
+ * pinned in `copy.test.ts`.
+ */
+const copy: CopyTranslate = (key, params) =>
+  params === undefined ? `‹${key}›` : `‹${key}:${Object.values(params).join(',')}›`;
 
 const ISSUE: IssueItem = {
   id: 12,
@@ -162,21 +173,45 @@ describe('containers and pagination', () => {
 
   it('projects a plan or milestone record onto a row', () => {
     const record = { id: 3, title: '客户端面', status: 'open', version: '0.2.0', issue_count: 6 };
-    expect(containerRow(record)).toEqual({
+    expect(containerRow(record, copy)).toEqual({
       id: 3,
       title: '客户端面',
-      meta: 'open · 0.2.0 · 6 issues',
+      meta: 'open · 0.2.0 · ‹count.issue.other:6›',
     });
   });
 
   it('omits a version mint does not have instead of printing null (#96)', () => {
     expect(
-      containerRow({ id: 9, title: '无里程碑的 plan', status: 'open', version: null, issue_count: 0 })
+      containerRow(
+        { id: 9, title: '无里程碑的 plan', status: 'open', version: null, issue_count: 0 },
+        copy
+      )
     ).toEqual({
       id: 9,
       title: '无里程碑的 plan',
-      meta: 'open · 0 issues',
+      meta: 'open · ‹count.issue.other:0›',
     });
+  });
+
+  // The unit travels with the count, and English needs the singular; Chinese
+  // carries the same text under both keys.
+  it('picks the singular count key for exactly one issue', () => {
+    expect(countKey(0)).toBe('count.issue.other');
+    expect(countKey(1)).toBe('count.issue.one');
+    expect(countKey(2)).toBe('count.issue.other');
+    expect(
+      containerRow({ id: 1, title: 'x', status: 'open', version: null, issue_count: 1 }, copy)
+    ).toEqual({ id: 1, title: 'x', meta: 'open · ‹count.issue.one:1›' });
+  });
+
+  // A route code the panel can explain is localized; anything else is mint's or
+  // the host's own diagnostic text and has to reach the reader unchanged.
+  it('localizes only the failure codes the panel owns', () => {
+    expect(routeErrorKey('session-not-live')).toBe('error.sessionNotLive');
+    expect(routeErrorKey('unknown-route')).toBeUndefined();
+    expect(routeErrorKey('not a page number: x')).toBeUndefined();
+    expect(routeErrorKey('session-not-live ')).toBeUndefined();
+    expect(routeErrorKey('')).toBeUndefined();
   });
 
   // An embedded list is the outer list with a different source: it must ask for

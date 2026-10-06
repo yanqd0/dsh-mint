@@ -14,7 +14,7 @@ import type {
   MintResponse,
   PlanItem,
 } from '../records.js';
-import type { CopyKey } from './copy.js';
+import type { CopyKey, CopyTranslate } from './copy.js';
 
 /** What a view knows about one request. */
 export type LoadState<T> =
@@ -224,12 +224,38 @@ export function detailPlacement(
   };
 }
 
-/** One container row's trailing meta: `open · 0.2.0 · 6`. */
+/** One container row's trailing meta: `open · 0.2.0 · 6 issues`. */
 export function containerMeta(parts: readonly (string | number | null | undefined)[]): string {
   return parts
     .filter((part): part is string | number => part !== null && part !== undefined && part !== '')
     .map((part) => String(part))
     .join(' · ');
+}
+
+/**
+ * The copy key for a count: mint counts are written with their unit, and English
+ * needs the singular form (`1 issue`). Chinese has no plural, so both keys carry
+ * the same text there.
+ *
+ * @param count - how many issues the line stands for.
+ */
+export function countKey(count: number): 'count.issue.one' | 'count.issue.other' {
+  return count === 1 ? 'count.issue.one' : 'count.issue.other';
+}
+
+/**
+ * The copy key for a route failure the panel can explain in its own words.
+ *
+ * The host answers `{ ok: false, error }`, and only a stable *code* is the
+ * panel's to translate; everything else is diagnostic text — mint's own stderr,
+ * a shape warning, a malformed-request message — which the panel shows verbatim
+ * so it can be compared with the CLI. `session-not-live` is the one a user
+ * reaches with a panel already open: the session behind it ended.
+ *
+ * @param message - the failure text as the route sent it.
+ */
+export function routeErrorKey(message: string): CopyKey | undefined {
+  return message === 'session-not-live' ? 'error.sessionNotLive' : undefined;
 }
 
 /** Which container a detail view is showing: the kind is part of the target. */
@@ -271,11 +297,15 @@ export interface ContainerRecordLike {
 }
 
 /** Project a plan or milestone record onto a list row. */
-export function containerRow(item: ContainerRecordLike): ContainerRow {
+export function containerRow(item: ContainerRecordLike, copy: CopyTranslate): ContainerRow {
   return {
     id: item.id,
     title: item.title,
-    meta: containerMeta([item.status, item.version, `${String(item.issue_count)} issues`]),
+    meta: containerMeta([
+      item.status,
+      item.version,
+      copy(countKey(item.issue_count), { count: item.issue_count }),
+    ]),
   };
 }
 
