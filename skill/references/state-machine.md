@@ -62,7 +62,7 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
   - `["issue","state","commit","42","43","--sha","<SHA>"]`
   - `["issue","state","close","42","43","--test-cmd","<cmd>"]`
 - **plan 级批量**：
-  - `["plan","plan","<plan_id>"]`：该 plan 下全部 `open` issue → `planned`（挂入即排期锁定）。
+  - `["plan","plan","<plan_id>"]`：该 plan 下全部 `open` issue → `planned`（**开工锁定**；**登记阶段不要用**，#128）。
   - `["plan","close","<plan_id>","--test-cmd","<cmd>"]`：该 plan 下全部 `test` issue → `done`（统一测试后统一 close）。
   - `["plan","drop","<plan_id>"]`：**只允许空 plan**（无 issue）→ dropped，并落 `manual_dropped` 标记；
     有 issue 时报错（先 `state drop` 子 issue 或迁走）。手动终态不会被派生复活。

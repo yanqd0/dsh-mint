@@ -13,4 +13,5 @@
 2. **挂载（默认挂载）**：属计划则 `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })`，
    否则**默认**挂当前 running milestone：`mint({ args: ["milestone","attach","<当前 running id>","<ISSUE>"] })`；
    无 running → 按 flow-conditions 给候选 + **询问用户**后再挂。
-3. **排期**：`mint({ args: ["issue","state","plan","<id>"] })`（planned）标记已排期，留待后续开发；不强行推进。
+3. **排期（可选，须用户确认要做）**：`mint({ args: ["issue","state","plan","<id>"] })`（open → planned）
+   标记已排期，留待后续开发；**登记后默认留 open，不顺手排期、不预建 plan**（#128：登记 ≠ 排期）。

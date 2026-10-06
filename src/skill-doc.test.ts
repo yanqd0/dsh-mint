@@ -48,6 +48,9 @@ const SKILL_MARKERS: readonly string[] = [
   // #122: parallel batches are the plan-level constraint that keeps
   // concurrently delegated work off the same files.
   '并行批次',
+  // #128: registration never pre-schedules; `plan plan` belongs to the start of
+  // work, not to filing the issue.
+  '提 issue 一律 open',
 ];
 
 /** Rules that moved out of SKILL.md must still exist in their home file. */
@@ -55,12 +58,16 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/template-guide.md', ['- [ ]', 'title-templates/', 'body-templates/']],
   ['references/body-editing.md', ['--body-section', '- [ ]', 'section not found']],
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
-  ['references/flow-planning.md', ['dev-clean', 'task']],
+  ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工时才']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
+  // #128: a filed requirement stays open; a plan is created only when work
+  // actually starts.
+  ['references/flow-requirement.md', ['登记一律', '不预建 mint plan']],
   // #112: both legal orders (build-then-run / run-then-backfill) live in
   // flow-impl, and the issue ordering rule left SKILL.md's body for the place
   // that already carried it (flow-session's step 4).
-  ['references/flow-impl.md', ['先跑后建', '记录必须有', '顺序可换']],
+  // #128: the batch lock is a start-of-work action, not an attach-time one.
+  ['references/flow-impl.md', ['先跑后建', '记录必须有', '顺序可换', '登记 ≠ 排期', '登记阶段不预建']],
   ['references/flow-session.md', ['priority 升序', '按 id 升序']],
   // #122: the parallel-execution contract (batch table, subagent dispatch, no
   // sleeps, state commit) lives in its own reference.

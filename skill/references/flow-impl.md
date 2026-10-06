@@ -19,7 +19,8 @@
   - 改行为的 phase → `kind=requirement`，label `dev-clean`；
   - **纯文档/杂务/调研/CI → `kind=task`**（task 无 dev 态：planned → test → done）；
   - phase 已对应既有 issue（收口/合并 plan）→ **直接 attach，不重复建**。
-- 挂入后统一排期锁定：`mint({ args: ["plan","plan","<plan>"] })`（plan 下不留 open）。
+- **开工时**统一排期锁定：`mint({ args: ["plan","plan","<plan>"] })`（open → planned）；
+  **登记阶段不预建 plan、不置 planned**（#128：登记 ≠ 排期）。
 
 ## 2.5 并行批次执行
 

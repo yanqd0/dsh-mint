@@ -49,9 +49,9 @@ description: >-
 ## 不可跳过（强制；见 `references/flow-impl.md`）
 
 - **plan 双向绑定**：宿主 plan ⟷ mint plan 一一对应；无活跃 mint plan 时 `exit_plan_mode` 被拒。
-  从存量 plan 接管须先进入宿主 plan 模式，禁止 auto 直接跑完。
+  存量 plan 接管须先进宿主 plan 模式，禁止 auto 跑完。
 - **并行批次**：plan 必带批次表（同批文件不相交）；见 `references/parallel-exec.md`。
-- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue + `plan plan` 锁定（不留 open）；先跑后建见 `references/flow-impl.md`。
+- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue；**提 issue 一律 open；`plan plan` 只在开工执行**；先跑后建见 `references/flow-impl.md`。
 - **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（planned → dev）；open/planned 直接改码 = 违反。
 - **commit 后立即**：`args: ["issue","state","commit","<id>","--sha","<前7位>"]`
   （sha 用 bash `git rev-parse --short=7 HEAD`）。
@@ -62,7 +62,7 @@ description: >-
 
 ## 记录与检索
 
-- 正文用 `args: ["issue","get","<id>","body"]`（裸值最准）；命令与输出见 `references/commands.md`。
+- 正文用 `args: ["issue","get","<id>","body"]`（裸值最准）；命令见 `references/commands.md`。
 - 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`；
   改写/追加既有 body 见 `references/body-editing.md`。
 - 约束红线与 label：见 `references/constraints.md`、`references/labels.md`。

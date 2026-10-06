@@ -16,7 +16,7 @@
    - **L**：需要 schema/迁移、新命令或新表。
 3. **S/M 收进一个 plan**：`plan create`（挂当前 running milestone）→ 逐条
    `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })`（一次一个）→
-   `mint({ args: ["plan","plan","<PLAN>"] })` 锁定排期 → 统一测试后一次收口。
+   `mint({ args: ["plan","plan","<PLAN>"] })` **开工锁定**（open → planned）→ 统一测试后一次收口。
 4. **L 与外部阻塞项不入 sweep**：逐条写明去向（独立 plan / 等待版本 / 阻塞依赖 + 阻塞者 id），
    在结论里给每项一句理由。
 5. **同域优先并入既有 plan**：孤立项与既有 plan 同主题 → `plan attach` 到那里，

@@ -145,7 +145,7 @@ mint({ args: ["plan","detach","12","42"] })
 mint({ args: ["milestone","attach","4","42"] })    // 直接挂 issue 到 milestone（该 issue 不能属于 plan）
 mint({ args: ["milestone","detach","4","42"] })
 
-mint({ args: ["plan","plan","12"] })               // 批量排期：plan 下全部 open → planned
+mint({ args: ["plan","plan","12"] })               // 批量开工锁定：plan 下全部 open → planned（登记阶段不用）
 mint({ args: ["plan","close","12","--test-cmd","pnpm test"] }) // 批量收口：plan 下全部 test → done
 mint({ args: ["plan","drop","12"] })               // 只允许空 plan（无 issue）；落手动终态，派生不复活
 mint({ args: ["plan","set","12","--milestone","5"] }) // 移动 plan 到另一 milestone（两侧状态重算）

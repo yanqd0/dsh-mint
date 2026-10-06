@@ -16,5 +16,5 @@
    无 running → 按 flow-conditions 给候选 + 询问用户。
 3. **推进**：
    - 已修复 → `mint({ args: ["issue","state","commit","<id>","--sha","<修复 commit>"] })` 后 close（审计轨迹）。
-   - 待办 → `mint({ args: ["issue","state","plan","<id>"] })` 排期，留待后续。
+   - 待办 → **默认留 open**；用户确认要排进后续开发时才 `mint({ args: ["issue","state","plan","<id>"] })` 排期。
 4. **验证**：`mint({ args: ["show","<id>"] })` 确认 status 与 last_commit_id。
