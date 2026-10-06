@@ -201,6 +201,20 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 
 （`ls -1d` 的 `-d` 不能省：少了它会列目录内容，拿到 `package.json` 这种行。）
 
+**而且要把浏览器页面真的重载一次**（#127 的第二个坑）：harness 重启期间旧页面只会自动重连，
+插件面板的列表是**页面加载时取的快照**（`ensure()` 仅在 `idle` 时读、`load()` 不清缓存），
+不重载就不会重取——实测「磁盘已修好 + headless 通过 + harness 重启过」之后页面仍为空，**F5 后才出现**。
+判据（在出问题的那个页面上跑，浏览器自带登录态）：
+
+```js
+await fetch('/api/pluginManager/listBundles',{method:'POST',headers:{'content-type':'application/json'},
+  body:JSON.stringify({type:'client-request',rpcId:'p',method:'pluginManager/listBundles',payload:{args:{}}})})
+  .then(r=>r.json()).then(d=>console.log(d.result.value.find(b=>b.name==='<包名>')))
+```
+
+console 里已经带新 meta、页面却还是旧的 ⇒ 页面快照陈旧，刷新即可；
+console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存 / 是否重启过 harness。
+
 ## 7. 已知坑
 
 - **banner 顶掉 `"use strict"`**：esbuild 的 banner 插在生成代码之前，文件级 `"use strict"` 会失去指令位置；
