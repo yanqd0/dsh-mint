@@ -106,6 +106,10 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
     ],
   ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],
+  // #137: the container derivation table now mirrors mint's `derive.rs` — `open`
+  // children derive an `open` plan (not `running`), which is the fact the plan
+  // gate and #135's deadlock analysis both rest on.
+  ['references/state-machine.md', ['全 `open` 的 plan 派生 `open`', 'partial', 'derive.rs']],
   // #122: the parallel-execution contract (batch table, subagent dispatch, no
   // sleeps, state commit) lives in its own reference.
   ['references/parallel-exec.md', ['并行批次', 'subagent', '不 sleep', 'state commit']],

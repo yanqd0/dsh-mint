@@ -23,7 +23,8 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 ## issue/计划管理（mint）
 
 - issue/plan/milestone 由 mint CLI 管理（每项目独立 db）；流程见 mint skill。
-- **默认挂当前 milestone**：新 plan / 独立 issue **默认挂当前 running milestone**（同刻有且仅有一个）；
+- **默认挂当前 milestone**：新 plan / 独立 issue **默认挂当前 running milestone**（默认 1 个；
+  并行多版本仅用户明确要求时用 `milestone set --status running --force` 开）；
   无 running → 按 semver 推测候选并**询问用户**（`milestone set <id> --status running` 置位，或新建），**勿自行置位**。
 - **在 DSH 会话里一律走宿主 `mint` 工具**（`mint({args:["issue","state","start","3"]})`）：插件进程内执行，
   不经 bash、不进沙箱、零授权。**不要用 bash 跑 mint** —— 那会触发沙箱拒绝与提权审批；bash 只作兜底

@@ -45,6 +45,9 @@
 - milestone/plan 状态本是**派生**的（子项集合决定、写入时级联同步）：`milestone set --status` 里
   **只有 `done`/`dropped` 是手动终态、不被派生覆盖**；写 `open`/`running` 只是临时覆盖，后续任何子项变化
   都会按子项集合重算。置位后应尽快把对应 plan/issue 挂进去，使派生结果与意图一致。
+- **建在 open milestone 的 plan 无法 `plan plan`**：子项转 `planned` 会让该 milestone 派生为 running，
+  而唯一 running 守卫会拒（#104）。要么先 `plan set <plan> --milestone <当前 running id>`（会把其下
+  planned 子项 reset 回 open），要么按上面的收敛流程处理；只登记不动工的建议留 `open` 即可，不受影响。
 
 ## 测试分支（close 的 test-cmd 必填）
 

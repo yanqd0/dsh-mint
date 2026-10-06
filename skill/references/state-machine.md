@@ -79,16 +79,21 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
 
 ## 容器（plan/milestone）五态派生（区别于 issue 六态）
 
-plan/milestone 状态由**子项集合派生**（CLI 只读，非手动设置）：
+plan/milestone 状态由**子项集合派生**（CLI 只读，非手动设置）。语义映射来自 mint
+`src/container/derive.rs`（0.9.0-alpha.1）：issue `planned/dev/test` → 活跃，`open` → open，
+`done`/`dropped` → 各自终态。
 
 | 容器状态 | 派生条件 |
 |---|---|
-| running | 任一子项活跃（open/planned/dev/test 混 done） |
+| running | 任一子项为 **planned/dev/test**；**或**子项里混有 done/dropped 与 open（非全终态，曾运行） |
 | done | 全部 done |
 | dropped | 全部 dropped |
-| **partial** | **恰为 {done, dropped} 混合（无 open/active）——是完成态**（等同 done） |
-| open | 全 open / 空 |
+| **partial** | **恰为 {done, dropped} 混合（无 open、无活跃）——是完成态**（等同 done） |
+| open | **全部 open，或空 plan** |
 
+> **全 `open` 的 plan 派生 `open`，不是 `running`**：`open` 不算「活跃」。#128 的登记态
+> （建 plan + 拆 issue 全落 open）正落在这里，plan 绑定门禁与它按同一口径判（#135）。
+>
 > **判断 plan 是否完成看 issue 是否全终止（done/dropped）**，而非只看 status 标签；
 > `partial` 即完成（含被吸收/废弃项），不要把 partial 当"未完成"。
 
