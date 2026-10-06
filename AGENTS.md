@@ -44,6 +44,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - 客户端面：package.json `dsh.client`（`platform` + 需先到的**其它插件包名** `inject`）+ 预构建 `exports["./client"]`，产物必须是 `window.__ModuleLoader__.load({id, factory:(require)=>{…}})`；只能 `require` 浏览器内核冻结的 PLATFORM_MODULES（react / react-dom / cordis / dsh-client-store / ui-slots / ui-primitives / ui-dockkit），其余须声明 `dsh.client.external`。
 - **客户端面落点**：右侧边栏 = `ctx.sidebarRightTabs.register({id,kind,title,guide})`（guide entry 即「新建侧边栏 tab」选项）+ body seat `sidebar.right.pane.tab`；不是 `conversation.view`。实测契约见 [notes/client-face.md](notes/client-face.md)。
 - **Host RPC**：静态（已安装）插件的 client 半边**走宿主 `ctx.webServer` JSON 路由**（浏览器侧 `fetch`，`dshmarket` 在产先例）；`harness.handle` / `host.call` 只属于**动态 Cordis 包** runner，Typert `remote` 的能力集在构建期固定、仓外插件无法 join。
+- **插件展示元数据**（【插件】页的标题/描述/图标）：宿主 `readPluginMeta`（`@deepseek-ai/dsh-app-boot`）经 Node resolver 读 `<pkg>/package.json` 与 `<pkg>/locale/<lang>.json`，**受 `exports` 门禁**且失败静默——包必须导出 `"./package.json"` 与 `"./locale/*.json"`（并列入 `files`），且**必须有 `locale/en.json`** 才会枚举字典目录；缺了它插件页只剩包名、无描述（#127，见 [notes/client-face.md](notes/client-face.md) §8）。
 
 ## 常用命令（工具链落地后启用）
 

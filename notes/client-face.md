@@ -176,6 +176,20 @@ milestone + 是否直连）。
 3. **实机面**：新增 `dsh.client` 后**必须重启 harness**（row 只在启动扫描时入图）；
    此后改 bundle 只需重新 `pnpm build` + 刷新页面（revision 由 mtime/ctime/size 推导，无内容哈希）。
 4. profile 以 `link:` 安装时，`dist/client.js` 直接从工作区被服务。
+5. **插件元数据面（headless，不依赖浏览器）**：直接调 DSH 的 reader 看宿主读到什么：
+
+```bash
+DSH_PKG="$(readlink -f "$(ls -1d "$HOME"/.nvm/versions/node/*/lib/v11/*/node_modules/@deepseek-ai/dsh | tail -n1)")"
+node --input-type=module -e "
+import { createRequire } from 'node:module';
+const req = createRequire('$DSH_PKG/lib/bin.js');
+const { readPluginMeta } = await import(req.resolve('@deepseek-ai/dsh-app-boot'));
+console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh/profiles/web/package.json'), null, 2));
+"
+```
+
+元数据**按请求读盘、无缓存**，故改 `package.json` / `locale/*.json` 不需要重启 harness，刷新页面即可
+（`ls -1d` 的 `-d` 不能省：少了它会列目录内容，拿到 `package.json` 这种行）。
 
 ## 7. 已知坑
 
@@ -186,3 +200,35 @@ milestone + 是否直连）。
 - **React 绝不能打进包**：身份必须与 shell 的模块表一致，否则 hooks/context 立刻炸。
 - **`dsh.client.inject` 缺失项静默跳过**：不要把它当门禁；真正的门禁是插件自身的 `exports.inject`。
 - **CI 先测后构建**：任何「读 dist 产物」的测试都必须在测试内自行构建到临时目录（并清理）。
+- **声明 `exports` 就等于给展示元数据上门禁**（#127）：`readPluginMeta` 用 Node resolver 解析
+  `<pkg>/package.json` 与 `<pkg>/locale/en.json`，缺这两个子路径时 `ERR_PACKAGE_PATH_NOT_EXPORTED`
+  被 `optionalResourcePath` **静默吞掉**（无报错、无 placeholder），插件页只剩包名。见 §8。
+
+## 8. 插件展示元数据（插件页的标题/描述/图标）
+
+【插件】界面（右侧边栏 **插件** 面板的包详情页、设置 → 插件 → **插件列表** 的卡片）里的标题与描述
+都来自一个宿主 reader，与客户端半边无关：
+
+- reader：`readPluginMeta(specifier, parentURL)`（`@deepseek-ai/dsh-app-boot`）；
+  消费方 `dsh-host-plugin-inventory`（`pluginPackages.metaOf(row)`，逐 composition row）与
+  `dsh-plugin-manager`（bundle 列表）。
+- 解析**两条路径，都过 Node resolver**：
+  - `` `${specifier}/locale/en.json` `` —— 决定「字典目录」；`en.json` **不存在就完全不会枚举该目录**，
+    于是其余语言字典形同不存在（这是最先踩的坑：只放 `zh.json` 无效）。
+    随后枚举同目录**全部** `.json`，文件名必须是语言 id（内置 `en` / `zh`），内容形如
+    `{"meta":{"title":"…","description":"…"}}`；`textOf` 要求非空字符串，多一个野名字会让整条元数据变 `{error}`。
+  - `` `${specifier}/package.json` `` —— 提供 `name`（title 兜底）、`description`（英文兜底）、`icon`。
+- 产物形态：`title` / `description` 都是 `LocalizedText`（`{en, zh, …}`，`en` 必在），客户端用
+  `locale.resolveText` 按当前语种取值；**没有 `meta` 时**客户端 `packageText` 退回完整包名、描述不渲染。
+- **`exports` 是硬门禁**：包一旦声明 `exports`（本插件有 `"."` / `"./client"`），就必须显式加
+  `"./package.json": "./package.json"` 与 `"./locale/*.json": "./locale/*.json"`，并把 `locale/*.json`
+  写进 `files`；否则解析失败被静默吞掉（#127）。无 `exports` 的老包（如 `dsh-whale-widget`）
+  走 legacy 解析反而正常——**「隔壁能显示」不代表自己的写法对**。
+- 渲染落点：侧栏插件面板 `PackageDetail` 的 `<p class="detailDesc">`（根节点 `[data-plugin-detail="<包名>"]`）、
+  标题行下的 `<code data-plugin-name>`；设置里的卡片是 `cardDescription`（2 行截断）。
+- `icon`：manifest 内**相对路径**，SVG/PNG/JPEG/WebP，≤256 KiB，`realpath` 后须仍在 manifest 目录内；
+  失败只丢图标、保留文字。
+- 守卫：`src/package-manifest.test.ts` 的 `plugin display metadata` 组用**自引用解析**
+  （`createRequire(join(ROOT,'package.json')).resolve('@yanqd0/dsh-mint/package.json')`）复刻同一条
+  resolver 规则，无需安装 harness，即可在 CI 抓住门禁回归。
+
