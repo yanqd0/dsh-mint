@@ -160,8 +160,9 @@ export interface MintBodyProps {
   /** The session whose project the panel reads; delivered by the slot. */
   sessionId: string;
   /**
-   * The copy seat. Injected (not the framework's `t`) so keys are checked against
-   * the dictionary and an unregistered locale still renders words.
+   * The copy seat. Injected (not the framework's `t`) so keys are the checked
+   * `CopyKey` union instead of the framework's open string domain; both built-in
+   * locales carry a complete dictionary, and a key none carries shows as itself.
    */
   copy: CopyTranslate;
   /** Transport injected by `apply`. */
