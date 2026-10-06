@@ -130,10 +130,12 @@ describe('package manifest', () => {
       expect(shipped).toEqual(LOCALES.map((locale) => `${locale}.json`).sort());
     });
 
-    it('carries a title and a description in every locale', () => {
+    // The tool's own spelling is lowercase `mint`; the plugin page must not
+    // capitalise it, and the same string has to appear in both locales.
+    it('carries the lowercase title and a description in every locale', () => {
       for (const locale of LOCALES) {
         const { meta } = dictionary(locale);
-        expect(meta?.title).toBe('Mint');
+        expect(meta?.title).toBe('mint');
         expect((meta?.description ?? '').length).toBeGreaterThan(0);
       }
     });
