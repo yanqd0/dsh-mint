@@ -13,7 +13,9 @@ plan。
 ## 功能
 
 - **会话上下文** —— 每个会话开头注入 `[Mint]` 概览：活跃 issue 前列、当前
-  running milestone，以及"新 plan 与独立 issue 默认挂它"的口径。
+  running milestone，以及"新 plan 与独立 issue 默认挂它"的口径；`mint doctor`
+  报出健康告警（陈旧 plan、空转 milestone、停滞的 dev 工作）时，再多一行计数
+  并指向该工具。
 - **`mint` 工具，零授权** —— agent 经宿主工具使用完整 mint CLI：mint 在插件
   进程内 spawn，不经 bash、不需要沙箱写权限、不弹审批。子代理同样继承该工具
   （子代理的 bash 被 pin 为 `never`）。危险子命令（`delete`、`import`、

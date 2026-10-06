@@ -7,6 +7,7 @@ import {
   latestVersion,
   registerMintContext,
   renderOverview,
+  supportsDoctor,
 } from './context.js';
 import { MINT_ENTRY_WARNING, resolveMintEntry, runMint } from './mint.js';
 import { ownProjectOf, resetOwnProjectCache } from './own-project.js';
@@ -21,6 +22,34 @@ vi.mock('./mint.js', () => ({
   parseMintVersion: (text: string | undefined) => /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '')?.[1],
 }));
 const runMintMock = vi.mocked(runMint);
+
+/**
+ * A real `mint doctor --json` payload (#126): captured from the dsh-mint ledger
+ * with `--days 1`, where one stale plan fired. Only `warnings`/`counts` are read
+ * by the overview; the rest is what the CLI actually sends.
+ */
+const DOCTOR_JSON = JSON.stringify({
+  check: 'doctor',
+  counts: {
+    'idle-milestone': 0,
+    'multiple-running': 0,
+    'overlap-plan': 0,
+    'stale-plan': 1,
+    'stalled-dev': 0,
+  },
+  days: 1,
+  items: [{ age_days: 2, check: 'stale-plan', detail: 'title=…; active=2; 2d' }],
+  strict: false,
+  summary: {
+    checks: 5,
+    days: 1,
+    line: '# doctor: checks=5 warnings=1 strict=0 days=1 counts=multiple-running:0,stale-plan:1,overlap-plan:0,idle-milestone:0,stalled-dev:0',
+    strict: false,
+    warnings: 1,
+  },
+  total: 1,
+  warnings: 1,
+});
 
 beforeEach(() => {
   runMintMock.mockReset();
@@ -201,6 +230,101 @@ describe('fetchOverview', () => {
     runMintMock.mockResolvedValueOnce({ ok: false, error: 'mint: db not found' });
     await expect(fetchOverview('/proj')).rejects.toThrow('mint: db not found');
   });
+
+  it('asks doctor for a CLI that has it, and keeps the verdict (#126)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.9.0-alpha.1\n' })
+      .mockResolvedValueOnce({ ok: true, text: DOCTOR_JSON });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.doctor).toEqual({
+      warnings: 1,
+      counts: {
+        'idle-milestone': 0,
+        'multiple-running': 0,
+        'overlap-plan': 0,
+        'stale-plan': 1,
+        'stalled-dev': 0,
+      },
+    });
+    expect(overview.warnings).toBeUndefined();
+    // the doctor read is sequential: it is gated on the version `-V` answered
+    expect(runMintMock).toHaveBeenNthCalledWith(4, '/proj', ['doctor', '--json']);
+  });
+
+  it('does not spend a spawn on doctor for an older CLI (#126)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.1\n' });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.doctor).toBeUndefined();
+    expect(runMintMock).toHaveBeenCalledTimes(3);
+  });
+
+  it('ignores a doctor run that did not answer (#126)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.9.0-alpha.1\n' })
+      .mockResolvedValueOnce({
+        ok: false,
+        exitCode: 2,
+        error: "unrecognized subcommand 'doctor'",
+      });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.doctor).toBeUndefined();
+    expect(overview.warnings).toBeUndefined();
+  });
+
+  it('reports a doctor shape skew instead of hiding it (#126)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.9.0-alpha.1\n' })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ data: [] }) });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.doctor).toBeUndefined();
+    expect(overview.warnings?.[0]).toContain('doctor --json');
+    expect(overview.warnings?.[0]).toContain('missing required fields');
+  });
+
+  it('skips doctor when the version probe failed (#126)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: false, exitCode: 2, error: 'unexpected argument' });
+
+    const overview = await fetchOverview('/proj');
+
+    expect(overview.doctor).toBeUndefined();
+    expect(runMintMock).toHaveBeenCalledTimes(3);
+  });
+});
+
+describe('supportsDoctor (#126)', () => {
+  it('accepts the 0.9 line and later, prerelease suffix included', () => {
+    expect(supportsDoctor('0.9.0')).toBe(true);
+    expect(supportsDoctor('0.9.0-alpha.1')).toBe(true);
+    expect(supportsDoctor('0.10.1')).toBe(true);
+    expect(supportsDoctor('1.0.0')).toBe(true);
+  });
+
+  it('rejects older or unparsable versions', () => {
+    expect(supportsDoctor('0.8.1')).toBe(false);
+    expect(supportsDoctor('0.8.0-alpha.1')).toBe(false);
+    expect(supportsDoctor('')).toBe(false);
+    expect(supportsDoctor('unknown')).toBe(false);
+  });
 });
 
 describe('renderOverview', () => {
@@ -310,6 +434,36 @@ describe('renderOverview', () => {
 
   it('renders nothing when empty', () => {
     expect(renderOverview({ issues: [], milestones: [] })).toBe('');
+  });
+
+  it('renders one doctor line when the health check has warnings (#126)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      doctor: { warnings: 2, counts: { 'stalled-dev': 2, 'stale-plan': 1, 'idle-milestone': 0 } },
+    });
+    // mint's own check order, not the JSON map's alphabetical order
+    expect(text).toContain('[Mint] doctor: 2 health warnings (stale-plan:1, stalled-dev:2)');
+    expect(text).toContain('mint({args:["doctor","--json"]})');
+  });
+
+  it('keeps an unknown doctor check visible, after the known ones (#126)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      doctor: { warnings: 1, counts: { 'new-check': 1 } },
+    });
+    expect(text).toContain('[Mint] doctor: 1 health warning (new-check:1)');
+  });
+
+  it('adds no doctor line for a clean ledger (#126)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [],
+      project: 'dsh-mint',
+      doctor: { warnings: 0, counts: { 'stale-plan': 0 } },
+    });
+    expect(text).toBe('[Mint] dsh-mint');
   });
 
   it('renders shape-skew warnings (#65)', () => {

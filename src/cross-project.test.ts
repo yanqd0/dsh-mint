@@ -139,6 +139,9 @@ describe('isWriteInvocation', () => {
     ['project', 'list'],
     ['project', 'show', '1'],
     ['project', 'get', '1', 'git'],
+    // #126: the read-only health check is not something to confirm.
+    ['doctor'],
+    ['doctor', '--json'],
     ['help'],
   ];
 

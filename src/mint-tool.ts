@@ -47,6 +47,9 @@ export const ALLOWED_SUBCOMMANDS: readonly string[] = [
   'project',
   'plan',
   'milestone',
+  // Read-only health check (#126): the injected overview points the model at it
+  // when doctor reports warnings, so the pointer has to be executable.
+  'doctor',
   'help',
 ];
 

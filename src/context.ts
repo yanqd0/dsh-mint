@@ -6,7 +6,7 @@ import {
   runMint,
 } from './mint.js';
 import type { MintRunResult } from './mint.js';
-import { isRecord, parseItems } from './mint-json.js';
+import { isRecord, parseDetail, parseItems } from './mint-json.js';
 import { noteOwnProject } from './own-project.js';
 import { sessionIdOf } from './session-id.js';
 import type { AgentLike, DshContext } from './types.js';
@@ -120,6 +120,71 @@ export interface MintOverview {
    * visible instead of silent.
    */
   warnings?: string[];
+  /**
+   * `mint doctor`'s verdict, only when the resolved CLI can answer it (#126).
+   *
+   * Absent is the normal case for an old CLI and for a probe failure; the
+   * injected line is only worth its bytes when there is a warning to report.
+   */
+  doctor?: DoctorReport;
+}
+
+/** The slice of `doctor --json` the overview renders. */
+export interface DoctorReport {
+  /** Number of findings; `0` means a healthy ledger and no injected line. */
+  warnings: number;
+  /**
+   * Per-check counts, keyed by mint's stable check name.
+   *
+   * mint serializes these through a sorted map, so the JSON key order is
+   * alphabetical rather than the check order its own summary line uses; the
+   * rendered detail therefore orders by {@link DOCTOR_CHECKS} itself.
+   */
+  counts: Record<string, number>;
+}
+
+/** mint's own check order (`doctor` summary line); unknown checks trail it. */
+const DOCTOR_CHECKS: readonly string[] = [
+  'multiple-running',
+  'stale-plan',
+  'overlap-plan',
+  'idle-milestone',
+  'stalled-dev',
+];
+
+/** `stale-plan:1, stalled-dev:2` for the checks that actually fired. */
+function doctorDetail(counts: Record<string, number>): string {
+  const fired = (check: string): number => counts[check] ?? 0;
+  const known = DOCTOR_CHECKS.filter((check) => fired(check) > 0);
+  // A check this plugin has never heard of still reaches the model: the line is
+  // a pointer, and dropping a new check would hide the reason doctor fired.
+  const extra = Object.keys(counts)
+    .filter((check) => !DOCTOR_CHECKS.includes(check) && fired(check) > 0)
+    .sort();
+  return [...known, ...extra].map((check) => `${check}:${fired(check)}`).join(', ');
+}
+
+/** Validate a `doctor --json` payload against the fields the overview reads. */
+function isDoctorReport(value: unknown): value is DoctorReport {
+  if (!isRecord(value)) return false;
+  if (typeof value.warnings !== 'number') return false;
+  return isRecord(value.counts) && Object.values(value.counts).every((count) => typeof count === 'number');
+}
+
+/**
+ * True when a CLI version is new enough to answer `doctor` (#126).
+ *
+ * The gate exists to avoid one guaranteed-failure spawn per session on older
+ * mint: `doctor` arrived in the 0.9 line, and the prerelease suffix is
+ * irrelevant (`0.9.0-alpha.1` already has it). An unparsable version answers
+ * `false`, so the injection degrades to its pre-#126 shape.
+ */
+export function supportsDoctor(version: string): boolean {
+  const [core = ''] = version.split('-', 1);
+  const [major = 0, minor = 0] = core
+    .split('.')
+    .map((part) => Number.parseInt(part, 10) || 0);
+  return major > 0 || minor >= 9;
 }
 
 /**
@@ -146,6 +211,36 @@ async function probeCliVersion(
   }
 }
 
+/**
+ * Ask mint for its own health check (#126).
+ *
+ * Runs only behind {@link supportsDoctor}: an older CLI would answer
+ * `unrecognized subcommand`, and paying one guaranteed-failure spawn per
+ * session is exactly what the version gate avoids. Every other failure (timeout,
+ * killed process, unreadable JSON) is advisory and degrades to "no doctor
+ * line"; only a well-formed JSON payload with the wrong shape is worth a visible
+ * note, matching the other reads' skew contract (#65).
+ */
+async function probeDoctor(
+  run: (args: string[]) => Promise<MintRunResult>,
+  version: string
+): Promise<{ report?: DoctorReport; warning?: string }> {
+  if (!supportsDoctor(version)) return {};
+  try {
+    const result = await run(['doctor', '--json']);
+    if (result?.ok !== true) return {};
+    const parsed = parseDetail('doctor --json', result.text, isDoctorReport);
+    if (parsed.value === undefined) {
+      return parsed.warning === undefined ? {} : { warning: parsed.warning };
+    }
+    // Keep only the two fields the line renders: the payload also carries the
+    // per-finding detail, which the per-request overview has no use for.
+    return { report: { warnings: parsed.value.warnings, counts: parsed.value.counts } };
+  } catch {
+    return {};
+  }
+}
+
 /** Fetch the active-issue overview + milestone state via the mint CLI. */
 export async function fetchOverview(cwd: string, entry?: string): Promise<MintOverview> {
   // Keep the no-override call shape at two arguments: the default path stays
@@ -169,11 +264,16 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   const warnings = [issues.warning, milestones.warning].filter(
     (warning): warning is string => warning !== undefined
   );
-  if (warnings.length > 0) overview.warnings = warnings;
   if (cli !== undefined) {
     overview.cliVersion = cli.version;
     if (cli.entry !== undefined) overview.cliEntry = cli.entry;
+    // The doctor read is sequential on purpose: it is gated on the version that
+    // the `-V` probe just answered, so it cannot join the parallel batch above.
+    const doctor = await probeDoctor(run, cli.version);
+    if (doctor.report !== undefined) overview.doctor = doctor.report;
+    if (doctor.warning !== undefined) warnings.push(doctor.warning);
   }
+  if (warnings.length > 0) overview.warnings = warnings;
   return overview;
 }
 
@@ -227,6 +327,19 @@ export function renderOverview(overview: MintOverview): string {
   // Surface a CLI shape mismatch instead of letting it read as "no issues" (#65).
   for (const warning of overview.warnings ?? []) {
     lines.push(`[Mint] WARNING: ${warning}`);
+  }
+  // One line for the ledger's own health check, and only when there is
+  // something to report (#126): an always-on line is per-request cost with no
+  // signal, and a zero-warning answer is the common case. The counts keep
+  // mint's own check order (see {@link DoctorReport}).
+  const doctor = overview.doctor;
+  if (doctor !== undefined && doctor.warnings > 0) {
+    const detail = doctorDetail(doctor.counts);
+    const suffix = detail === '' ? '' : ` (${detail})`;
+    lines.push(
+      `[Mint] doctor: ${doctor.warnings} health warning${doctor.warnings === 1 ? '' : 's'}${suffix} — ` +
+        'mint({args:["doctor","--json"]})'
+    );
   }
   // Top-N by (priority, id) — explicit so the "top" claim does not depend on
   // mint's default ordering. Labels are deliberately left out: they are a tool

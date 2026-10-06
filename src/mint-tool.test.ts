@@ -42,6 +42,13 @@ describe('validateMintArgs', () => {
     }
   });
 
+  // #126: the injected health line points the model at `doctor`, so the pointer
+  // has to survive the tool's own allowlist.
+  it('accepts the read-only doctor health check (#126)', () => {
+    expect(validateMintArgs(['doctor'])).toBeUndefined();
+    expect(validateMintArgs(['doctor', '--json'])).toBeUndefined();
+  });
+
   it('accepts normal flags, including --json and paging', () => {
     expect(validateMintArgs(['list', '--status', 'open', '--page', '2'])).toBeUndefined();
     expect(validateMintArgs(['list', '--json'])).toBeUndefined();

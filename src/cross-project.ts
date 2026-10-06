@@ -258,6 +258,9 @@ export function isWriteInvocation(invocation: Invocation): boolean {
   const leaf = rest[1];
   if (root === undefined) return false;
   if (root === 'list' || root === 'show' || root === 'search') return false;
+  // `doctor` is a read-only health check (#126): it touches no ledger, so a
+  // cross-project `-p <other> doctor` is not something to confirm.
+  if (root === 'doctor') return false;
   if (root === 'help') return false;
   if (CONTAINER_ROOTS.has(root)) {
     return leaf === undefined ? true : !READ_LEAVES.has(leaf);

@@ -14,7 +14,9 @@ plan always has a mint plan behind it.
 
 - **Session context** — every session opens with a `[Mint]` overview: the top
   open issues, the running milestone, and the rule that new plans and standalone
-  issues attach to it.
+  issues attach to it. When `mint doctor` reports health warnings (a stale plan,
+  an idle milestone, stalled dev work), one more line carries the counts and
+  points at the tool.
 - **`mint` tool, zero approval** — the agent runs the whole mint CLI through a
   host tool: mint is spawned inside the plugin process, so there is no bash
   call, no sandbox write access and no approval prompt. Subagents inherit the

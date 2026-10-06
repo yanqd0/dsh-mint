@@ -175,4 +175,17 @@ describe('per-request injection budget (#61)', () => {
     expect(warning).toContain('--force');
     expect(bytes(warning)).toBeLessThanOrEqual(320);
   });
+
+  // #126: the doctor line is only paid for when the ledger has warnings, so it
+  // is held to its own small ceiling rather than the clean-ledger sample's.
+  it('keeps the doctor line within budget (#126)', () => {
+    const text = renderOverview({
+      issues: [],
+      milestones: [{ id: 1, title: 'a', version: '0.1.0', status: 'running' }],
+      doctor: { warnings: 1, counts: { 'stale-plan': 1, 'stalled-dev': 0 } },
+    });
+    const line = text.split('\n').find((l) => l.startsWith('[Mint] doctor:')) ?? '';
+    expect(line).toContain('stale-plan:1');
+    expect(bytes(line)).toBeLessThanOrEqual(160);
+  });
 });
