@@ -130,9 +130,33 @@ export interface ApprovalRequestLike {
 /** Subset of the host's `ApprovalOutcome`. */
 export type ApprovalOutcomeLike = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
 
+/**
+ * Subset of the host `Session` seen by `session/event` (#116).
+ *
+ * Unlike {@link AgentLike}, the host hands the session itself to the listener,
+ * so `id` and the durable `header` are read off it directly.
+ */
+export interface SessionLike {
+  id?: string;
+  header?: { cwd?: string; delegationDepth?: number };
+}
+
+/**
+ * Subset of the host `SessionEvent` (#116).
+ *
+ * Only the plan-mode exit is consumed, and the event map entry it reads is
+ * `{'plan/mode': {active: boolean}}` (`@deepseek-ai/dsh-plan-mode`). Every other
+ * event fails the `type` comparison and costs nothing.
+ */
+export interface SessionEventLike {
+  type?: string;
+  data?: { active?: boolean };
+}
+
 /** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
   | ((payload: { agent?: AgentLike }) => void)
+  | ((session: SessionLike, event: SessionEventLike) => void)
   | ((
       exec: ToolExecutionLike,
       next: () => Promise<PreToolDecisionLike>

@@ -5,11 +5,19 @@ import {
   hasMintWrite,
   installSessionLedger,
   isOwnProjectMintWrite,
+  notePlanModeExit,
   recordMintWrite,
   resetSessionLedger,
+  takeRecordGapNotice,
 } from './session-ledger.js';
 import { noteOwnProject, resetOwnProjectCache } from './own-project.js';
-import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
+import type {
+  DshContext,
+  SessionEventLike,
+  SessionLike,
+  ToolExecutionLike,
+  ToolResultLike,
+} from './types.js';
 
 const success: ToolResultLike = { isError: false, content: [{ type: 'text', text: 'ok' }] };
 const failure: ToolResultLike = { isError: true, content: [] };
@@ -111,8 +119,32 @@ describe('session ledger', () => {
 
   it('resets for tests', () => {
     recordMintWrite('sess-1');
+    notePlanModeExit('sess-1');
     resetSessionLedger();
     expect(hasMintWrite('sess-1')).toBe(false);
+    expect(takeRecordGapNotice('sess-1')).toBe(false);
+  });
+
+  // #116: the plan-mode exit is a session event, and the notice behind it is
+  // one-shot per session and closed by any own-project mint write.
+  it('hands out the record-gap notice once, only after a plan-mode exit (#116)', () => {
+    expect(takeRecordGapNotice('sess-1')).toBe(false);
+
+    notePlanModeExit('sess-1');
+    expect(takeRecordGapNotice('sess-1')).toBe(true);
+    expect(takeRecordGapNotice('sess-1')).toBe(false);
+    expect(takeRecordGapNotice('sess-2')).toBe(false);
+    expect(takeRecordGapNotice(undefined)).toBe(false);
+
+    notePlanModeExit(undefined);
+    expect(takeRecordGapNotice(undefined)).toBe(false);
+  });
+
+  it('keeps the notice silent for a session that recorded its work (#116)', () => {
+    notePlanModeExit('sess-1');
+    recordMintWrite('sess-1');
+
+    expect(takeRecordGapNotice('sess-1')).toBe(false);
   });
 });
 
@@ -120,12 +152,17 @@ describe('installSessionLedger', () => {
   function makeCtx(): {
     ctx: DshContext;
     emitResult: (exec: ToolExecutionLike, result: ToolResultLike) => void;
+    emitEvent: (session: SessionLike, event: SessionEventLike) => void;
   } {
     let listener: ((exec: ToolExecutionLike, result: ToolResultLike) => void) | undefined;
+    let eventListener: ((session: SessionLike, event: SessionEventLike) => void) | undefined;
     const ctx: DshContext = {
       on: (event, fn) => {
         if (event === 'tools/result') {
           listener = fn as (exec: ToolExecutionLike, result: ToolResultLike) => void;
+        }
+        if (event === 'session/event') {
+          eventListener = fn as (session: SessionLike, event: SessionEventLike) => void;
         }
         return () => {};
       },
@@ -133,6 +170,7 @@ describe('installSessionLedger', () => {
     return {
       ctx,
       emitResult: (exec, result) => listener?.(exec, result),
+      emitEvent: (session, event) => eventListener?.(session, event),
     };
   }
 
@@ -166,5 +204,39 @@ describe('installSessionLedger', () => {
 
     emitResult(mintExec(['issue', 'state', 'start', '42'], 'sess-9'), failure);
     expect(hasMintWrite('sess-9')).toBe(false);
+  });
+
+  it('reads a plan-mode exit off the session log (#116)', () => {
+    const { ctx, emitEvent } = makeCtx();
+    installSessionLedger(ctx);
+
+    emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: false } });
+
+    expect(takeRecordGapNotice('sess-7')).toBe(true);
+  });
+
+  it('ignores every other session event, and entering plan mode (#116)', () => {
+    const { ctx, emitEvent } = makeCtx();
+    installSessionLedger(ctx);
+
+    emitEvent({ id: 'sess-7' }, { type: 'turn/start', data: {} });
+    emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: true } });
+    emitEvent({ id: 'sess-7' }, {});
+    emitEvent({}, { type: 'plan/mode', data: { active: false } });
+
+    expect(takeRecordGapNotice('sess-7')).toBe(false);
+  });
+
+  it('treats an unreadable event as no evidence (#116)', () => {
+    const { ctx, emitEvent } = makeCtx();
+    installSessionLedger(ctx);
+    const frozen = Object.defineProperty({}, 'type', {
+      get() {
+        throw new Error('frozen');
+      },
+    });
+
+    expect(() => emitEvent({ id: 'sess-7' }, frozen)).not.toThrow();
+    expect(takeRecordGapNotice('sess-7')).toBe(false);
   });
 });

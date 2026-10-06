@@ -36,6 +36,8 @@ describe('dsh-mint plugin', () => {
     // `agent/created` is the host's event; the older name stays as a fallback.
     expect(events).toContain('agent/created');
     expect(events).toContain('agent/session-start');
+    // #116: a non-tool plan-mode exit is read off the session log.
+    expect(events).toContain('session/event');
   });
 
   it('syncs the bundled skill on load unless autoInstallSkill is false (#28)', () => {

@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import {
   MINT_TOOL_GUIDANCE,
+  RECORD_GAP_LINE,
   fetchOverview,
   installOverviewChannel,
   latestVersion,
@@ -11,6 +12,7 @@ import {
 } from './context.js';
 import { MINT_ENTRY_WARNING, resolveMintEntry, runMint } from './mint.js';
 import { ownProjectOf, resetOwnProjectCache } from './own-project.js';
+import { notePlanModeExit, recordMintWrite, resetSessionLedger } from './session-ledger.js';
 import type { DshContext } from './types.js';
 
 vi.mock('./mint.js', () => ({
@@ -54,6 +56,7 @@ const DOCTOR_JSON = JSON.stringify({
 beforeEach(() => {
   runMintMock.mockReset();
   resetOwnProjectCache();
+  resetSessionLedger();
 });
 
 function makeAgentCtx(): {
@@ -551,6 +554,71 @@ describe('registerMintContext', () => {
     // cache: provider returns without extra mint calls
     expect(provider()).toBe(text);
     expect(runMintMock).toHaveBeenCalledTimes(3);
+  });
+
+  // #116: a non-tool exit from plan mode has no tool result to enrich, so the
+  // signal rides on the overview — once per session, and only while the session
+  // still has nothing recorded.
+  it('adds the record-gap line once after a plan-mode exit without records (#116)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [
+            { id: 3, title: '注入', kind: 'requirement', status: 'dev', priority: 1, labels: [] },
+          ],
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        text: JSON.stringify({
+          items: [{ id: 1, title: '宿主面', version: '0.1.0', status: 'running' }],
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj', undefined, 'sess-1');
+    const provider = registered[0]?.text as () => string;
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    const overview = provider();
+    expect(overview).not.toContain(RECORD_GAP_LINE);
+
+    notePlanModeExit('sess-1');
+    expect(provider()).toBe(`${overview}\n${RECORD_GAP_LINE}`);
+    // one shot: the same session is not told again on the next request
+    expect(provider()).toBe(overview);
+  });
+
+  it('keeps the record-gap line out when the session recorded work (#116)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj', undefined, 'sess-2');
+    const provider = registered[0]?.text as () => string;
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    notePlanModeExit('sess-2');
+    recordMintWrite('sess-2');
+
+    expect(provider()).not.toContain(RECORD_GAP_LINE);
+  });
+
+  it('keeps the record-gap line out for a session it cannot name (#116)', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj');
+    const provider = registered[0]?.text as () => string;
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    notePlanModeExit('sess-3');
+
+    expect(provider()).not.toContain(RECORD_GAP_LINE);
   });
 
   it('remembers the project the overview resolved, keyed by directory (#114)', async () => {

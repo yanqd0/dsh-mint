@@ -15,7 +15,7 @@ import {
   todoSyncChanged,
   todoSyncReminderListener,
 } from './reminders.js';
-import { recordMintWrite, resetSessionLedger } from './session-ledger.js';
+import { notePlanModeExit, recordMintWrite, resetSessionLedger, takeRecordGapNotice } from './session-ledger.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
 
 function makeCtx(): {
@@ -330,6 +330,26 @@ describe('sessionRecordReminderListener (#111)', () => {
     );
 
     expect(next).toHaveBeenCalled();
+  });
+
+  // #116: the tool result is the delivery, so the overview's one-shot line must
+  // stay silent for this exit even though the host appends `plan/mode` only later.
+  it('marks the gap as told, so the overview line cannot repeat it (#116)', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await sessionRecordReminderListener(exitExec('sess-1'), successResult, next);
+
+    notePlanModeExit('sess-1');
+
+    expect(takeRecordGapNotice('sess-1')).toBe(false);
+  });
+
+  it('marks nothing it cannot attribute to a session (#116)', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await sessionRecordReminderListener(exitExec(), successResult, next);
+
+    notePlanModeExit('sess-1');
+
+    expect(takeRecordGapNotice('sess-1')).toBe(true);
   });
 });
 

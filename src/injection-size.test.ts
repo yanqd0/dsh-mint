@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { MINT_TOOL_GUIDANCE, renderOverview } from './context.js';
+import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from './context.js';
 import { MINT_ENTRY_WARNING } from './mint.js';
 import { MINT_TOOL_DESCRIPTION } from './mint-tool.js';
 
@@ -187,5 +187,13 @@ describe('per-request injection budget (#61)', () => {
     const line = text.split('\n').find((l) => l.startsWith('[Mint] doctor:')) ?? '';
     expect(line).toContain('stale-plan:1');
     expect(bytes(line)).toBeLessThanOrEqual(160);
+  });
+
+  // #116: the record-gap line is a condition line too — rendered at most once per
+  // session, and only while that session has nothing recorded — so it is held to
+  // its own ceiling instead of the clean sample's.
+  it('keeps the record-gap line within budget (#116)', () => {
+    expect(RECORD_GAP_LINE.startsWith('[Mint] ')).toBe(true);
+    expect(bytes(RECORD_GAP_LINE)).toBeLessThanOrEqual(300);
   });
 });

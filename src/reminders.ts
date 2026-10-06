@@ -1,6 +1,6 @@
 import { sessionIdOf } from './session-id.js';
 import { invocationsOf } from './cross-project-gate.js';
-import { hasMintWrite } from './session-ledger.js';
+import { hasMintWrite, noteRecordGapNotified } from './session-ledger.js';
 import { EXIT_PLAN_MODE } from './planbind.js';
 import type {
   ContentBlockLike,
@@ -229,6 +229,10 @@ export async function sessionRecordReminderListener(
     return next();
   }
   const sessionId = sessionIdOf(exec.agent);
+  // #116: this delivery satisfies the overview channel's one-shot line too, so a
+  // single exit is never announced twice — marked on the call, because the host
+  // appends the `plan/mode` event only at the next request assembly.
+  noteRecordGapNotified(sessionId);
   if (sessionId === undefined || hasMintWrite(sessionId)) {
     return next();
   }

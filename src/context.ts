@@ -9,6 +9,7 @@ import type { MintRunResult } from './mint.js';
 import { isRecord, parseDetail, parseItems } from './mint-json.js';
 import { noteOwnProject } from './own-project.js';
 import { sessionIdOf } from './session-id.js';
+import { takeRecordGapNotice } from './session-ledger.js';
 import type { AgentLike, DshContext } from './types.js';
 
 const CONTEXT_ORDER = 60;
@@ -395,6 +396,21 @@ export function renderOverview(overview: MintOverview): string {
 }
 
 /**
+ * One-shot overview line for a session that left plan mode with nothing recorded
+ * (#116).
+ *
+ * The #111 notice rides on the `exit_plan_mode` tool result, so a session that
+ * left plan mode any other way (`/plan off`, the GUI toggle) had no signal at
+ * all — yet that is a host-provided exit, not a reason to skip the record. This
+ * line is the injection-side carrier for exactly that path; it must stay short
+ * (it is a condition line, not the workflow) and it points at the skill instead
+ * of restating it.
+ */
+export const RECORD_GAP_LINE =
+  '[Mint] 本会话已离开计划模式且尚无 mint 写操作——离开计划模式不等于已登记；' +
+  '要改码先按 mint skill 补登记（plan create/attach + 拆 issue），首个 issue 先 state start。';
+
+/**
  * Register mint prompt contributions on an agent-scoped context: the active
  * overview plus the static tool-first guidance.
  *
@@ -407,12 +423,14 @@ export function renderOverview(overview: MintOverview): string {
  * `context()` with the same text.
  *
  * `cwd` is the session's workspace (project) directory, which mint uses for
- * project lookup.
+ * project lookup. `sessionId` (when the host gives one) is what the #116
+ * record-gap line is keyed by; without it that line never renders.
  */
 export function registerMintContext(
   agentCtx: DshContext,
   cwd: string,
-  entry?: string
+  entry?: string,
+  sessionId?: string
 ): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
   if (!sp) return undefined;
@@ -453,7 +471,12 @@ export function registerMintContext(
         started = true;
         void load();
       }
-      return cached;
+      // The cached body loads once; the #116 line is a per-assembly condition on
+      // top of it (and consumes its one shot here, matching the #111 notice's
+      // "tell it once" semantics). An empty body means mint is unreadable, where
+      // the WARNING line already carries the actionable signal.
+      if (cached === '' || !takeRecordGapNotice(sessionId)) return cached;
+      return `${cached}\n${RECORD_GAP_LINE}`;
     },
   });
 
@@ -525,7 +548,7 @@ export function installOverviewChannel(ctx: DshContext, entry?: string): () => v
         }
         registered.add(sessionId);
       }
-      registerMintContext(agent.ctx, cwd, entry);
+      registerMintContext(agent.ctx, cwd, entry, sessionId);
     } catch {
       // Contained on purpose: see the `agent/created` note above.
     }
