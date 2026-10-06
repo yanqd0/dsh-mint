@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Mint",
+    "description": "把 mint 的事项跟踪接进 DSH 会话：宿主 `mint` 工具（零授权、不经 bash；含内置 mint skill 与跨项目写确认）、会话上下文注入、plan 绑定与提交提醒；右侧边栏「新建 tab」处可打开只读 Mint 面板（与「工作区文件」「新建终端」并列），查看本项目的 issue、plan 与 milestone。"
+  }
+}

@@ -1,7 +1,7 @@
 {
   "name": "@yanqd0/dsh-mint",
   "version": "0.3.0-alpha.1",
-  "description": "DSH plugin: mint issue tracking integration — session context injection, event reminders, plan binding, a zero-approval `mint` tool, and a read-only mint panel in the right sidebar.",
+  "description": "mint issue tracking inside DSH sessions: a zero-approval host `mint` tool with the bundled mint skill, session context injection, plan binding and commit reminders; a read-only mint panel in the right sidebar (add-tab menu, beside Workspace files and New terminal) shows this project's issues, plans and milestones.",
   "type": "module",
   "license": "MIT",
   "repository": {
@@ -22,11 +22,14 @@
   "files": [
     "dist",
     "cordis.patch.yml",
-    "scripts/install-skill-postinstall.mjs"
+    "scripts/install-skill-postinstall.mjs",
+    "locale/*.json"
   ],
   "exports": {
     ".": "./dist/index.js",
-    "./client": "./dist/client.js"
+    "./client": "./dist/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json"
   },
   "dsh": {
     "bundle": {
