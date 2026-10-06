@@ -23,8 +23,8 @@
      `milestone set --status open`，最后 `milestone show` 复查（被派生回 running 说明仍有活跃子项）。
    - 发现新的版本规划迹象（代码里出现下一版本需求/方向）→ **向用户确认后** create（version 重复则不问、不加）。
 4. **下一步计划建议**：基于 milestone 规划 + open issues，推荐下一个应开发项，附理由
-   （若存在 running 的存量 mint plan：提示「从该 plan 开始执行需先进入宿主 plan 模式，再逐步推进」
-   —— plan 双向绑定，勿 auto 直接跑）：
+   （若存在 running 的存量 mint plan：**整体接管**需先进入宿主 plan 模式再逐步推进；
+   用户已点名的**单个 issue** 可直接推进，不必先进计划模式）：
    - 有 `blocks` 其它 issue 的（被依赖者优先，拓扑排序）；
    - 同层按 priority 升序（P0→P3），同 priority 按 id 升序；
    - 未排期且未关闭的 bug（problem）优先；

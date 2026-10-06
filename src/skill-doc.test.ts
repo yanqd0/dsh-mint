@@ -47,7 +47,7 @@ function namedReferences(): Set<string> {
 
 /** Gates that must never be trimmed out of the always-loaded SKILL.md. */
 const SKILL_MARKERS: readonly string[] = [
-  'plan 双向绑定',
+  'plan 绑定（单向）',
   'exit_plan_mode',
   '记录必须有，顺序可换',
   '"issue","state","start"',
@@ -77,7 +77,7 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/template-guide.md', ['- [ ]', 'title-templates/', 'body-templates/']],
   ['references/body-editing.md', ['--body-section', '- [ ]', 'section not found']],
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
-  ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工时才']],
+  ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工点才']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
   // #128: a filed requirement stays open; a plan is created only when work
   // actually starts.
@@ -87,7 +87,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // that already carried it (flow-session's step 4).
   // #128: the batch lock is a start-of-work action, not an attach-time one.
   // #119: the host todo panel is the human's progress view, so the derive/sync
-  // discipline has to survive in flow-impl (SKILL.md is at its 4000 B ceiling).
+  // discipline has to survive in flow-impl.
+  // #136: the binding is one-way and the start-of-work point has two shapes
+  // (plan-mode exit / before the first edit outside plan mode).
   [
     'references/flow-impl.md',
     [
@@ -95,12 +97,15 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '记录必须有',
       '顺序可换',
       '登记 ≠ 排期',
-      '登记阶段不预建',
+      '不预建 plan',
       'todo_write',
       '宿主 todo',
+      '单向',
+      '非计划模式',
+      '开工点',
     ],
   ],
-  ['references/flow-session.md', ['priority 升序', '按 id 升序']],
+  ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],
   // #122: the parallel-execution contract (batch table, subagent dispatch, no
   // sleeps, state commit) lives in its own reference.
   ['references/parallel-exec.md', ['并行批次', 'subagent', '不 sleep', 'state commit']],

@@ -3,13 +3,21 @@
 > 触发：进入写码实施。SKILL.md「不可跳过」是**门禁清单**，本文件解释为什么与怎么做。
 > 状态机命令与批量细节见 `state-machine.md`；plan/milestone 规划见 `flow-planning.md`。
 
-## 1. plan 双向绑定（DSH 专有）
+## 1. plan 绑定（单向）
 
-宿主 plan ⟷ mint plan **一一对应**，禁止脱钩：
+**进计划模式的会话**在退出前必须有 mint plan；**建 mint plan 不要求计划模式**（#136）。
+宿主 plan 与 mint plan 的对应只在这一侧成立：计划模式 ⟹ mint plan（退出时门禁），反向不成立。
 
-- 先在宿主 plan 模式里出方案 → 第一步就是建/挂对应 mint plan + 拆 issue（见第 2 节）。
-- 已有存量 mint plan（接管场景）→ **必须先进入宿主 plan 模式**再执行，**禁止 auto 模式直接跑完**。
-- 项目无活跃 mint plan 时宿主 `exit_plan_mode` 直接被拒绝（门禁由插件 pre-execute 实现，见 `host-dsh.md`）。
+- **计划模式序列**：在宿主 plan 模式里出方案 → 第一步建/挂对应 mint plan + 拆 issue（全 `open`）→
+  **退出前对「本 plan」的 issue 执行 `plan plan`**（open → planned，这就是开工点）→ 出计划模式。
+- **非计划模式序列**：`plan create`（挂当前 running milestone）→ 拆 issue → `plan plan` →
+  逐 issue `state start` → 改码。两条序列只差是否走宿主计划审批与退出门禁。
+- **存量 plan 接管**：整体/多 issue 一次跑完 → **必须先进入宿主 plan 模式**再执行，**禁止 auto 模式直接跑完**；
+  用户已点名**具体单个 issue** → 按指令直接 `state start`，不必先进计划模式。
+- 门禁由插件 pre-execute 实现（见 `host-dsh.md`）：项目里没有**已拆解**的 mint plan 时 `exit_plan_mode` 被拒。
+
+**为什么 `plan plan` 在退出口做不算违反 #128**：#128 约束的是**登记别处的新 issue**（建议一律留在 `open`）；
+当前 plan 的 issue 在「本次工作开工」那一刻锁到 `planned`，计划模式退出口正是那一刻（#135/#136）。
 
 ## 2. 计划与归属
 
@@ -19,8 +27,9 @@
   - 改行为的 phase → `kind=requirement`，label `dev-clean`；
   - **纯文档/杂务/调研/CI → `kind=task`**（task 无 dev 态：planned → test → done）；
   - phase 已对应既有 issue（收口/合并 plan）→ **直接 attach，不重复建**。
-- **开工时**统一排期锁定：`mint({ args: ["plan","plan","<plan>"] })`（open → planned）；
-  **登记阶段不预建 plan、不置 planned**（#128：登记 ≠ 排期）。
+- **开工点**统一排期锁定：`mint({ args: ["plan","plan","<plan>"] })`（open → planned）——
+  **开工点 = 计划模式退出口，或非计划模式开始改码前**；
+  **登记别处的新 issue 不预建 plan、不置 planned**（#128：登记 ≠ 排期）。
 
 ## 2.5 并行批次执行
 
@@ -70,8 +79,10 @@
 
 两种顺序都合法，**记录必须有**（写给未来的自己、隔壁项目的 agent 或人类看）：
 
-- **先建再跑（默认）**：进计划模式 → 建/挂 plan + 拆 issue + `plan plan` → 出计划模式 →
-  逐 issue `state start` → 改码。
+- **先建再跑（默认）**：
+  - 计划模式：进计划模式 → 建/挂 plan + 拆 issue + `plan plan` → 出计划模式 → 逐 issue `state start` → 改码。
+  - 非计划模式（#136）：`plan create`（挂当前 running milestone）+ 拆 issue → `plan plan` →
+    逐 issue `state start` → 改码；**建 plan 不要求计划模式**。
 - **先跑后建（补登记）**：已在**无记录**状态下改了码/提交了 commit → 停下来补：
   建/挂 plan → 按实测现象与 commit 范围建 issue → `plan plan` → `issue state start <id>` →
   **对每个既有 commit 逐条** `issue state commit <id> --sha <前7位>`（sha 用 `git log --oneline` 回看）→

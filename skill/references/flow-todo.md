@@ -15,3 +15,4 @@
    无 running → 按 flow-conditions 给候选 + **询问用户**后再挂。
 3. **排期（可选，须用户确认要做）**：`mint({ args: ["issue","state","plan","<id>"] })`（open → planned）
    标记已排期，留待后续开发；**登记后默认留 open，不顺手排期、不预建 plan**（#128：登记 ≠ 排期）。
+   属于**当前 plan** 的 issue 例外：随开工点的 `plan plan` 一起转 `planned`（#135/#136）。

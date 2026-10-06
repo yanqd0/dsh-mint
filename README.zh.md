@@ -24,9 +24,12 @@ plan。
   `--project`（写在子命令之前）可在同一会话里读写另一个项目的台账：读直接放行；
   **写**操作首次弹一次确认（写明目标项目与动作），之后同一会话同一项目不再询问。
   目标项目不存在时报候选清单而不是静默新建，且 `autoApprove` 不会让它免确认。
-- **plan 双向绑定** —— 项目没有活跃 mint plan 时 `exit_plan_mode` 被拒，宿主
-  plan 不会与 mint plan 脱钩；本会话对 mint **零写操作**地离开计划模式时，结果里会附
-  一条补登记提示——项目里的 running plan 未必是本次工作的记录。
+- **plan 绑定（单向）** —— 项目没有**已拆解**的 mint plan 时 `exit_plan_mode` 被拒
+  （`running`，或 `open` 且已挂至少一个 issue；空 plan 不放行），宿主计划模式不会与 mint
+  plan 脱钩；但**建 mint plan 不要求计划模式**。退出计划模式（＝开工点）时对**本 plan**
+  的 issue 执行 `plan plan` 锁到 `planned`，挂到别的 plan/milestone 的建议一律保持 `open`。
+  本会话对 mint **零写操作**地离开计划模式时，结果里会附一条补登记提示——项目里的
+  running plan 未必是本次工作的记录。
   **非工具退出**（`/plan off`、GUI 切换）没有工具结果可挂，改由 `[Mint]` 概览
   **一次性**多出一行同样的提示；本会话一旦有 mint 写操作即消失。
 - **提醒** —— `git commit`（含经宿主 `uv` 工具执行的 `uv run git commit`）后提醒 agent

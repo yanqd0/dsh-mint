@@ -29,10 +29,15 @@ plan always has a mint plan behind it.
   then stays quiet for that project in that session. A target that is not a known
   project is refused with the candidate list instead of silently creating one, and
   `autoApprove` never silences this gate.
-- **Plan-mode binding** — `exit_plan_mode` is refused while the project has no
-  active mint plan, so a host plan cannot drift away from its mint plan. Leaving
-  plan mode from a session that has written nothing to mint appends a reminder to
-  register the work: a running plan in the project may belong to someone else's.
+- **Plan binding (one-way)** — `exit_plan_mode` is refused while the project has
+  no **decomposed** mint plan (`running`, or `open` with at least one issue
+  attached; an empty plan never passes), so a host plan cannot drift away from
+  its mint record — but **creating a mint plan does not require plan mode**.
+  Leaving plan mode (the start-of-work point) locks **this plan's** issues to
+  `planned` via `plan plan`; advice filed for another plan or milestone stays
+  `open`. Leaving plan mode from a session that has written nothing to mint
+  appends a reminder to register the work: a running plan in the project may
+  belong to someone else's.
   A **non-tool exit** (`/plan off`, the GUI toggle) has no tool result to carry
   it, so the `[Mint]` overview gains the same notice **once**; it disappears as
   soon as the session writes to mint.

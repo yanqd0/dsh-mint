@@ -21,8 +21,10 @@
 
 ## plan 绑定门禁
 
-- 宿主 `exit_plan_mode` 在项目**无活跃 mint plan** 时被拒绝（对应 SKILL.md「plan 双向绑定」）。
-- 门禁在 `tools/pre-execute` 实现；被拒时按提示先建/挂 mint plan 再退出计划模式。
+- 宿主 `exit_plan_mode` 在项目**没有已拆解的 mint plan** 时被拒绝（对应 SKILL.md「plan 绑定（单向）」）：
+  `running`（有活跃子项），或 `open` 且已挂 ≥1 个 issue 都算已拆解；**空 plan 不算**（#59/#135）。
+- 门禁在 `tools/pre-execute` 实现；被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，
+  不是门禁条件）。门禁只管「项目里有没有已拆解的记录」；「是不是本会话的」交给下面两条软信号。
 - **会话级软信号（#111）**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
   结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；
   见到提示按 `flow-impl.md` 的补登记路径处理。
