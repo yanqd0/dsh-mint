@@ -140,6 +140,23 @@ describe('package manifest', () => {
       }
     });
 
+    // Two dictionaries that have drifted apart silently show one language's
+    // text under the other's preference, so the shapes are asserted here.
+    it('carries the same fields in every locale dictionary', () => {
+      expect(Object.keys(dictionary('en').meta ?? {}).sort()).toEqual(
+        Object.keys(dictionary('zh').meta ?? {}).sort()
+      );
+    });
+
+    // The English dictionary is what an English page reads: a Chinese string
+    // left in it would be a translation hole, and vice versa — the Chinese one
+    // is where the language actually differs.
+    it('keeps Chinese out of the English dictionary and in the Chinese one', () => {
+      const cjk = /[\u3400-\u9fff]/;
+      expect(cjk.test(JSON.stringify(dictionary('en')))).toBe(false);
+      expect(cjk.test(JSON.stringify(dictionary('zh')))).toBe(true);
+    });
+
     // The npm one-liner and the English line on the plugin page are one
     // sentence, so the registry and the page cannot drift apart.
     it('keeps the English dictionary identical to the npm description', () => {

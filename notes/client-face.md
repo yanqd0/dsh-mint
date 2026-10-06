@@ -152,13 +152,45 @@ milestone + 是否直连）。
 > `containerMeta`/`milestoneVersionOf` 丢弃 `null` 版本、`labelBadge(label?.color ?? '')` 退回中性徽章。
 > 千万不要把「要求 string」当严格性——那会把整条记录从列表里丢掉并报假的 `missing required fields`。
 
-## 4. locale
+## 4. locale 与术语口径
+
+### 4.1 注册与查找链
 
 - 仓外命名空间**只能用单语种非类型化形式**：`ctx.locale.register(ns, locale, dict)`。
   类型化双参形式要求「所有内置 locale 齐备」（双语平衡在注册期强制），且只适用于 merge 表内的 ns。
-- 内置 locale id：`zh` / `en`。缺失的 key 会**直接显示 key 本身**，所以 0.2.0 把字典同时注册给
-  `zh` 与 `en`（英文占位为中文），0.3.0 再换真英文（纯数据变更）。
-- 切换语言会 bump revision；`title`/`description` thunk 与 `locale: NS` 的组件都会自动跟随。
+- 内置 locale id：`zh` / `en`。查找链 = 当前语言 → 其 fallback 链（`zh`→`en`）→ `common` ns → 裸 key。
+  **缺 key 直接显示 key 本身**：本仓不给占位、也不做中文回落（0.2.0 的 `en` 中文占位与
+  `createTranslator` 的中文回落已在 0.3.0 删除）——译文缺失要响铃，不要静默出中文。
+- `{name}` 插值由框架 `translate` 负责（`params` 里没有的名字原样保留），本仓不再自带 `interpolate`。
+- 切换语言 bump revision：`title`/`description` thunk 与 `locale: NS` 的组件都会自动跟随，无需重注册
+  （落点是 SlotOutlet 的 `useLocaleRevision`，0.2.0 实测，0.3.0 沿用）。
+- **第三种语言**：`ctx.locale.addLanguage({id,label,fallback:'en'})` + `ctx.locale.register(NS,'ja',{…})`；
+  没注册的语言由查找链逐 key 回退到 `en`，因此本项目不会出现裸 key。
+
+### 4.2 词典与守卫（`src/client/copy.ts` + `copy.test.ts`）
+
+- `ZH` 是 key 集真源（`as const`），`EN` 为 `as const satisfies Record<CopyKey, string>`：
+  **缺 key / 多 key / 类型不符都是编译期错误**，无需运行期比对。
+- `KEPT_IN_ENGLISH` 登记「两语言同文」的 key（mint 品牌 + `Issue`/`Plan`/`Milestone` +
+  `container.plan`/`container.milestone`）；测试**双向**断言：登记项必同文、未登记项必不同文。
+- 守卫：key 集一致、两条都非空、占位符集合一致、**英文宽度预算**
+  （CJK/全角字符记 2 列；`width(EN) ≤ max(2×width(ZH), width(ZH)+12)`；逃生口 `WIDTH_EXEMPT`）、
+  **无死 key**（每个 key 至少在 `src/client/**` 里出现一次 `'<key>'` 字面量）、
+  **无游离中文**（该目录除 `copy.ts` 与测试外不得出现 CJK）。
+- 宽度预算是实测门禁：英文同义句天然更长，而 guide 卡片（380px、11px、nowrap+ellipsis）、
+  工具条与分页行都很窄；写英文时按预算收敛，超了先改文案再加逃生口。
+
+### 4.3 术语口径
+
+| 类别 | 口径 |
+| --- | --- |
+| 标签页/概念 | `Issue` / `Plan` / `Milestone` 两语言都英文（`view.*`、`container.*`，即 `KEPT_IN_ENGLISH`） |
+| mint 数据 | issue 状态（`open`/`planned`/`dev`/`test`/`done`/`dropped`）、容器派生状态、kind（`problem`/`requirement`/`task`）、`P0`–`P3`、版本号、时间戳：**原样镜像 CLI**，不进词典（便于与 `mint` 输出逐字对账） |
+| 面板自有词 | 按钮/字段名/提示/计数单位/已知错误码：走词典，中英各一份 |
+| 失败与诊断 | 只有稳定错误码本地化（当前仅 `session-not-live` → `error.sessionNotLive`）；mint stderr、`mint-json` 形状告警、畸形请求文本**原样透传** |
+| 计数 | `count.issue.one\|other` + `model.countKey(n)`：英文分单复数，中文两条同文 |
+| 分隔符 | ` · `、`#`、`↳`、分数页码 `1/3` 等语言中立，不进词典（容器列表页脚保留分数，避免英文整句挤占工具条） |
+| 宿主面文案 | 面向模型的注入/提醒/工具描述仍是中文，不在客户端词典范围；审批提示走宿主自有 `displayReason {en,zh}` |
 
 ## 5. 主题
 

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "mint",
-    "description": "mint issue tracking inside DSH sessions: a zero-approval host `mint` tool with the bundled mint skill, session context injection, plan binding and commit reminders; a read-only mint panel in the right sidebar (add-tab menu, beside Workspace files and New terminal) shows this project's issues, plans and milestones."
+    "description": "mint issue tracking inside DSH sessions: a zero-approval host `mint` tool (no bash; bundled mint skill, cross-project write confirmation), session context injection, plan binding and commit reminders; a read-only mint panel in the right sidebar (add-tab menu, beside Workspace files and New terminal) shows this project's issues, plans and milestones."
   }
 }

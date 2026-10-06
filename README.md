@@ -240,8 +240,10 @@ restart DSH after changing either one.
 the tab strip's add control beside _Workspace files_ and _New terminal_. It reads
 the session's project read-only — issues (list, filters, detail), plans and
 milestones (lists, details) — through read-only host routes backed by the mint
-CLI. Copy ships in Simplified Chinese only for now; the dictionaries already
-travel through the client locale service, so `0.3.0` adds English as data.
+CLI. `0.3.0` makes the panel bilingual: its own copy ships in Simplified Chinese
+and English (Settings → General → Language), mint's own vocabulary — status and
+kind values, `P0`–`P3` — stays verbatim in both locales, and `Issue`, `Plan` and
+`Milestone` stay English as mint's key concepts.
 
 ## Development
 

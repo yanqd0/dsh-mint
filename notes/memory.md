@@ -12,7 +12,7 @@
 | [install-check.md](install-check.md) | 安装/自动使用**快速自检清单**（1 分钟）：挂载行、dist/skill 产物、`mint` 工具/`[Mint]` 判定、**零授权验证**——跑相同 dogfooding 任务前先跑它 |
 | [graph-memory-silent-mechanism.md](graph-memory-silent-mechanism.md) | graph-memory 静默运行（零授权）机制调研 + dsh-mint 迁移性评估：不经 bash、插件进程内跑 CLI/直写 db 的信任边界；方案 A 已落地为宿主 `mint` 工具 |
 | [mint-skill-sync.md](mint-skill-sync.md) | mint 升级后 skill 复核法：`--help-llm` 对账 + 逐命令 `--help`（补 version 类参数）+ 对照上游 `src/cli`；本轮 0.8/0.9 坑位表（#70–#78） |
-| [client-face.md](client-face.md) | 客户端面实测契约（0.2.0-rc.2）：右侧边栏 tab 类型与 body seat、`dsh.client` + `__ModuleLoader__` 产物、PLATFORM_MODULES、webServer 只读路由通道、locale/主题 token、**插件展示元数据（`readPluginMeta` + `exports` 门禁）**、验证手段与坑（#9/#10/#11/#127） |
+| [client-face.md](client-face.md) | 客户端面实测契约（0.2.0-rc.2）：右侧边栏 tab 类型与 body seat、`dsh.client` + `__ModuleLoader__` 产物、PLATFORM_MODULES、webServer 只读路由通道、**locale 双语机制与术语口径（#13）**/主题 token、**插件展示元数据（`readPluginMeta` + `exports` 门禁）**、验证手段与坑（#9/#10/#11/#127） |
 | [client-architecture.md](client-architecture.md) | 客户端面**架构与数据流**：双半边/双产物、三条通道、一次列表请求的时序、状态归属、信任与暴露面、验证阶梯、0.2.0 边界（含 mermaid 图） |
 | [session-cost-review.md](session-cost-review.md) | 一次真实会话的 token 复盘：mint 每请求注入预算与实测占比、工具结果分布、dsh-dev-dsh 使用效果与「仍需读源码」清单 |
 | [delegation.md](delegation.md) | 子代理委派实测：继承 AGENTS.md/通用工具/`mint` 工具与 skill catalog、无 `[Mint]` 注入（`delegationDepth > 0` 跳过）、审批 pin `never` 不可提权、深度默认 1；故派活必须显式给目标/范围/验收/既有结论/禁令（#123） |
