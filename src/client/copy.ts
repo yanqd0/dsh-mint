@@ -15,8 +15,8 @@ export const NS = 'mint';
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
 const COPY = {
-  'type.label': 'Mint',
-  'guide.title': 'Mint 面板',
+  'type.label': 'mint',
+  'guide.title': 'mint 面板',
   'guide.description': '查看本项目的 issue、plan 与 milestone',
 
   'view.issues': 'Issue',
