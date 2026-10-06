@@ -67,7 +67,20 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // flow-impl, and the issue ordering rule left SKILL.md's body for the place
   // that already carried it (flow-session's step 4).
   // #128: the batch lock is a start-of-work action, not an attach-time one.
-  ['references/flow-impl.md', ['先跑后建', '记录必须有', '顺序可换', '登记 ≠ 排期', '登记阶段不预建']],
+  // #119: the host todo panel is the human's progress view, so the derive/sync
+  // discipline has to survive in flow-impl (SKILL.md is at its 4000 B ceiling).
+  [
+    'references/flow-impl.md',
+    [
+      '先跑后建',
+      '记录必须有',
+      '顺序可换',
+      '登记 ≠ 排期',
+      '登记阶段不预建',
+      'todo_write',
+      '宿主 todo',
+    ],
+  ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序']],
   // #122: the parallel-execution contract (batch table, subagent dispatch, no
   // sleeps, state commit) lives in its own reference.

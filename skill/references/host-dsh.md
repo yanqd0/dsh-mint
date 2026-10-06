@@ -27,6 +27,18 @@
   结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；
   见到提示按 `flow-impl.md` 的补登记路径处理。
 
+## 宿主 todo 面板（进度可见）
+
+- `todo_write` 是**宿主**工具（`@deepseek-ai/dsh-tool-todo`），不是本插件的：每次调用向调用者会话
+  追加一条 `todo/write` 快照，客户端（`dsh-client-ui-conversation`）把 `todos` 投影渲染在
+  **输入区上方的进度面板**（`conversation.input.dock`）。面板是只读展示。
+- 投影在**每个 `turn/start` 重置为 `null`**：一个 turn 里不写就没有面板；写一次后长期不更新，
+  显示的进度就是过期的（人类据此误判，这就是 #119 的现象）。
+- 插件只做**提醒**，不代写：`issue state` / `plan plan` / `plan close` 成功后在工具结果末尾追加
+  一行「同步 todo」；子代理会话跳过（面板属于根 agent 的会话）。清单内容仍由模型写——
+  它是实施步骤的拆解，不是 issue 行的镜像。
+- 派生与同步口径见 `flow-impl.md` §3、`flow-session.md` §5。
+
 ## skill 安装与生效
 
 - skill 安装到 `~/.dsh/skills/mint`（rank 400，遮蔽其它用户级 skill），由本插件 content-sync

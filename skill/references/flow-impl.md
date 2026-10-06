@@ -36,11 +36,21 @@
 
 ## 3. 每个逻辑变更
 
+**进度可见（宿主 todo 面板，人类看进度的入口）**：开工第一步（**每个 turn**）先用
+`mint({ args: ["list","--plan","<plan>"] })` 取本 plan 的 issue 列表，写一份全量
+`todo_write` 清单——一项一个 issue，条目文本带 `#<id>`（如 `#119 插件：todo 同步提醒`）
+与文件白名单。此后**每次 issue 状态变更后重写同一清单**：当前 issue 置 `in_progress`，
+`commit`/`close` 过的置 `completed`，未开工的留 `pending`。
+宿主 `todos` 投影在**每个 `turn/start` 重置为空**，所以每个 turn 都要重写一次；
+面板与 mint 状态不一致即视为未同步（插件在状态变更后会追加一行提醒，别忽略它）。
+
 1. 改码前 `mint({ args: ["issue","state","start","<id>"] })`（planned → dev），**保持 dev**。
    - 自查：改码前确认该 issue 已 start；phase 结束用 `mint({ args: ["list","--plan","<plan>"] })` 复查。
    - 补救：已改码却没 start → 先 `state start` 再 `state commit`（避免非法转换）。
+   - 同步 todo：该 issue 置 `in_progress`（清单其余项不动）。
 2. 代码 commit 后立即 `mint({ args: ["issue","state","commit","<id>","--sha","<前7位>"] })`（dev → test）。
    - sha 用 bash `git rev-parse --short=7 HEAD` 取；一个 issue 多个 commit **每次都登记**（只留最后一个 sha）。
+   - 同步 todo：该 issue 置 `completed`。
 
 ## 4. 统一测试与收口
 

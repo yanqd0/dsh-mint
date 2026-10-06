@@ -37,6 +37,8 @@
 ## 4. 单写者职责
 
 - 主 agent 独占 git 与 mint：子代理不 commit、不 `state`。
+- 主 agent 的宿主 todo 清单按 issue 粒度展开（一个 issue 一项）；子代理不写 `todo_write`，
+  清单也不含 issue 之外的条目（口径见 `flow-impl.md` §3）。
 - 逐 issue：`git add -- <该 issue 的文件>` → commit → dev 类再 `git rev-parse --short=7 HEAD` → `issue state commit <id> --sha <前7位>`。
 - 批内不并行跑 build / test:coverage / format：全局独占，主 agent 串行。
 - 子代理只改文件，自检只用只读命令。

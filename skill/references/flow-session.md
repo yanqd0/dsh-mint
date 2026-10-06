@@ -30,5 +30,7 @@
    - 未排期且未关闭的 bug（problem）优先；
    - 当前版本 milestone 下未完成的核心项。
    直接陈述建议（DSH 无弹窗澄清工具，用文本反问），供用户确认下一步。
-5. **声明接管**：后续 session 直接描述意图即可，skill 自动走 mint 流程。
+5. **派生 todo**：按 running plan 的 issue 列表写一次 `todo_write`（一项一个 issue，条目带 `#<id>`），
+   让输入区的进度面板与 mint 一致；后续每次 issue 状态变更后重写同一清单（口径见 `flow-impl.md` §3）。
+6. **声明接管**：后续 session 直接描述意图即可，skill 自动走 mint 流程。
    若扫出大量 `plan_id=null` 的 open 项 → 转 `flow-sweep.md` 收口。
