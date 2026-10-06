@@ -33,10 +33,15 @@ plan always has a mint plan behind it.
   active mint plan, so a host plan cannot drift away from its mint plan. Leaving
   plan mode from a session that has written nothing to mint appends a reminder to
   register the work: a running plan in the project may belong to someone else's.
+  A **non-tool exit** (`/plan off`, the GUI toggle) has no tool result to carry
+  it, so the `[Mint]` overview gains the same notice **once**; it disappears as
+  soon as the session writes to mint.
 - **Reminders** — after a `git commit` — including one run through the host `uv`
   tool (`uv run git commit`) — the agent is reminded to register it
-  (`issue state commit --sha`); a failed call is not mistaken for a commit, and a
-  failed tool call suggests filing an issue.
+  (`issue state commit --sha`); after `issue state` / `plan plan` / `plan close`
+  it is reminded to sync the host todo panel (whose `todos` projection resets
+  every turn, so an unwritten list shows stale progress); a failed call is not
+  mistaken for a commit, and a failed tool call suggests filing an issue.
 - **Bundled mint skill** — the `mint` skill shipped in this package is
   content-synced into `$DSH_HOME/skills/mint` on load, so the agent knows the
   issue/plan/milestone workflow without a manual skill install.

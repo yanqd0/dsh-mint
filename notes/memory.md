@@ -17,3 +17,4 @@
 | [session-cost-review.md](session-cost-review.md) | 一次真实会话的 token 复盘：mint 每请求注入预算与实测占比、工具结果分布、dsh-dev-dsh 使用效果与「仍需读源码」清单 |
 | [delegation.md](delegation.md) | 子代理委派实测：继承 AGENTS.md/通用工具/`mint` 工具与 skill catalog、无 `[Mint]` 注入（`delegationDepth > 0` 跳过）、审批 pin `never` 不可提权、深度默认 1；故派活必须显式给目标/范围/验收/既有结论/禁令（#123） |
 | [injection-order.md](injection-order.md) | 注入顺序与 KV cache 核验（0.2.0-rc.2）：sections 与 contexts 是两套注册表、动态快照以 user 消息追加在请求尾部 → 「动态概览排在静态指引之前致前缀缓存失效」前提不成立；含代码位置与一分钟复核手法（#63） |
+| [todo-panel.md](todo-panel.md) | 宿主 todo 面板契约（0.2.0-rc.2）：`todo_write` 全量替换 + `todo/write` 会话事件、`todos` 投影**每 `turn/start` 重置**、`conversation.input.dock` 只读渲染、插件只在状态变更后提醒（子代理跳过）与实机验证手法（#119） |
