@@ -19,7 +19,7 @@ import { IconChecklistOutlineRegular } from '@deepseek-ai/dsh-client-ui-primitiv
 
 import { MintBody } from './MintBody.js';
 import { createApi } from './api.js';
-import { NS, ZH, createTranslator } from './copy.js';
+import { EN, NS, ZH, createTranslator } from './copy.js';
 import type { CopyTranslate } from './copy.js';
 import type { ClientContextLike, MintApiLike, TabDefinitionLike } from './types.js';
 
@@ -83,10 +83,12 @@ export function mintTabDefinition(t: CopyTranslate): TabDefinitionLike {
 export function apply(ctx: ClientContextLike): void {
   const t = createTranslator(ctx.locale.bind(NS));
 
-  // `en` carries the Chinese text until 0.3.0: an English-locale page must show
-  // words, and a missing dictionary shows raw keys instead.
+  // Both built-in locales carry a real dictionary: the single-locale form is the
+  // only one open to an out-of-tree namespace (`LocaleServiceLike.register`), and
+  // `EN` is exhaustive over `ZH`'s keys at compile time, so neither locale can
+  // register an incomplete dictionary.
   own(ctx, () => ctx.locale.register(NS, 'zh', { ...ZH }), 'dsh-mint: zh copy');
-  own(ctx, () => ctx.locale.register(NS, 'en', { ...ZH }), 'dsh-mint: en copy (placeholder)');
+  own(ctx, () => ctx.locale.register(NS, 'en', { ...EN }), 'dsh-mint: en copy');
 
   own(ctx, () => ctx.sidebarRightTabs.register(mintTabDefinition(t)), 'dsh-mint: tab type');
 
@@ -99,9 +101,9 @@ export function apply(ctx: ClientContextLike): void {
             name: 'sidebar.right.pane.tab',
             key: TAB_ID,
             locale: NS,
-            // `locale: NS` gives the framework's `t`; the panel uses this injected
-            // seat instead, because only its keys are checked against the copy and
-            // it still answers Chinese on a locale that carries no dictionary.
+            // `locale: NS` gives the framework's `t` seat to the body; the panel
+            // uses this injected seat instead, whose keys are the checked
+            // `CopyKey` union rather than the framework's open string domain.
             inject: (sessionId): { api: MintApiLike; copy: CopyTranslate } => ({
               api: createApi({ sessionId }),
               copy: t,

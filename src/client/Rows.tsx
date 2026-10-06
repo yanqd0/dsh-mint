@@ -69,14 +69,14 @@ export function PlacementChips({ copy, placement }: PlacementChipsProps): ReactE
   return (
     <>
       {planId !== null && (
-        <span style={placementChip('plan')} title={copy('field.plan')}>
+        <span style={placementChip('plan')} title={copy('placement.plan')}>
           {`#${String(planId)}`}
         </span>
       )}
       {milestoneVersion !== undefined && (
         <span
           style={placementChip(direct ? 'direct' : 'viaPlan')}
-          title={direct ? copy('field.milestone') : `${copy('field.milestone')} · ${copy('placement.viaPlan')}`}
+          title={copy(direct ? 'placement.milestone' : 'placement.milestoneViaPlan')}
         >
           {direct ? milestoneVersion : `↳ ${milestoneVersion}`}
         </span>

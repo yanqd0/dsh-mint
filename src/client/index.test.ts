@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { NS, ZH, createTranslator } from './copy.js';
+import { EN, NS, ZH, createTranslator } from './copy.js';
 import { GUIDE_ORDER, TAB_ID, TAB_KIND, apply, inject, mintTabDefinition } from './index.js';
 import type { ClientContextLike, SlotRegistrationLike, TabDefinitionLike } from './types.js';
 
@@ -62,13 +62,11 @@ describe('mint client plugin', () => {
     expect(inject).toEqual(['slots', 'locale', 'sidebarRightTabs']);
   });
 
-  it('registers the dictionary for both built-in locales', () => {
+  it('registers a complete dictionary for both built-in locales', () => {
     const { ctx, locales } = clientDouble();
     apply(ctx);
     expect(locales.map((entry) => `${entry.ns}/${entry.locale}`)).toEqual(['mint/zh', 'mint/en']);
-    for (const entry of locales) {
-      expect(entry.dict).toEqual({ ...ZH });
-    }
+    expect(locales.map((entry) => entry.dict)).toEqual([{ ...ZH }, { ...EN }]);
   });
 
   it('declares one builtin page type whose guide entry sits after terminal', () => {

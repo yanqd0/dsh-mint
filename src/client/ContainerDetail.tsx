@@ -135,12 +135,12 @@ export function ContainerDetail({
           <span>{copy(kind === 'plan' ? 'container.plan' : 'container.milestone')}</span>
           <span style={pill(statusTone(item.status))}>{item.status}</span>
           {item.version !== null && (
-            <span>{`${copy('field.version')} ${item.version}`}</span>
+            <span>{copy('detail.version', { version: item.version })}</span>
           )}
           {item.milestone_id !== null && (
-            <span>{`${copy('field.milestone')} #${String(item.milestone_id)}`}</span>
+            <span>{copy('detail.milestone', { id: item.milestone_id })}</span>
           )}
-          <span>{`${copy('field.updated')} ${item.updated_at}`}</span>
+          <span>{copy('detail.updated', { at: item.updated_at })}</span>
         </div>
         <BodyView copy={copy} body={item.body} />
 
@@ -165,7 +165,7 @@ export function ContainerDetail({
           </>
         )}
 
-        <div style={{ ...NOTE, marginTop: 12 }}>{copy('field.issues')}</div>
+        <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.issues')}</div>
         <EmbeddedIssues
           copy={copy}
           state={issues}

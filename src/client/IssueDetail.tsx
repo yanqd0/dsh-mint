@@ -44,8 +44,8 @@ export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetail
         <div style={{ fontSize: 13, fontWeight: 600 }}>{`#${String(item.id)} ${item.title}`}</div>
         <div style={{ ...META, marginTop: 6 }}>
           <span style={pill(statusTone(item.status))}>{item.status}</span>
-          <span>{`${copy('field.kind')} ${item.kind}`}</span>
-          <span>{`${copy('field.priority')} ${priorityLabel(item.priority)}`}</span>
+          <span>{copy('detail.kind', { kind: item.kind })}</span>
+          <span>{copy('detail.priority', { priority: priorityLabel(item.priority) })}</span>
           {item.plan_id === null && item.milestone_id === null && (
             <span>{copy('detail.standalone')}</span>
           )}
@@ -66,8 +66,8 @@ export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetail
           </div>
         )}
         <div style={{ ...META, marginTop: 4 }}>
-          <span>{`${copy('field.created')} ${item.created_at}`}</span>
-          <span>{`${copy('field.updated')} ${item.updated_at}`}</span>
+          <span>{copy('detail.created', { at: item.created_at })}</span>
+          <span>{copy('detail.updated', { at: item.updated_at })}</span>
         </div>
 
         <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.body')}</div>
