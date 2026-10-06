@@ -1,4 +1,5 @@
 import { sessionIdOf } from './session-id.js';
+import { invocationsOf } from './cross-project-gate.js';
 import { hasMintWrite } from './session-ledger.js';
 import { EXIT_PLAN_MODE } from './planbind.js';
 import type {
@@ -128,6 +129,67 @@ export async function commitReminderListener(
 /** Register the commit reminder on `tools/post-execute`. */
 export function installCommitReminder(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', commitReminderListener);
+}
+
+/**
+ * Reminder appended after a mint call that moves issue/plan state (#119).
+ *
+ * The host's todo panel (`todo_write` → `conversation.input.dock`) is the
+ * human's progress view inside a session, and its `todos` projection resets to
+ * `null` on every `turn/start` (verified against `@deepseek-ai/dsh-tool-todo`
+ * and `dsh-client-ui-conversation` in 0.2.0-rc.2): a list written once early in
+ * a long turn drifts away from the mint ledger, which is exactly how a session
+ * once reported `#54 in_progress` while mint already had it in `test`.
+ *
+ * The skill owns the discipline (`references/flow-impl.md`); this notice delivers
+ * it at the moment the ledger changes, which is when the panel starts to
+ * disagree. It only nudges — the list stays model-authored, because it is the
+ * model's step breakdown, not a mirror of the issue rows.
+ */
+export const TODO_SYNC_REMINDER =
+  '[mint] issue 状态已变更——同步宿主 todo：todo_write 全量重写清单，' +
+  '让每项的 status 与 mint 一致（面板是人类看进度的入口）。';
+
+/**
+ * True when the call moves mint issue/plan state.
+ *
+ * Matching is on the parsed invocation ({@link invocationsOf}), so the `mint`
+ * tool and a recognised bash fallback behave identically and leading `-p`/global
+ * flags are already stripped. Reads (`issue list`, `plan show`, …) never match.
+ */
+export function todoSyncChanged(exec: ToolExecutionLike): boolean {
+  return invocationsOf(exec).some((invocation) => {
+    const [root, leaf] = invocation.rest;
+    if (root === 'issue') return leaf === 'state';
+    if (root === 'plan') return leaf === 'plan' || leaf === 'close';
+    return false;
+  });
+}
+
+/**
+ * `tools/post-execute` listener: after a successful `issue state` /
+ * `plan plan` / `plan close` call, append the todo-sync reminder.
+ *
+ * Skipped when the call failed (a rejected transition moved nothing, the same
+ * rule as the commit reminder #110) and for subagent sessions — the panel it
+ * speaks about belongs to the root agent's session (#113).
+ */
+export async function todoSyncReminderListener(
+  exec: ToolExecutionLike,
+  result: ToolResultLike,
+  next: () => Promise<PostToolDecisionLike>,
+): Promise<PostToolDecisionLike> {
+  const delegationDepth = exec.agent?.session?.header?.delegationDepth ?? 0;
+  if (isFailedResult(result) || delegationDepth > 0 || !todoSyncChanged(exec)) {
+    return next();
+  }
+  const reminder: ContentBlockLike = { type: 'text', text: TODO_SYNC_REMINDER };
+  return { kind: 'accept', content: [...result.content, reminder] };
+}
+
+/** Register the todo-sync reminder on `tools/post-execute`. */
+export function installTodoSyncReminder(ctx: DshContext): () => void {
+  return ctx.on('tools/post-execute', todoSyncReminderListener);
 }
 
 /**

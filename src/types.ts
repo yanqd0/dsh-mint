@@ -20,7 +20,19 @@ export interface ToolExecutionLike {
   /** Opaque call identity used to correlate executions with approval asks. */
   callId?: string;
   arguments: { command?: string } & Record<string, unknown>;
-  agent?: { session?: { id?: string; header?: { cwd?: string } } };
+  agent?: {
+    session?: {
+      id?: string;
+      header?: {
+        cwd?: string;
+        /**
+         * `> 0` for a subagent session (#113). The todo dock (#119) belongs to
+         * the root agent's session, so the reminder skips delegated ones.
+         */
+        delegationDepth?: number;
+      };
+    };
+  };
   /**
    * Cooperative cancellation. Tool bodies are expected to observe and forward
    * it; the host only signals (`notes/dsh/0.1.0/06,20`).

@@ -10,6 +10,7 @@ import {
   installCommitReminder,
   installFailureSignal,
   installSessionRecordReminder,
+  installTodoSyncReminder,
 } from './reminders.js';
 import { installMintRoutes } from './routes.js';
 import { installSessionLedger } from './session-ledger.js';
@@ -58,6 +59,8 @@ export type Config = z.infer<typeof Config>;
  *
  * - #3: mint overview context on every agent session start
  * - #4: commit reminder (`tools/post-execute`) + failure signal (`tools/result`)
+ * - #119: todo-sync reminder — after an `issue state` / `plan plan` / `plan close`
+ *   call, the host todo panel is told to catch up with the mint ledger
  * - #5: plan binding (exit_plan_mode ↔ mint plan)
  * - #6/#34: `mint` tool — the whole mint CLI in-process, zero approval
  * - #25: approval gate — once-per-session mint escalation approval, then
@@ -78,6 +81,8 @@ export function apply(ctx: DshContext, config: Config): void {
   // `agent/session-start` name is kept as a fallback inside the installer).
   installOverviewChannel(ctx, mintEntry);
   installCommitReminder(ctx);
+  // #119: the host todo panel must not drift away from the mint ledger.
+  installTodoSyncReminder(ctx);
   installFailureSignal(ctx);
   // #111: session-scoped mint-write ledger, read by the plan-mode exit notice.
   // #114: the `mintEntry` makes `-p <本项目>` count as this session's own write.

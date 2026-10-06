@@ -2,14 +2,18 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   SESSION_RECORD_REMINDER,
+  TODO_SYNC_REMINDER,
   commitReminderListener,
   installCommitReminder,
   installFailureSignal,
   installSessionRecordReminder,
+  installTodoSyncReminder,
   isCommitArgv,
   isFailedResult,
   isGitCommit,
   sessionRecordReminderListener,
+  todoSyncChanged,
+  todoSyncReminderListener,
 } from './reminders.js';
 import { recordMintWrite, resetSessionLedger } from './session-ledger.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from './types.js';
@@ -175,6 +179,94 @@ describe('installCommitReminder', () => {
   it('registers a tools/post-execute listener', () => {
     const { ctx, listeners } = makeCtx();
     installCommitReminder(ctx);
+    expect(listeners['tools/post-execute']).toBeTypeOf('function');
+  });
+});
+
+describe('todoSyncChanged (#119)', () => {
+  const mint = (args: string[]): ToolExecutionLike => ({ name: 'mint', arguments: { args } });
+
+  it('matches the mint calls that move ledger state', () => {
+    expect(todoSyncChanged(mint(['issue', 'state', 'start', '119']))).toBe(true);
+    expect(todoSyncChanged(mint(['plan', 'plan', '25']))).toBe(true);
+    expect(todoSyncChanged(mint(['plan', 'close', '25', '--test-cmd', 'pnpm test']))).toBe(true);
+  });
+
+  it('sees through the leading global flags the CLI accepts', () => {
+    expect(todoSyncChanged(mint(['-p', 'other', 'issue', 'state', 'commit', '7']))).toBe(true);
+  });
+
+  it('matches a recognised bash fallback call', () => {
+    expect(todoSyncChanged({ name: 'bash', arguments: { command: 'mint issue state start 7' } })).toBe(
+      true
+    );
+  });
+
+  it('ignores reads and unrelated tools', () => {
+    for (const args of [
+      ['issue', 'list'],
+      ['issue', 'show', '7'],
+      ['issue', 'get', '7', 'body'],
+      ['plan', 'list'],
+      ['plan', 'show', '25'],
+      ['plan', 'attach', '25', '119'],
+      ['milestone', 'list'],
+    ]) {
+      expect(todoSyncChanged(mint(args)), args.join(' ')).toBe(false);
+    }
+    expect(todoSyncChanged({ name: 'bash', arguments: { command: 'ls' } })).toBe(false);
+    expect(todoSyncChanged({ name: 'mint', arguments: {} })).toBe(false);
+  });
+});
+
+describe('todoSyncReminderListener (#119)', () => {
+  const exec = (
+    args: string[] = ['issue', 'state', 'start', '119'],
+    delegationDepth?: number
+  ): ToolExecutionLike => ({
+    name: 'mint',
+    arguments: { args },
+    agent: { session: { id: 'sess-1', header: { cwd: '/proj', ...(delegationDepth === undefined ? {} : { delegationDepth }) } } },
+  });
+
+  it('appends the todo reminder after a state change', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await todoSyncReminderListener(exec(), successResult, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(decision.content?.[0]).toBe(successResult.content[0]);
+    expect(decision.content?.[1]?.text).toBe(TODO_SYNC_REMINDER);
+    expect(TODO_SYNC_REMINDER).toContain('todo_write');
+  });
+
+  it('stays silent when the transition failed', async () => {
+    const failed: ToolResultLike = {
+      isError: false,
+      content: [{ type: 'text', text: 'invalid transition [exit code: 1]' }],
+    };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await todoSyncReminderListener(exec(), failed, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('stays silent for a subagent session: the panel is the root agent’s (#113)', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await todoSyncReminderListener(exec(undefined, 1), successResult, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('defers to next() on a read', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await todoSyncReminderListener(exec(['issue', 'list']), successResult, next);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('registers a tools/post-execute listener', () => {
+    const { ctx, listeners } = makeCtx();
+    installTodoSyncReminder(ctx);
     expect(listeners['tools/post-execute']).toBeTypeOf('function');
   });
 });
