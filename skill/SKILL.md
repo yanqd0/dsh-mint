@@ -8,61 +8,32 @@ description: >-
   计划 里程碑 同步 推送 拉取 合并 下一步。
 ---
 
-用 mint 管理开发 issue 与流程：**解析意图 → 读 reference → 用 `mint` 工具执行 → 验证**。
-未传参即接管。
+用 mint 管理开发 issue 与流程：**解析意图 → 读 reference → 用宿主 `mint` 工具执行 → 验证**。
+未传参即接管；**本项目操作不带 `-p`**，跨项目见路由表（`cross-project.md`）。
 
-## 执行面
+三层模型：**issue** 问题/需求（六态，最小执行单位）｜**plan** 一次开发计划，对应 DSH
+plan 模式（一一对应）｜**milestone** 功能版本（create 必带 `--version`；**默认 1 个 running
+（`-f` 并行）**，plan 与独立 issue 默认挂它）。六态与容器派生见 `state-machine.md`。
 
-一律用宿主 `mint` 工具（`args` 即 CLI 参数数组）。
-
-项目默认取会话 cwd：本项目操作不带 `-p`，跨项目才加（`references/cross-project.md`）。
-
-## 三层模型
-
-- **issue**：问题/需求，六态；最小执行单位。
-- **plan**：一次开发计划，下挂 issue；**对应 DSH plan 模式**（一一对应）。
-- **milestone**：功能版本（create 必带 `--version`）；**默认 1 个 running（`-f` 并行）**，plan 与独立 issue 默认挂它。
-
-## 流程索引（按触发读）
+## 流程索引（按触发读；路径均在 `references/`）
 
 | 触发 | reference |
 |---|---|
-| bug / 问题 | `references/flow-bug.md` |
-| 需求 / 改进 | `references/flow-requirement.md` |
-| 遗留 / TODO / 观察项 | `references/flow-todo.md` |
-| 审查 / 测试报告 | `references/flow-review.md` |
-| 版本 / 计划 / 里程碑 / 拆解 | `references/flow-planning.md` |
-| 写码实施（门禁详解） | `references/flow-impl.md`、`references/parallel-exec.md` |
-| 无参接管 | `references/flow-session.md` |
-| 散落 issue 收口 | `references/flow-sweep.md` |
-| 分支决策（挂载/测试/git/link/kind） | `references/flow-conditions.md` |
-| 跨项目登记 | `references/cross-project.md` |
-| 多机同步 | `references/flow-sync.md` |
-| 命令 / 输出 / 字段 | `references/commands.md` |
-| 状态机 / 容器派生 | `references/state-machine.md` |
-| 标题 / body 模板纪律 | `references/template-guide.md` |
-| body 改写 / 追加纪律 | `references/body-editing.md` |
-| label 规范 | `references/labels.md` |
-| 约束红线（delete/清理/去重） | `references/constraints.md` |
-| 本宿主集成 | `references/host-dsh.md` |
+| 登记：bug / 需求 / 遗留 / 审查发现 | `flow-bug.md`、`flow-requirement.md`、`flow-todo.md`、`flow-review.md` |
+| 规划：版本 / 计划 / 拆解 / 分支决策 | `flow-planning.md`、`flow-conditions.md` |
+| 写码实施：门禁 / 并行批次 / 状态机 | `flow-impl.md`、`parallel-exec.md`、`state-machine.md` |
+| 接管 / 收口 / 多机同步 | `flow-session.md`、`flow-sweep.md`、`flow-sync.md` |
+| 命令 / 正文取值 / 模板 / body / label / 约束红线 | `commands.md`、`template-guide.md`、`body-editing.md`、`labels.md`、`constraints.md` |
+| 跨项目登记 / 本宿主集成 | `cross-project.md`、`host-dsh.md` |
 
-## 不可跳过（强制；见 `references/flow-impl.md`）
+## 不可跳过（强制；见 `flow-impl.md`）
 
 - **plan 双向绑定**：宿主 plan ⟷ mint plan 一一对应；无活跃 mint plan 时 `exit_plan_mode` 被拒。
   存量 plan 接管须先进宿主 plan 模式，禁止 auto 跑完。
-- **并行批次**：plan 必带批次表（同批文件不相交）；见 `references/parallel-exec.md`。
-- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue；**提 issue 一律 open；`plan plan` 只在开工执行**；先跑后建见 `references/flow-impl.md`。
-- **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（planned → dev）；open/planned 直接改码 = 违反。
+- **并行批次**：plan 必带批次表（同批文件不相交）；见 `parallel-exec.md`。
+- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue；**提 issue 一律 open；`plan plan` 只在开工执行**。
+- **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（→ dev）；open 直接改码 = 违反。
 - **commit 后立即**：`args: ["issue","state","commit","<id>","--sha","<前7位>"]`
-  （sha 用 bash `git rev-parse --short=7 HEAD`）。
-- **统一测试**：同 plan 各 issue 停在 test，到齐后统一跑；全绿 `plan close <plan> --test-cmd "<命令>"`，
-  失败 `issue state retest <id> --test-cmd "<精确手法>"` 打回 dev。
-- **默认挂当前 running milestone**：无 running → 推测 semver 候选并**询问用户**，**不得自行置 running/`-f`**。
+  （sha 用 `git rev-parse --short=7 HEAD`）；统一测试与 `plan close` 见 `flow-impl.md`。
+- **默认挂当前 running milestone**：无 running → 推测候选并**询问用户**，**不得自行置 running/`-f`**。
 - `delete` / `sync` **须走 bash** 且先经用户确认（工具直接拒绝）。
-
-## 记录与检索
-
-- 正文用 `args: ["issue","get","<id>","body"]`（裸值最准）；命令见 `references/commands.md`。
-- 标题/body 套模板、只记 LLM 未知：见 `references/template-guide.md`；
-  改写/追加既有 body 见 `references/body-editing.md`。
-- 约束红线与 label：见 `references/constraints.md`、`references/labels.md`。

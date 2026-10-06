@@ -3,6 +3,16 @@
 > **命令经 `mint` 工具执行**：表中 `args` 列即 `mint({ args: [...] })` 的参数数组。
 > 阶段与硬约束由 mint CLI 决定，见 `mint({ args: ["issue","state","--help"] })`。
 
+## 三层模型（从 SKILL.md 迁入）
+
+- **issue**：问题/需求，六态；**最小执行单位**（活干在它上面）。
+- **plan**：一次开发计划，下挂 issue；**对应 DSH plan 模式**（一一对应）。
+- **milestone**：功能版本（create 必带 `--version`）；**默认 1 个 running（`-f` 并行）**，
+  plan 与独立 issue 默认挂它。
+
+issue 属 plan 后**不能**再直接挂 milestone（二选一）；plan 与 milestone 状态都是**派生**的
+（见文末容器五态）。
+
 ## issue 六态
 
 `open → planned → dev → test → done`（正向链路）+ `dropped`（终止）+ 回退/重开。

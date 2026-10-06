@@ -28,6 +28,23 @@ const bytes = (text: string): number => Buffer.byteLength(text, 'utf8');
 
 const skill = read('SKILL.md');
 
+/**
+ * Reference files SKILL.md names (#138).
+ *
+ * The router writes paths relative to `references/` (it states that base), so a
+ * name counts with or without the prefix — but only when it matches a file that
+ * actually exists, which keeps prose like `` `package.json` `` out of the set.
+ */
+function namedReferences(): Set<string> {
+  const onDisk = new Set(readdirSync(REF_DIR).filter((file) => file.endsWith('.md')));
+  const named = new Set<string>();
+  for (const match of skill.matchAll(/`(?:references\/)?([a-z0-9-]+\.md)`/g)) {
+    const file = match[1];
+    if (file !== undefined && onDisk.has(file)) named.add(file);
+  }
+  return named;
+}
+
 /** Gates that must never be trimmed out of the always-loaded SKILL.md. */
 const SKILL_MARKERS: readonly string[] = [
   'plan 双向绑定',
@@ -39,7 +56,9 @@ const SKILL_MARKERS: readonly string[] = [
   'running milestone',
   '不得自行置 running',
   '须走 bash',
-  'references/labels.md',
+  // #138: reference paths are written relative to `references/` (the router
+  // states that base), so the marker pins the pointer, not the prefix.
+  '`labels.md`',
   '跨项目登记',
   // #114: the default project is the session cwd, so own-project calls take no
   // `-p`. Pinned as a marker because trimming it re-opens the exact behaviour
@@ -106,8 +125,10 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
 
 describe('skill layout (#71)', () => {
   it('keeps the always-loaded body inside the router budget', () => {
-    // 6965 B before the split; the ceiling is the AGENTS.md budget, not a guess.
-    expect(bytes(skill)).toBeLessThanOrEqual(4000);
+    // 6965 B before the split; 3987 B before the #138 refactor. The ceiling was
+    // re-pinned to 3200 B with that refactor (non-mainline sections moved into
+    // references), so the always-loaded body pays for gates + routing only.
+    expect(bytes(skill)).toBeLessThanOrEqual(3200);
   });
 
   it.each(SKILL_MARKERS)('keeps the gate marker %s in SKILL.md', (marker) => {
@@ -133,15 +154,14 @@ describe('skill layout (#71)', () => {
   });
 
   it('names only references that exist', () => {
-    const named = new Set([...skill.matchAll(/`references\/([a-z0-9-]+\.md)`/g)].map((m) => m[1]));
-    expect(named.size).toBeGreaterThanOrEqual(14);
-    for (const file of named) {
+    expect(namedReferences().size).toBeGreaterThanOrEqual(14);
+    for (const file of namedReferences()) {
       expect(existsSync(`${REF_DIR}/${file}`), `${file} missing`).toBe(true);
     }
   });
 
   it('leaves no orphan reference', () => {
-    const named = new Set([...skill.matchAll(/`references\/([a-z0-9-]+\.md)`/g)].map((m) => m[1]));
+    const named = namedReferences();
     const onDisk = readdirSync(REF_DIR).filter((file) => file.endsWith('.md'));
     for (const file of onDisk) {
       expect(named.has(file), `${file} is not referenced from SKILL.md`).toBe(true);
