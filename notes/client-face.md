@@ -188,8 +188,18 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 "
 ```
 
-元数据**按请求读盘、无缓存**，故改 `package.json` / `locale/*.json` 不需要重启 harness，刷新页面即可
-（`ls -1d` 的 `-d` 不能省：少了它会列目录内容，拿到 `package.json` 这种行）。
+**改 `package.json`（exports / files / description）后必须重启 harness**：Node 内置 resolver 把解析过的
+`package.json` 按**进程**缓存，mtime 变更不会让它失效（#127 的实测坑：磁盘上已修好，headless 复现通过，
+但运行中的 harness 仍返回旧的 `ERR_PACKAGE_PATH_NOT_EXPORTED`）。**只改字典文本**（已导出子路径下的
+`locale/*.json` 内容）才是按请求读盘、刷新页面即可。缓存实测（临时包，同进程内先失败后改写再解析）：
+
+```bash
+# 1) exports 只有 "."，解析 <pkg>/package.json → ERR_PACKAGE_PATH_NOT_EXPORTED
+# 2) 同进程内给 exports 补上 "./package.json"
+# 3) 再解析：CJS resolve 与 import.meta.resolve 仍然是 ERR_PACKAGE_PATH_NOT_EXPORTED（缓存住旧清单）
+```
+
+（`ls -1d` 的 `-d` 不能省：少了它会列目录内容，拿到 `package.json` 这种行。）
 
 ## 7. 已知坑
 
@@ -203,6 +213,8 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 - **声明 `exports` 就等于给展示元数据上门禁**（#127）：`readPluginMeta` 用 Node resolver 解析
   `<pkg>/package.json` 与 `<pkg>/locale/en.json`，缺这两个子路径时 `ERR_PACKAGE_PATH_NOT_EXPORTED`
   被 `optionalResourcePath` **静默吞掉**（无报错、无 placeholder），插件页只剩包名。见 §8。
+- **修完 exports 必须重启 harness 才生效**（#127）：resolver 的 `package.json` 缓存按进程存活，
+  **磁盘改好 + headless 复核通过 ≠ 运行中的 harness 变了**——「headless 已好、页面仍空」时先重启，别怀疑 UI。见 §6.5。
 
 ## 8. 插件展示元数据（插件页的标题/描述/图标）
 
@@ -231,4 +243,6 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 - 守卫：`src/package-manifest.test.ts` 的 `plugin display metadata` 组用**自引用解析**
   （`createRequire(join(ROOT,'package.json')).resolve('@yanqd0/dsh-mint/package.json')`）复刻同一条
   resolver 规则，无需安装 harness，即可在 CI 抓住门禁回归。
+- **生效路径**：改了 `package.json`（exports / files / description）⇒ **重启 harness** 才生效（resolver 缓存，
+  见 §6.5）；只改已导出字典的文本 ⇒ 刷新页面。**headless 自检通过不代表运行中的 harness 已更新**。
 
