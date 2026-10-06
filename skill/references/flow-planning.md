@@ -8,8 +8,13 @@
 ## 步骤
 
 1. **版本规划**（milestone = 项目功能版本）：
-   - 先 `mint({ args: ["milestone","list","--all-states"] })`：**已有 running → 不新建**，新工作挂当前 running；
-     **无 running → 按 flow-conditions 推测候选 + 询问用户**（置为 running 或新建；不得自行置位）。
+   - 先 `mint({ args: ["milestone","current"] })` 取当前唯一 running（**0 个 / ≥2 个时报错**，
+     退回 `mint({ args: ["milestone","list","--all-states"] })` 看规划现状）：**有 running → 不新建**，
+     新工作一律挂它；**无 running → 按 flow-conditions 推测候选 + 询问用户**（置为 running 或新建；不得自行置位）。
+   - **已有 running 时不得再开第二个**（#104 守卫）：任何**让 running 数增加**的写（含
+     `milestone set --status running`、把在途 plan/issue 挂进 open milestone）都会被 CLI 拒；
+     唯一放行入口 `mint({ args: ["milestone","set","<ID>","--status","running","--force"] })`（`-f`），
+     **只有用户明确要求并行版本时才用，skill 不得自行 `-f`**。
    - 新建：`mint({ args: ["milestone","create","<版本标题>","--version","<V>","--body","<目标+范围+验收>"] })`
      —— `--version` 必填、语义化；按 version 查重，**重复则不加、不问**。
 2. **执行计划**（plan = 一次开发计划，对应 DSH plan 模式）：

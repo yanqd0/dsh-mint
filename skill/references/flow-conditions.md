@@ -7,8 +7,8 @@
 
 ## 挂载规则（**默认挂当前 running milestone**）
 
-**默认口径**：所有 plan 与独立 issue **默认挂当前 running milestone**——同刻**有且仅有 1 个** running。
-issue 二选一：属 plan 后不能直接挂 milestone。
+**默认口径**：所有 plan 与独立 issue **默认挂当前 running milestone**——**默认仅 1 个 running**
+（并行多版本只在用户明确要求时开，见下）。issue 二选一：属 plan 后不能直接挂 milestone。
 
 | 场景 | 动作 |
 |---|---|
@@ -19,10 +19,18 @@ issue 二选一：属 plan 后不能直接挂 milestone。
 
 ## milestone 唯一性与下一版本推测
 
-- **同刻有且仅有 1 个 running**（当前开发目标）。`mint({ args: ["milestone","list","--all-states"] })`
-  发现 ≥2 running → 列出并反问；确认后**先迁移/排期其下子项**（把已完成的 plan/issue 移到当前 running：
-  `mint({ args: ["plan","set","<plan>","--milestone","<当前 running id>"] })`，其余 plan/issue 先
-  `issue state plan/reset` 回到 open），**再**把远期那个置回 open：
+- **默认仅 1 个 running**（当前开发目标）。取当前目标用 `mint({ args: ["milestone","current"] })`
+  （0 个 / ≥2 个时它会报错，那就退回 `mint({ args: ["milestone","list","--all-states"] })` 看规划现状）。
+- **CLI 守卫（写侧强制）**：任何**让 running 数增加**的写操作都会被拒——`milestone set <ID> --status running`、
+  把**在途**（planned/dev/test/done）plan/issue 挂进 open milestone（挂载或随后的 `state plan`/`state start`
+  都会让那个 milestone 派生为 running）。错误文案直接给出放行命令。**唯一放行入口**
+  `mint({ args: ["milestone","set","<ID>","--status","running","--force"] })`（`-f`），
+  **只有用户明确要求并行版本时才用，skill 不得自行 `-f`**。
+- 解除 running：`milestone set <ID> --status done`（发布）/ `dropped`（取消）——减少 running 数不受守卫限制。
+- **发现 ≥2 running**：`mint({ args: ["milestone","list","--all-states"] })` 列出并**反问用户**——
+  **有意并行则保留**（不再收敛）；否则收敛到一个：先把远期那个其下的 plan/issue 迁到当期
+  （`mint({ args: ["plan","set","<plan>","--milestone","<当期 running id>"] })`——实测该操作会把其下
+  planned 子项**自动 reset 回 open**；其余 issue 用 `issue state plan/reset` 回到 open），再
   `mint({ args: ["milestone","set","<远期 id>","--status","open"] })`，最后
   `mint({ args: ["milestone","show","<远期 id>"] })` **复查**——若又被派生回 running，说明其下仍有活跃子项，
   回到第一步继续迁移。
@@ -33,7 +41,7 @@ issue 二选一：属 plan 后不能直接挂 milestone。
   - 已有 `-alpha.N` 预发布线 → 同线递增 `-alpha.(N+1)`
 - **先查现有 open milestone**：版本与候选一致 → 推荐**置为 running**（不重复创建）：
   `mint({ args: ["milestone","set","<id>","--status","running"] })`；版本不符才建议 `milestone create`。
-- **必须问用户**：给候选 + 理由，由用户选「置为 running」还是「新建」；**不得自行置 running**。
+- **必须问用户**：给候选 + 理由，由用户选「置为 running」还是「新建」；**不得自行置 running，也不得自行 `-f`**。
 - milestone/plan 状态本是**派生**的（子项集合决定、写入时级联同步）：`milestone set --status` 里
   **只有 `done`/`dropped` 是手动终态、不被派生覆盖**；写 `open`/`running` 只是临时覆盖，后续任何子项变化
   都会按子项集合重算。置位后应尽快把对应 plan/issue 挂进去，使派生结果与意图一致。

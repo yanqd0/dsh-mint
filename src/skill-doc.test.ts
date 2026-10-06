@@ -149,4 +149,18 @@ describe('skill layout (#71)', () => {
       expect(commands, `commands.md missing ${token}`).toContain(token);
     }
   });
+
+  // #104/#117: the CLI refuses any write that would add a running milestone, and
+  // `milestone set --status running --force` is its only escape hatch. The skill
+  // has to carry both the read (`current`) and the escape hatch, or a session
+  // reasons its way into a rejected command.
+  it('documents the single-running guard the workflows rely on (#104/#117)', () => {
+    const commands = read('references/commands.md');
+    const conditions = read('references/flow-conditions.md');
+    for (const token of ['"milestone","current"', '"--status","running","--force"']) {
+      expect(commands, `commands.md missing ${token}`).toContain(token);
+    }
+    expect(conditions).toContain('--force');
+    expect(conditions).toContain('`-f`');
+  });
 });

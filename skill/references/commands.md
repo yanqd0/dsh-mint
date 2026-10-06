@@ -138,6 +138,7 @@ blocked-by ↔ blocks 互逆；库中归一化为 blocks 存储，查询时自�
 mint({ args: ["milestone","create","v0.4 TUI","--version","0.4.0","--body","范围…"] })  // --version 必填
 mint({ args: ["plan","create","sprint-1","--body","目标…","--milestone","4"] })
 mint({ args: ["milestone","show","4"] })
+mint({ args: ["milestone","current"] })             // 当前唯一 running（0 个 / ≥2 个报错）
 mint({ args: ["plan","show","12"] })
 mint({ args: ["plan","attach","12","42"] })        // 挂 issue 到 plan（一次一个 issue，多个逐条执行）
 mint({ args: ["plan","detach","12","42"] })
@@ -150,10 +151,16 @@ mint({ args: ["plan","drop","12"] })               // 只允许空 plan（无 is
 mint({ args: ["plan","set","12","--milestone","5"] }) // 移动 plan 到另一 milestone（两侧状态重算）
 mint({ args: ["milestone","set","4","--title","新标题","--version","0.4.1","--body","新范围"] })
 mint({ args: ["milestone","set","4","--status","done"] })   // 手动终态：发布 done / 取消 dropped
+mint({ args: ["milestone","set","4","--status","running","--force"] }) // 并行多版本：唯一放行入口（须用户明确要求）
 ```
 
 `milestone set --status` 语义：只有 `done`/`dropped` 是**手动终态**（不被派生覆盖）；
 写 `open`/`running` 只是临时覆盖，后续任何子项变化会按子项集合重算。
+
+**running 守卫（#104）**：任何**让 running 数增加**的写都会被拒——`--status running`、把在途
+（planned/dev/test/done）plan/issue 挂进 open milestone（挂载或随后的 `state plan`/`state start`）。
+错误文案直接给出放行命令；**唯一放行入口**是 `milestone set <ID> --status running --force`（`-f`），
+**只有用户明确要求并行版本时才用**。`done`/`dropped` 减少 running 数，不受守卫限制。
 
 ## project（只读巡检）
 

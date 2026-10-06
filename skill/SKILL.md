@@ -21,7 +21,7 @@ description: >-
 
 - **issue**：问题/需求，六态；最小执行单位。
 - **plan**：一次开发计划，下挂 issue；**对应 DSH plan 模式**（一一对应）。
-- **milestone**：功能版本（create 必带 `--version`）；**同刻仅 1 个 running**，plan 与独立 issue 默认挂它。
+- **milestone**：功能版本（create 必带 `--version`）；**默认 1 个 running（`-f` 并行）**，plan 与独立 issue 默认挂它。
 
 ## 流程索引（按触发读）
 
@@ -46,7 +46,7 @@ description: >-
 | 约束红线（delete/清理/去重） | `references/constraints.md` |
 | 本宿主集成 | `references/host-dsh.md` |
 
-## 不可跳过（强制；见 `references/flow-impl.md`、`references/state-machine.md`）
+## 不可跳过（强制；见 `references/flow-impl.md`）
 
 - **plan 双向绑定**：宿主 plan ⟷ mint plan 一一对应；无活跃 mint plan 时 `exit_plan_mode` 被拒。
   从存量 plan 接管须先进入宿主 plan 模式，禁止 auto 直接跑完。
@@ -57,7 +57,7 @@ description: >-
   （sha 用 bash `git rev-parse --short=7 HEAD`）。
 - **统一测试**：同 plan 各 issue 停在 test，到齐后统一跑；全绿 `plan close <plan> --test-cmd "<命令>"`，
   失败 `issue state retest <id> --test-cmd "<精确手法>"` 打回 dev。
-- **默认挂当前 running milestone**：无 running → 推测 semver 候选并**询问用户**，**不得自行置 running**。
+- **默认挂当前 running milestone**：无 running → 推测 semver 候选并**询问用户**，**不得自行置 running/`-f`**。
 - `delete` / `sync` **须走 bash** 且先经用户确认（工具直接拒绝）。
 
 ## 记录与检索
