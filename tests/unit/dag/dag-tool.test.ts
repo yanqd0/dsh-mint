@@ -696,6 +696,8 @@ describe('executeDagTool: wt / merge (#172)', () => {
     expect(stored?.worktree?.state).toBe('active');
     expect(stored?.worktree?.path).toContain(join(repo, '.git', 'dsh-mint', 'worktrees'));
     expect(stored?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
+    // #189：建树时所在的分支被记进文档，merge 时由工具层回传给 git 层做校验。
+    expect(stored?.worktree?.target).toBe('main');
   });
 
   it('is idempotent and reports the existing worktree', async () => {
@@ -729,7 +731,7 @@ describe('executeDagTool: wt / merge (#172)', () => {
     expect(noRepo.summary).toContain('仓库根目录');
   });
 
-  it('merges a node branch, records the state and reports the main-branch sha', async () => {
+  it('merges a node branch, records the state and reports the target-branch sha', async () => {
     await seedGraph();
     const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
     expect(created.ok).toBe(true);
@@ -742,12 +744,31 @@ describe('executeDagTool: wt / merge (#172)', () => {
     const merged = await runWorktree(repo, { action: 'merge', node: 'a1' });
     expect(merged.ok).toBe(true);
     expect(merged.summary).toContain('wt a1 merged');
-    expect(merged.summary).toContain('主分支');
+    expect(merged.summary).toContain('目标分支');
 
     const after = await node();
     expect(after?.worktree?.state).toBe('merged');
     expect(after?.worktree?.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
     expect(execFileSync('git', ['show', 'HEAD:feature.txt'], { cwd: repo, encoding: 'utf8' })).toContain('work');
+  });
+
+  it('refuses a merge when the repo moved off the branch the tree was cut from (#189)', async () => {
+    // 贯穿工具层的验收：create 记下 target=main，会话切到 feature 后 merge 必须被拒，
+    // 且拒绝理由同时点名两个分支；切回 main 后同一调用成功。
+    await seedGraph();
+    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
+    expect(created.ok).toBe(true);
+
+    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: repo });
+    const refused = await runWorktree(repo, { action: 'merge', node: 'a1' });
+    expect(refused.ok).toBe(false);
+    expect(refused.summary).toContain('feature');
+    expect(refused.summary).toContain('main');
+
+    execFileSync('git', ['checkout', '-q', 'main'], { cwd: repo });
+    const merged = await runWorktree(repo, { action: 'merge', node: 'a1' });
+    expect(merged.ok).toBe(true);
+    expect(merged.summary).toContain('wt a1 merged');
   });
 
   it('lists the session worktrees and removes a merged one', async () => {

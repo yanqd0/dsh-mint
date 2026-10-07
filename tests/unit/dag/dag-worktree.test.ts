@@ -106,11 +106,26 @@ describe('createWorktree (#172)', () => {
     expect(outcome.worktree.path).toContain(join('.git', 'dsh-mint', 'worktrees'));
     expect(outcome.worktree.branch).toBe(worktreeBranch(deps(), { id: 'a1' }));
     expect(outcome.worktree.base).toMatch(/^[0-9a-f]{40}$/);
+    // #189：开工点所在的分支被记下来，后续 merge 的目标就是它。
+    expect(outcome.worktree.target).toBe('main');
     expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(outcome.worktree.path);
     // The branch really exists and is checked out there.
     expect(gitIn(outcome.worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(
       outcome.worktree.branch
     );
+  });
+
+  it('records the branch it was created on, not always main (#189)', async () => {
+    gitIn(repo, 'checkout', '-q', '-b', 'feature');
+    const outcome = await createWorktree(deps(), { id: 'a1' });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.worktree.target).toBe('feature');
+    // 幂等分支也带同一个 target（重跑不该把记录擦成空）。
+    const again = await createWorktree(deps(), { id: 'a1' });
+    expect(again.ok).toBe(true);
+    if (!again.ok) return;
+    expect(again.worktree.target).toBe('feature');
   });
 
   it('accepts an explicit base (the parallel-batch contract)', async () => {
@@ -169,7 +184,9 @@ describe('mergeWorktree (#172)', () => {
     if (!merged.ok) return;
     expect(merged.worktree.state).toBe('merged');
     expect(merged.worktree.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
-    // The file is on the main branch now, and the merge is recorded.
+    // 成功路径也要带 target（#189）：下游按它继续判定「已合并」。
+    expect(merged.worktree.target).toBe('main');
+    // The file is on the target branch now, and the merge is recorded.
     expect(gitIn(repo, 'show', 'HEAD:feature.txt')).toContain('work');
     expect(gitIn(repo, 'log', '--oneline', '-3')).toContain('merge a1 (#172)');
   });
@@ -191,6 +208,8 @@ describe('mergeWorktree (#172)', () => {
     expect(merged.worktree?.state).toBe('conflict');
     expect(merged.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
     expect(merged.worktree?.path).toBe(created.worktree.path);
+    // 冲突分支同样要带 target，否则落盘记录会丢掉「合回哪里」这条契约（#189）。
+    expect(merged.worktree?.target).toBe('main');
     // Left for a decision: the merge is still in progress and abortable.
     expect(gitIn(repo, 'status', '--porcelain')).toContain('UU README.md');
     gitIn(repo, 'merge', '--abort');
@@ -235,6 +254,81 @@ describe('mergeWorktree (#172)', () => {
     if (!merged.ok) return;
     expect(merged.note).toContain('没有新 commit');
     expect(merged.worktree.state).toBe('merged');
+    expect(merged.worktree.target).toBe('main');
+  });
+});
+
+/**
+ * 「merge 目标 = 建树时所在分支」的显式契约（#189）。
+ *
+ * 判据是**记录**（`deps.target`）对**当前 HEAD**，不是「永远是 main」：两个都是真
+ * 分支名且不等就拒绝。缺记录与 detached 无从校验，照旧 merge。
+ */
+describe('mergeWorktree target guard (#189)', () => {
+  it('refuses a merge when HEAD moved off the recorded branch', async () => {
+    gitIn(repo, 'checkout', '-q', '-b', 'feature');
+    const created = await createWorktree(deps(), { id: 'a1' });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    expect(created.worktree.target).toBe('feature');
+
+    // 建树后会话切到了别的分支：这时 merge 会合进一个调用方没预期的分支。
+    gitIn(repo, 'checkout', '-q', 'main');
+    const refused = await mergeWorktree(deps({ target: 'feature' }), { id: 'a1' });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    // 文案要同时点名两个分支，调用方才知道该切回哪个。
+    expect(refused.error).toContain('main');
+    expect(refused.error).toContain('feature');
+    // 拒绝发生在 merge 之前：main 上不得留下任何合并痕迹。
+    expect(gitIn(repo, 'log', '--oneline')).not.toContain('merge a1');
+
+    // 切回建树时的分支，同一调用即成功。
+    gitIn(repo, 'checkout', '-q', 'feature');
+    const merged = await mergeWorktree(deps({ target: 'feature' }), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    expect(merged.worktree.target).toBe('feature');
+  });
+
+  it('skips the guard when the record has no target', async () => {
+    // 缺记录 = #189 之前建的树：无从校验，不能因此把旧 DAG 判成不可合并。
+    const created = await createWorktree(deps(), { id: 'a1' });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
+
+    const merged = await mergeWorktree(deps(), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    expect(merged.worktree.state).toBe('merged');
+    // 没传 target 时按当前分支记录，退回 #189 之前的形态。
+    expect(merged.worktree.target).toBe('main');
+  });
+
+  it('skips the guard for an empty recorded target', async () => {
+    // `target: ''`（读不到当前分支时的形态）同样不是分支名，不拒。
+    const created = await createWorktree(deps(), { id: 'a1' });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
+
+    const merged = await mergeWorktree(deps({ target: '' }), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+  });
+
+  it('skips the guard on a detached HEAD', async () => {
+    // detached 时 git 答 `HEAD`，不是分支名，比对不成立 → 照旧 merge。
+    const created = await createWorktree(deps(), { id: 'a1' });
+    expect(created.ok).toBe(true);
+    if (!created.ok) return;
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
+    gitIn(repo, 'checkout', '-q', '--detach');
+
+    const merged = await mergeWorktree(deps({ target: 'main' }), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    expect(merged.worktree.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
   });
 });
 
@@ -273,5 +367,32 @@ describe('removeWorktree (#172)', () => {
     expect(again.ok).toBe(true);
     if (!again.ok) return;
     expect(again.note).toContain('不存在');
+  });
+
+  it('judges the merge criterion against the recorded target branch (#189)', async () => {
+    // 已合入目标分支：按记录的目标分支判定即可 remove，返回记录也带 target。
+    const merged = await createWorktree(deps(), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+    if (!merged.ok) return;
+    commitFile(merged.worktree.path, 'feature.txt', 'work\n', 'work');
+    expect((await mergeWorktree(deps(), { id: 'a1' })).ok).toBe(true);
+
+    const removed = await removeWorktree(deps({ target: 'main' }), { id: 'a1' });
+    expect(removed.ok).toBe(true);
+    if (!removed.ok) return;
+    expect(removed.worktree.state).toBe('removed');
+    expect(removed.worktree.target).toBe('main');
+
+    // 未合入目标分支：同一判据照旧拒绝，且点名的是目标分支不是 HEAD。
+    const loose = await createWorktree(deps(), { id: 'b1' });
+    expect(loose.ok).toBe(true);
+    if (!loose.ok) return;
+    commitFile(loose.worktree.path, 'other.txt', 'work\n', 'work b1');
+
+    const refused = await removeWorktree(deps({ target: 'main' }), { id: 'b1' });
+    expect(refused.ok).toBe(false);
+    if (refused.ok) return;
+    expect(refused.error).toContain('尚未合并');
+    expect(refused.error).toContain('目标分支 main');
   });
 });

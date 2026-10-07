@@ -61,6 +61,14 @@ export interface WorktreeDeps {
   /** 绝对目录覆盖（测试用）：给定时直接当根，不再取 git common dir。 */
   worktreeDir?: string;
   branchPrefix?: string;
+  /**
+   * 建树时记录的目标分支（#189），由调用方从节点存储的 worktree 记录带来。
+   *
+   * merge/remove 只拿到 `node`，文档里的 `worktree.target` 不在它们手里；契约是
+   * 「merge 目标 = 建树时所在分支」，所以这个值必须由调用方回传，否则校验与
+   * 「已合并」判据只能退回按当前 HEAD 猜。
+   */
+  target?: string;
 }
 
 /**
@@ -153,6 +161,17 @@ async function fullHead(deps: WorktreeDeps): Promise<string> {
   return result.ok ? result.stdout.trim() : '';
 }
 
+/**
+ * 会话仓库当前签出的分支名（#189），读不到时 `''`。
+ *
+ * 这就是「开工时所在分支」的来源：worktree 建在这里的 HEAD 上，merge 也该合回
+ * 这里。detached HEAD 时 git 答 `HEAD`，调用方据此走「不校验」分支。
+ */
+async function currentBranch(deps: WorktreeDeps): Promise<string> {
+  const result = await deps.git(deps.repo, ['rev-parse', '--abbrev-ref', 'HEAD']);
+  return result.ok ? result.stdout.trim() : '';
+}
+
 /** Resolve a commit argument; `HEAD` when the caller supplied none. */
 async function resolveBase(
   deps: WorktreeDeps,
@@ -169,6 +188,11 @@ async function resolveBase(
  *
  * Idempotent: a path that is already a registered worktree of this repository is
  * returned as it is, so a retried call after a crash costs nothing.
+ *
+ * Every returned record carries `target` — the branch checked out **now** (#189),
+ * which is the branch this worktree is based on and therefore the branch a later
+ * `merge` must land in. Recording it at creation time is the whole point: by
+ * merge time the session may have checked out something else.
  */
 export async function createWorktree(
   deps: WorktreeDeps,
@@ -179,23 +203,28 @@ export async function createWorktree(
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
+  // 三个返回分支共用同一个 target：它是「此刻」的 HEAD，取一次即可。
+  const target = await currentBranch(deps);
   const existing = await registeredWorktrees(deps);
   if (existing.includes(path)) {
     return {
       ok: true,
       note: 'worktree 已存在（幂等返回）',
-      worktree: { path, branch, base: await shortHead(deps, path), state: 'active' },
+      worktree: { path, branch, base: await shortHead(deps, path), state: 'active', target },
     };
   }
   const resolved = await resolveBase(deps, base);
   if (typeof resolved !== 'string') return { ok: false, error: resolved.error };
   const added = await deps.git(deps.repo, ['worktree', 'add', '-b', branch, path, resolved]);
   if (!added.ok) return { ok: false, error: `git worktree add 失败：${stderrOf(added)}` };
-  return { ok: true, worktree: { path, branch, base: resolved, state: 'active' } };
+  return { ok: true, worktree: { path, branch, base: resolved, state: 'active', target } };
 }
 
 /**
- * True when the main working tree has nothing a merge would sweep in.
+ * True when the session working tree has nothing a merge would sweep in.
+ *
+ * 「会话工作树」就是 merge 目标分支所在的那棵树（#189：不是「主线」，见
+ * {@link mergeWorktree}）。
  *
  * `--untracked-files=no` 是判据本身，不是省事：这里只关心会被 merge commit 卷走的
  * **已跟踪**改动；untracked 文件从不进 merge commit，真要覆盖时 git 自己会拒绝。加上
@@ -217,10 +246,17 @@ async function conflictedFiles(deps: WorktreeDeps): Promise<string[]> {
 }
 
 /**
- * Merge one node's branch back into the main branch.
+ * Merge one node's branch back into the **target branch** (#189).
+ *
+ * The target is the branch that was checked out when the worktree was created
+ * (`createWorktree` records it on the node), *not* "main"/"master": a plan is
+ * usually executed on the feature branch the session is already developing on, and
+ * `deps.repo`'s HEAD is that branch. So the merge is a plain `git merge` into HEAD
+ * **after** checking that HEAD is still the recorded branch — merging into a
+ * branch the caller did not expect is the mistake this guard prevents.
  *
  * `--no-ff` is deliberate: the merge is recorded even when it could fast-forward,
- * so the issue's work stays one identifiable unit on the main branch.
+ * so the issue's work stays one identifiable unit on the target branch.
  *
  * A conflict is **not** resolved here: the merge is left stopped, the conflicted
  * files are reported, and the caller decides (resolve inside the worktree and
@@ -234,6 +270,20 @@ export async function mergeWorktree(
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
+  // 当前分支只取一次：校验、返回记录、后续判断都用同一个值。
+  const now = await currentBranch(deps);
+  const recorded = deps.target ?? '';
+  const target = deps.target ?? now;
+  // 只有「两个都确实是分支名」时才拒：缺记录（旧节点）与 detached（`HEAD`）无从
+  // 校验，照旧 merge，不然旧 DAG 会突然不可合并。
+  if (recorded !== '' && recorded !== 'HEAD' && now !== '' && now !== 'HEAD' && recorded !== now) {
+    return {
+      ok: false,
+      error:
+        `当前分支 ${now} 不是建树时的目标分支 ${recorded}；` +
+        `先 git checkout ${recorded} 再 merge（或重建该节点的 worktree）`,
+    };
+  }
   const base = await fullHead(deps);
   if (!(await mainTreeClean(deps))) {
     return {
@@ -246,7 +296,7 @@ export async function mergeWorktree(
     return {
       ok: true,
       note: '该分支没有新 commit（可能已合并过）',
-      worktree: { path, branch, base, state: 'merged' },
+      worktree: { path, branch, base, state: 'merged', target },
     };
   }
   const issue = node.issue === undefined ? '' : ` (#${String(node.issue)})`;
@@ -265,7 +315,7 @@ export async function mergeWorktree(
       conflict: files,
       // 冲突也是要落盘的节点状态：base 必须是真实 commit（空串会让整份 DAG
       // 在下次读取时被判为 unreadable）。
-      worktree: { path, branch, base, state: 'conflict' },
+      worktree: { path, branch, base, state: 'conflict', target },
       error:
         `merge 冲突（已停在冲突态，不做裁决）：${detail}；` +
         `在 ${path} 内解决后重跑 merge，或 git merge --abort 放弃`,
@@ -278,7 +328,9 @@ export async function mergeWorktree(
       branch,
       base,
       state: 'merged',
+      // merge 落在目标分支上，所以这个 sha 要在那里读。
       merged_sha: await shortHead(deps),
+      target,
     },
   };
 }
@@ -286,9 +338,15 @@ export async function mergeWorktree(
 /**
  * Remove one node's worktree.
  *
- * Refuses a branch that is not merged into the main branch unless `force` is set:
+ * 「已合并」的判据是**目标分支**（#189：建树时所在的分支，由 `deps.target`
+ * 传入），不是硬编码的 HEAD：会话可能已经 checkout 走了，那时按 HEAD 判定会把
+ * 已合回目标分支的工作误报成未合并。缺记录（旧节点）才退回 HEAD。
+ *
+ * Refuses a branch that is not merged into the target branch unless `force` is set:
  * removing the tree does not delete the branch, but losing the only checkout of
  * unmerged work is the mistake this guard prevents.
+ *
+ * 返回的记录也带 `target`，下游（工具层/面板）才能继续按同一条契约判定。
  */
 export async function removeWorktree(
   deps: WorktreeDeps,
@@ -299,17 +357,26 @@ export async function removeWorktree(
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
-  const worktree: DagWorktree = { path, branch, base: await shortHead(deps, path), state: 'removed' };
+  const target = deps.target ?? 'HEAD';
+  const worktree: DagWorktree = {
+    path,
+    branch,
+    base: await shortHead(deps, path),
+    state: 'removed',
+    target,
+  };
   const existing = await registeredWorktrees(deps);
   if (!existing.includes(path)) {
     return { ok: true, note: 'worktree 不存在（幂等返回）', worktree };
   }
   if (!force) {
-    const merged = await deps.git(deps.repo, ['merge-base', '--is-ancestor', branch, 'HEAD']);
+    const merged = await deps.git(deps.repo, ['merge-base', '--is-ancestor', branch, target]);
     if (!merged.ok) {
+      // 缺记录时 target 是字面 `HEAD`：文案别把它说成分支名。
+      const where = target === 'HEAD' ? '当前 HEAD' : `目标分支 ${target}`;
       return {
         ok: false,
-        error: `分支 ${branch} 尚未合并进主线；确认要丢弃时用 force:true`,
+        error: `分支 ${branch} 尚未合并进${where}；确认要丢弃时用 force:true`,
       };
     }
   }

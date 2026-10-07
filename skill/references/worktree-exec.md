@@ -8,6 +8,10 @@
 逐 issue 串行做（`parallel-exec.md` §4）。本文件是它的**例外口径**——把每个节点放进自己的 git
 worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**按 issue 顺序** merge。
 
+**merge 目标 = 开工（建树）时所在的分支**，通常就是你正在开发的**功能分支**，不一定是 `main`/`master`：
+plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，merge 也合回那里。工具在 `create` 时把
+该分支记进节点的 `worktree.target`，`merge`/`remove` 都按它判定（§3.4 的校验、§5 的「已合并」判据）。
+
 代价与收益：多一条 merge 环节（冲突要人裁决），换来「一 issue 一 commit、可单独验证」与
 「兄弟子代理绝不碰同一个工作目录」。
 
@@ -52,6 +56,8 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
      `base` 取开工点的 `git rev-parse HEAD`。工具只校验 `base` 是本仓的 commit，
      **不会替你比对两个节点是否同 base**，这条靠口径守。
    - `create` 幂等：路径已是本仓注册的 worktree 就原样返回，重跑不重复建。
+   - `create` 同时记下**开工时所在的分支**（`worktree.target`）：它就是该节点的 merge 目标，
+     后续 merge/remove 都按它判定（§3.4/§5）。detached HEAD 下记成 `HEAD`，此时不校验。
    - 先 `set` 该节点 `running`（见 `plan-dag.md` §4.1），再 create，再派活。
 2. **派活（一批在同一条 assistant message 里批量发）**：提示词五段不变（`parallel-exec.md` §3），
    **必须写明该节点自己的 worktree 路径**，并写明「在本 worktree 内 `git add` / `git commit`」。
@@ -61,10 +67,15 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
    - 仍禁止：`issue state`（一切 mint 写）、`build` / `test:coverage`、碰主工作树与别人的 worktree。
    - 一个 issue 多个 commit 也可以；merge 后 `state commit` 只登记最后一个 sha。
 4. **merge（主 agent，收齐后）**：`mint_plan_dag({action:"merge", node:"a1"})`
-   - 仅当主工作树**干净**时执行（`git merge --no-ff`）；**按 issue 顺序** merge（不是完成先后）。
-   - 进度查看：`mint_plan_dag({action:"wt", op:"list"})`。
-5. **登记 sha（merge 之后）**：`mint({ args: ["issue","state","commit","<id>","--sha","<主分支上的 sha>"] })`
-   - sha 必须是**主分支 merge 后**的 sha（`git rev-parse --short=7 HEAD`），不是 worktree 里的 sha。
+   - 合回**建树时所在的分支**（目标分支），不是无条件合回 `main`；仅当该分支的工作树**干净**时执行
+     （`git merge --no-ff`）；**按 issue 顺序** merge（不是完成先后）。
+   - **工具会校验**：当前 checkout 的分支必须 == 该节点 `create` 时记录的分支（`worktree.target`），
+     不一致**直接拒绝**（不执行 merge），并给出「先 `git checkout <建树时的分支>` 再 merge（或重建该节点的
+     worktree）」；缺记录（#189 之前的旧节点）与 detached HEAD 不做该校验。
+   - 冲突不裁决（§5）。进度查看：`mint_plan_dag({action:"wt", op:"list"})`。
+5. **登记 sha（merge 之后）**：`mint({ args: ["issue","state","commit","<id>","--sha","<目标分支上的 sha>"] })`
+   - sha 必须是**该目标分支 merge 后**的 sha（`git rev-parse --short=7 HEAD`，即在目标分支的工作树里读），
+     不是 worktree 里的 sha。
 6. **清理**：`mint_plan_dag({action:"wt", op:"remove", node:"a1"})`（收尾见 §5）。
 
 ## 4. 与文件白名单/串行判据的关系
@@ -82,8 +93,9 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
 - worktree 落在 `<common-git-dir>` 内的 `dsh-mint/worktrees/`，`git status` 看不见它，**不需要**
   `.gitignore` 条目；旧的 `.worktrees/` 条目可以删掉（残留目录手工删）。
 - **`plan close` 后清理 `active` worktree**：逐个 `op:"remove"`，`wt list` 不应再剩 `active` 项。
-  `remove` 拒绝**尚未合并进主线**的分支（避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；
-  它只删工作树、不删分支（分支可留可删，不删也不影响主分支）。
+  `remove` 按记录的**目标分支**（`worktree.target`）判「已合并」，拒绝**尚未合并进该分支**的分支
+  （避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；它只删工作树、不删分支（分支可留可删，
+  不删也不影响目标分支）。
 - 统一测试与 `plan close` 照 `flow-impl.md` §4：各 issue 停在 `test` → 主工作树统一跑 → close。
 
 ## 6. 与共享模式对照
@@ -92,6 +104,6 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
 |---|---|---|
 | 子代理改文件 | 主工作树 | 自己的 worktree |
 | commit | 主 agent 逐 issue `git add -- <白名单>` | 子代理在 worktree 内 commit（`#<id>` 起头） |
-| 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <主分支 sha>` |
+| 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <目标分支 sha>` |
 | 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
 | 重命令 | 主 agent | 主 agent（worktree 内不跑） |

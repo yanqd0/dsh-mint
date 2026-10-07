@@ -86,7 +86,7 @@
   修复 → 新 commit → 新 `state commit`（新 sha）→ 再测。
 - 跳过测试也要 commit 到 test，close 时 `--test-cmd not-tested`；**无 dev→done 捷径**。
 - plan 的 issue 全 close 后自动派生 done（含 dropped → partial，属完成态）。
-- 走 worktree 隔离的批次：**merge 之后**才 `state commit`（sha 取主分支上的），`plan close` 后清理
+- 走 worktree 隔离的批次：**merge 之后**才 `state commit`（sha 取**目标分支**（开工时所在分支）merge 后的），`plan close` 后清理
   `active` worktree；口径见 `worktree-exec.md`。
 
 ## 5. 复查

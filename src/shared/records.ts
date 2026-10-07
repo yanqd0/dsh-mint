@@ -200,7 +200,8 @@ export type DagVerdict = 'pass' | 'fail';
  * Where a node's isolated working tree stands (#172).
  *
  * `active` — the worktree exists and its branch is not merged yet.
- * `merged` — the branch is in the main branch; the worktree may still exist.
+ * `merged` — the branch is in the **target branch** (the one checked out when
+ * the worktree was created); the worktree may still exist.
  * `conflict` — a merge stopped on conflicts and was left for a decision.
  * `removed` — the worktree is gone (merged first, or removed by hand).
  */
@@ -222,8 +223,10 @@ export interface DagWorktree {
   /** The commit the worktree (and its branch) started from. */
   base: string;
   state: DagWorktreeState;
-  /** Short main-branch commit the merge produced, once `merged`. */
+  /** Short commit the merge produced **on the target branch**, once `merged`. */
   merged_sha?: string;
+  /** 建树时所在的分支名（开工点的工作分支）；detached 时为 'HEAD'。 */
+  target?: string;
 }
 
 /** One node of the plan DAG, as the panel renders it. */

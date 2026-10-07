@@ -541,20 +541,24 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
 只打警告 `mint: warning: <s> is not an ancestor of HEAD`（仍写入）；`--sha` 省略时取**当前 cwd 的 HEAD**
 （非 git 目录报错）——mint 仓 `src/cli/issue/state.rs:110-127` 与 `src/git.rs:83-108`（`#477`）。
 插件把 cwd 取成**调用会话的** `session.header.cwd`（本仓 `src/mint/mint-tool.ts:385`），所以「在 worktree 里跑
-mint，HEAD 是节点分支头；在主 worktree 里跑，HEAD 是主线头」——**「取哪个 sha」首先是「在哪个
-worktree、什么时候跑」**。
+mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，HEAD 是**开工时所在分支（目标分支）**的头」——
+**「取哪个 sha」首先是「在哪个 worktree、什么时候跑」**。
 
 **口径（沿用既有 skill 口径 `worktree-exec.md` §5 / `flow-impl.md:89`，此处补自证）**：
-取 **merge 落地之后、主 worktree（主线）的 HEAD**，即 `--no-ff` 产生的那个 merge commit：
+取 **merge 落地之后、开工时所在分支（目标分支）的工作树 HEAD**，即 `--no-ff` 产生的那个 merge commit。
+
+节点存储的 worktree 记录（`DagWorktree`）：`path` / `branch` / `base` / `state` / `merged_sha?`，以及
+`target?`（#189）——**开工（建树）时所在的分支名**，即 merge 目标；`create` 写入，`merge`/`remove` 都带它
+落盘，detached HEAD 时为 `'HEAD'`（该值视为「无可校验」，退回按当前 HEAD 判定）。
 
 1. 节点分支里的 commit（在 worktree 内 `git rev-parse --short=7 HEAD`）**不登记**；它在 merge 后仍可
    `git show`，因为它就是 merge commit 的第二个父。
 2. **登记时刻** = `merge` 命令成功返回后的**第一条命令**：`git rev-parse --short=7 HEAD` →
    `mint({ args: ["issue","state","commit","<id>","--sha","<前7位>"] })`。取与登记之间不得再落任何 commit。
 3. 一个 issue 多个 commit：merge 把它们收进一个 merge commit → 「只登记最后一个 sha」天然满足；
-   不要在 merge 前逐个登记（那会在 merge 前从主线看触发上面的 NotAncestor 警告，merge 后还得重登记）。
+   不要在 merge 前逐个登记（那会在 merge 前从目标分支看触发上面的 NotAncestor 警告，merge 后还得重登记）。
 
-**自证四连（全部只读，在 merge 后的主 worktree 执行）**：
+**自证四连（全部只读，在 merge 后、目标分支的工作树里执行）**：
 
 ```bash
 git rev-parse --short=7 HEAD                 # ① 与登记值逐字符相同
@@ -564,7 +568,7 @@ git rev-parse <sha>^2                        # ③' == worktree 里的分支头 
 git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint #477 同一条判定 → 0
 ```
 
-④ 为 0 即「该 sha 是当前 HEAD 的祖先」，也就是 mint 不告警的条件；若在 merge **前**从主 worktree 登记
+④ 为 0 即「该 sha 是当前 HEAD 的祖先」，也就是 mint 不告警的条件；若在 merge **前**从会话当前工作树登记
 worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancestor of HEAD`——这就是「时刻」的
 机器判据。短 sha（前 7 位）足够：mint 只做 `rev-parse --verify` 存在性检查，存的是你给的字符串。
 **边界**：merge 后若因冲突裁决又改代码 → 新 commit，需重新 `state commit`（口径仍是「只留最后一个」）；

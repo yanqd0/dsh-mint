@@ -240,6 +240,9 @@ function checkCount(raw: unknown, name: string): number | { error: string } {
  * path or branch the panel would print is either a plain string this host wrote
  * or it is not data worth keeping. Empty strings are refused because they would
  * render as a blank line where a path belongs.
+ *
+ * `target` 是可选字段（#189）：#189 之前的节点没有它，缺省必须可读；但一旦出现
+ * 就按同一标准校验。
  */
 function checkWorktree(raw: unknown, where: string): DagWorktree | { error: string } {
   if (!isRecord(raw)) return { error: `${where}: worktree 必须是对象` };
@@ -256,12 +259,21 @@ function checkWorktree(raw: unknown, where: string): DagWorktree | { error: stri
   if (raw.merged_sha !== undefined && typeof raw.merged_sha !== 'string') {
     return { error: `${where}: worktree.merged_sha 必须是字符串` };
   }
+  // target 可选（旧节点没有这条记录，见 `DagWorktree.target`）：存在时必须是真分支
+  // 名，空串会渲染成空白、控制字符会破坏行格式。
+  if (raw.target !== undefined && (typeof raw.target !== 'string' || raw.target.length === 0)) {
+    return { error: `${where}: worktree.target 必须是非空字符串` };
+  }
+  if (typeof raw.target === 'string' && hasControlCharacter(raw.target)) {
+    return { error: `${where}: worktree.target 含控制字符` };
+  }
   return {
     path: raw.path as string,
     branch: raw.branch as string,
     base: raw.base as string,
     state: raw.state,
     ...(raw.merged_sha === undefined ? {} : { merged_sha: raw.merged_sha }),
+    ...(raw.target === undefined ? {} : { target: raw.target }),
   };
 }
 

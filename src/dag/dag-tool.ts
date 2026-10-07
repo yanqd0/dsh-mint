@@ -72,7 +72,9 @@ export const DAG_TOOL_DESCRIPTION = [
   '维护本会话的 plan 执行 DAG（节点=工作单元，边=依赖）；只回摘要，全图见面板。',
   '动作：init(title?) 新建/重置；add(nodes,edges?) 加节点连边；set(id,status,verdict?,note?,tokens?) 改节点；get 取摘要。',
   'nodes 每项 {id,label,title,phase:"research"|"exec",depends_on?,issue?}；edges 是 [from,to]，语义「to 依赖 from」；label ≤6 字。',
-  'worktree：wt 建/列/删，merge 合回主线；同批同 base、冲突不裁决（见 skill worktree-exec.md）。',
+  // 「目标分支」= 开工（建树）时所在分支（#189），不是恒指 main；描述有 810 B 上限
+  // （injection-size 守卫），故只留简称，完整口径见 skill/references/worktree-exec.md。
+  'worktree：wt 建/列/删、merge 合回开工分支；同批同 base、冲突不裁决（见 skill worktree-exec.md）。',
   '只有 main agent 建节点/连边，子代理只 set 自己的节点；DAG 归属根会话。',
   'set 的 status 取 pending|running|done，verdict(pass|fail) 仅 status="done" 合法。',
   '例：mint_plan_dag({action:"add",nodes:[{id:"a",label:"总①",title:"第一轮",phase:"exec"}]})。',
@@ -95,7 +97,7 @@ const DAG_TOOL_PARAMETERS: Record<string, unknown> = {
       enum: ['init', 'add', 'set', 'get', 'wt', 'merge'],
       description:
         '要执行的动作：init 新建/重置，add 加节点连边，set 改节点状态，get 取摘要，' +
-        'wt 建/列/删节点 worktree，merge 把节点分支合回主线',
+        'wt 建/列/删节点 worktree，merge 把节点分支合回目标分支（建树时所在分支）',
     },
     title: { type: 'string', description: 'init 的文档标题' },
     id: { type: 'string', description: 'set 的目标节点 id（须已由 add 建立）' },
@@ -264,12 +266,24 @@ async function executeWorktreeAction(
     return refusal('本会话暂无 DAG；先 action="init" 建立 DAG，再用 wt/merge');
   }
   const deps: WorktreeDeps = { git: input.git ?? runGit, repo, session: sessionId };
-  const find = (id: string | undefined): WorktreeNode | { error: string } => {
+  // 定位节点，并把它存储的 worktree 记录一并带出（#189）：merge/remove 的目标分支
+  // 不在 `WorktreeNode` 里，只能从文档节点的 `worktree.target` 取；这里一次读出。
+  const find = (
+    id: string | undefined
+  ): { node: WorktreeNode; stored?: DagWorktree } | { error: string } => {
     if (id === undefined) return { error: '该动作需要 node' };
-    const node = read.doc.nodes.find((candidate) => candidate.id === id);
-    if (node === undefined) return { error: `节点不存在：${id}` };
-    return { id: node.id, ...(node.issue === undefined ? {} : { issue: node.issue }) };
+    const found = read.doc.nodes.find((candidate) => candidate.id === id);
+    if (found === undefined) return { error: `节点不存在：${id}` };
+    return {
+      node: { id: found.id, ...(found.issue === undefined ? {} : { issue: found.issue }) },
+      ...(found.worktree === undefined ? {} : { stored: found.worktree }),
+    };
   };
+
+  // 把记录里的目标分支交给 worktree 层（#189）：契约「merge 目标 = 建树时所在分支」
+  // 靠这个字段落地；缺记录（旧节点）就不传，让它们退回按当前 HEAD 的现状行为。
+  const scopedDeps = (stored: DagWorktree | undefined): WorktreeDeps =>
+    stored?.target === undefined ? deps : { ...deps, target: stored.target };
 
   const persist = async (node: WorktreeNode, worktree: DagWorktree): Promise<void> => {
     await updateDag(
@@ -288,9 +302,10 @@ async function executeWorktreeAction(
   };
 
   if (parsed.action === 'merge') {
-    const node = find(parsed.node);
-    if ('error' in node) return refusal(node.error);
-    const outcome = await mergeWorktree(deps, node);
+    const found = find(parsed.node);
+    if ('error' in found) return refusal(found.error);
+    const { node, stored } = found;
+    const outcome = await mergeWorktree(scopedDeps(stored), node);
     if (!outcome.ok) {
       // A conflict is a real state, not a refusal to hide: record it so the panel
       // shows the node as conflicted, then answer with the actionable text. The
@@ -305,7 +320,7 @@ async function executeWorktreeAction(
     const sha = outcome.worktree.merged_sha ?? '';
     return answer(
       `${worktreeLine(node.id, outcome.worktree.path, outcome.worktree.branch, 'merged', outcome.note)}` +
-        (sha === '' ? '' : `；主分支 ${sha}`)
+        (sha === '' ? '' : `；目标分支 ${sha}`)
     );
   }
 
@@ -320,12 +335,13 @@ async function executeWorktreeAction(
       });
     return answer(lines.length === 0 ? '本会话还没有 worktree' : lines.join('\n'));
   }
-  const node = find(parsed.node);
-  if ('error' in node) return refusal(node.error);
+  const found = find(parsed.node);
+  if ('error' in found) return refusal(found.error);
+  const { node, stored } = found;
   const outcome =
     op === 'create'
       ? await createWorktree(deps, node, parsed.base)
-      : await removeWorktree(deps, node, parsed.force === true);
+      : await removeWorktree(scopedDeps(stored), node, parsed.force === true);
   if (!outcome.ok) return refusal(outcome.error);
   await persist(node, outcome.worktree);
   return answer(

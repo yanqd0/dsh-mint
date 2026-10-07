@@ -20,6 +20,7 @@ import {
   unknownDependencies,
 } from '../../../src/dag/dag.js';
 import type { DagAddNode, DagDoc, DagNode, DagSample } from '../../../src/dag/dag.js';
+import type { DagWorktree } from '../../../src/shared/records.js';
 
 const NOW = '2026-10-07T00:00:00.000Z';
 const SESSION = 'session-1';
@@ -56,6 +57,17 @@ function doc(over: Partial<DagDoc> = {}): DagDoc {
 /** One `add` entry. */
 function addNode(over: Partial<DagAddNode> = {}): Partial<DagAddNode> {
   return { id: 'a', label: '总①', title: '第一轮', phase: 'exec', ...over };
+}
+
+/** One node's worktree record; `target` is optional and only set when a case needs it. */
+function tree(over: Partial<DagWorktree> = {}): DagWorktree {
+  return {
+    path: '/proj/.git/dsh-mint/worktrees/s/a',
+    branch: 'dsh-mint/wt/s/a',
+    base: 'a'.repeat(40),
+    state: 'active',
+    ...over,
+  };
 }
 
 /** The error text of a refused outcome, failing loudly on an unexpected success. */
@@ -461,6 +473,22 @@ describe('parseDagDoc', () => {
       if (!('error' in parsed)) throw new Error(`expected a refusal for ${JSON.stringify(raw)}`);
       expect(parsed.error, JSON.stringify(raw)).toContain(needle);
     }
+  });
+
+  // --- worktree.target（#189）---
+
+  it('refuses an empty worktree.target instead of keeping a blank branch name', () => {
+    // 空串会在面板上渲染成空白分支名；「缺字段」才代表旧记录（可读）。
+    const withTree = doc({ nodes: [node({ worktree: tree({ target: '' }) })] });
+    const parsed = parseDagDoc(JSON.parse(JSON.stringify(withTree)) as unknown);
+    if (!('error' in parsed)) throw new Error('expected a refusal for an empty target');
+    expect(parsed.error).toContain('worktree.target 必须是非空字符串');
+  });
+
+  it('round-trips a legal worktree.target', () => {
+    const subject = doc({ nodes: [node({ worktree: tree({ target: 'feature/branch' }) })] });
+    const parsed = parseDagDoc(JSON.parse(JSON.stringify(subject)) as unknown);
+    expect(parsed).toEqual({ doc: subject });
   });
 });
 
