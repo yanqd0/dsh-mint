@@ -421,3 +421,38 @@
   `?`（本会话里那个 `e2e` 临时节点正是这个形态）；以及紫/黄在浅深主题的可读性。
 - skill 侧实测：`grep -n "进计划模式\|空图\|0 节点" skill/references/plan-dag.md` 命中新触发语与新增 §3.1；
   `skill/SKILL.md` 未改（路由行与新纪律不冲突，`src/skill-doc.test.ts` 仍 23 passed）。
+
+### 7.7 plan #33：空图提醒的第二次机会 + 两条「误判成坏掉」的宿主提示
+
+> issue：#171（空图软提醒不重复）、#53（挂载行缺 config）、#60（bash 兜底只读库），
+> 以及 skill 侧 #157/#158、#159/#160 的提醒文案。触发：plan #33 的调研期真的踩了一次
+> 「收到空图提醒 → `init` → 忘了 `add` → 面板与提醒一起消失」（用户当场发现）。
+
+- **真机现象与根因（#171）**：本会话 DAG 文件在 `init` 后是 `nodes: []`，而面板自动打开的判据是
+  「本会话 DAG **≥1 节点**」（`src/client/dag-open.ts` `shouldOpenDag`）——0 节点等于没有图、也没有面板，
+  这是 #165/§3.1 早已记录的边界。**但** `src/dag-plan-reminder.ts` 的注释写着「空图的会话故意不记为已提醒」，
+  实现却是无条件 `remember(sessionId)`：提醒只在会话的**第一次**工具调用出现，`init` 之后不再有第二次。
+  注释与实现相反 → 独立的 #171。
+- **口径（本轮拍板）**：提醒记的是**状态**不是次数——「没有 DAG」与「有 DAG 但 0 节点」是两个 gap，
+  各提醒一次；落到 ≥1 节点后彻底安静。实现为 `Map<sessionId, 'missing'|'empty'>`（值就是「上次提醒的是哪个 gap」），
+  原来「每会话一次」的语义被这条取代；`MAX_REMINDED_SESSIONS` 只作内存上界，命中即先删再插入，
+  越界淘汰最旧会话。文案拆成两条：`DAG_PLAN_REMINDER`（先 `init` 再落节点）、
+  `DAG_EMPTY_REMINDER`（只差「先 `add` 一个节点」，不再重复 `init`）。
+  实测：`src/dag-plan-reminder.test.ts` 13 passed（新增「missing → empty 两次提醒」「同一 gap 不重复」
+  「落节点后安静」三条路径）。
+- **#53 实测（宿主同一条校验路径）**：cordis 的 `resolveConfig` 把挂载行**缺省**的 config 以 `undefined`
+  直接交给 `Config['~standard'].validate`，**不做归一化**；`z.object({…})` 于是报
+  `invalid config: - Required (at )`（issue 里的原文），而 `{}` 与 `.default({})` 之后都得到完整默认值。
+  修法是 `z.object({…}).default({})`；测试就用 `Config['~standard'].validate(undefined)`（standard-schema 的
+  返回值是 `Result | Promise<Result>`，用例内收窄到同步分支），红/绿自检=临时删掉 `.default({})` 即复现 `Required`。
+  `cordis.patch.yml` 里「config 必须显式给」的过时注释同步改掉（`config: {}` 行保留，`package-manifest.test.ts` 守约）。
+- **#60 实测**：workspace-write 下经 bash 跑 mint，**连只读命令**也报
+  `mint: error: SQLite error: attempt to write a readonly database`（SQLite 打开库时即使只读也要写 journal），
+  宿主 `mint` 工具与 `mint --db <可写目录>` 都正常。落点两条：`src/reminders.ts` 的
+  `readonlyDbHintListener`（只扫结果文本里的 `READONLY_DB_SYMPTOM`，不看工具名/退出码；append 一句
+  「用宿主工具 / 提权重试 / `--db` 指可写目录」）与 skill `host-dsh.md` §执行面 的同一症状记录。
+- **skill 侧**：#157 把「无独立工作就地结束本轮 / 运行时以 follow-up 轮次唤醒 / `sleep` 把结算通知推迟到
+  sleep 结束之后」写进 `parallel-exec.md` §5；#158 把「清单条目只写 issue，不得写成批次/DAG 节点名」
+  写成显式禁令（`flow-impl.md` §3，`parallel-exec.md` §4 交叉引用）。
+  实测：`src/skill-doc.test.ts` 23 passed（SKILL.md 字节预算未变，未动 SKILL.md）。
+- **仍留给人眼确认**：本会话 DAG 面板由空变有节点后的自动打开（agent 无 DOM，无法自证）。
