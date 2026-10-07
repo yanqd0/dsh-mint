@@ -188,9 +188,9 @@
   `running` 且拿不到时长 → 时间位显示 `?`；`done` 且两者都没有 → `-`；`pending` → 整行不渲染。
 - **走秒口径**：`elapsed_ms + max(0, browserNow - sampled_at)`——两个时钟不必同源，锚在采样时刻上
   抵消偏差；宿主没给 `sampled_at` 就只画采样值（见 §4.6）。
-- **已知边界**：子代理结束后若其 agent 已不在 `agents` 注册表，该节点只剩自报 `tokens`、没有时长；
-  面板 2 s 轮询 + `subagent/end` 立刻把节点落成 `done`，窗口是秒级。真机复核口径：节点 `running` 时
-  `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的 `metrics`（见 §7.4 的实现记录）。
+- **已知边界（真机实测，见 #166）**：实测值只在子会话还在 `ctx.agents` 注册表时取得到；子代理一结束，
+  该节点就只剩自报 `tokens`、没有时长。真机复核口径：节点 `running` 时
+  `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的 `metrics`（见 §7.5）。
 
 ### 4.8 自动打开
 
@@ -343,7 +343,12 @@
   `/dsh-mint/dag`：信封得到 `metrics.r1 = {tokens: 46600, elapsed_ms: 8999}`（= 1200+340+45000+60 与
   4000+(now-(now-5000))）且 `sampled_at` 为 number；无 agent 的节点与 pending 节点**都不出现在 metrics 里**；
   文件缺失时信封只有 `autoOpen,dag,file,ok,revision`（**没有** `metrics`/`sampled_at` 键）。
-- **未实测、留给人眼/重启复核**：真机 `ctx.agents.get(子会话)` 对**已结束**子代理是否仍返回 session
-  （计划假设为真——`dag-lifecycle.ts` 已依赖同一结构读 `header.parentSession`）；若为假，`done` 节点只剩
-  自报 token、没有时长，属 §4.7 已记录的降级。另外紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、
-  `?` 与 `-` 的出现时机都只能在页面上确认。
+- **已实测（真机，harness 重启后）**：把本会话图里一个节点置 `running` 并派一个子代理 →
+  `subagent/start` 回填 `agent`；同一时刻 `curl '/dsh-mint/dag?session=<本会话>'` 得到
+  `metrics: {"liveprobe": {"tokens": 28067, "elapsed_ms": 3231}}` + `sampled_at`（number）——
+  「子会话真值 → 宿主信封」这条路在真机成立（数字取自该子会话自己的 `tokenUsage`/`subagentTiming`）。
+- **真机暴露的边界（已登记 #166）**：子代理**结束之后**，同一个子会话 id 再取 `agents.get(id)` 不再
+  返回 agent，于是该节点的实测值整份消失（`done` 节点只剩自报 `tokens` 与 `note`）。所以实测时长
+  目前**只覆盖 `running` 期间**；缓存/落盘的取舍见 #166。
+- **仍留给人眼确认**：紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、`?` 与 `-` 的出现时机，
+ 以及 tab 自动打开（agent 无 DOM 可自证）。
