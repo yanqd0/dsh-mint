@@ -263,16 +263,60 @@ describe('executeDagTool', () => {
       };
     }
 
-    /** Seed one running node that already names its child session. */
-    async function seedRunningNode(agent = CHILD): Promise<void> {
+    /** Seed one running node, optionally already naming a child session. */
+    async function seedNode(agent?: string): Promise<void> {
       expect((await run(SESSION, { action: 'init', title: 'plan' })).ok).toBe(true);
       const added = await run(SESSION, {
         action: 'add',
         nodes: [{ id: 'a', label: '总①', title: '第一轮', phase: 'exec' }],
       });
       expect(added.ok).toBe(true);
-      const started = await run(SESSION, { action: 'set', id: 'a', status: 'running', agent });
+      const started = await run(SESSION, {
+        action: 'set',
+        id: 'a',
+        status: 'running',
+        ...(agent === undefined ? {} : { agent }),
+      });
       expect(started.ok).toBe(true);
+    }
+
+    /** Seed one running node that already names its child session. */
+    async function seedRunningNode(agent = CHILD): Promise<void> {
+      await seedNode(agent);
+    }
+
+    /**
+     * 只给「某个会话自己」准备读数的宿主：子代理收尾自己节点时，测量键是它**自己的**
+     * 会话，与节点上记的 `agent` 无关。
+     */
+    function ownHost(caller: string): {
+      agents: AgentsLike;
+      projections: SessionProjectionsLike;
+      tokens: number;
+    } {
+      const own = { id: caller, header: {} };
+      const states = new Map<unknown, Record<string, unknown>>([
+        [
+          own,
+          {
+            tokenUsage: {
+              totals: {
+                uncachedInputTokens: 100,
+                outputTokens: 200,
+                cacheReadTokens: 50,
+                cacheWriteTokens: 50,
+              },
+            },
+            // 调用者的 turn 还在进行：计时按 running 对采样钟算，所以至少拿到 settledMs。
+            subagentTiming: { settledMs: 500, active: { since: Date.now() - 1000 } },
+          },
+        ],
+      ]);
+      return {
+        agents: { get: (id) => (id === caller ? { session: own } : undefined) },
+        projections: { stateOf: (target, key) => states.get(target)?.[key] },
+        tokens: 400,
+      };
     }
 
     it('stores the reading next to the node it settles', async () => {
@@ -298,6 +342,94 @@ describe('executeDagTool', () => {
       // cannot date a measurement with the moment it happened to be written.
       expect(lastMeasurement(SESSION, 'a')).toMatchObject({ tokens: 8, elapsed_ms: 1200 });
       expect(typeof lastMeasurement(SESSION, 'a')?.at).toBe('number');
+    });
+
+    it('测量调用者自己的会话，并让实测值覆盖自报的 tokens', async () => {
+      // 子代理收尾自己节点时它的会话必然活着，所以「调用者自己」是可靠测量键——
+      // 节点连 `agent` 都没有也照样有读数（旧路径下这种节点结构上永远为空）。
+      await seedNode();
+      const host = ownHost('child-own');
+      const outcome = await executeDagTool(
+        {
+          sessionId: SESSION,
+          callerId: 'child-own',
+          dagDir: dir,
+          agents: host.agents,
+          projections: host.projections,
+        },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass', tokens: 999 }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      const sample = read.doc.samples?.['a'];
+      expect(sample?.tokens).toBe(host.tokens);
+      // 实测优先：节点字段里的自报 999 被同一份读数覆盖。
+      expect(read.doc.nodes[0]?.tokens).toBe(host.tokens);
+      expect(typeof sample?.elapsed_ms).toBe('number');
+      expect(sample?.elapsed_ms).toBeGreaterThanOrEqual(500);
+      expect(lastMeasurement(SESSION, 'a')).toBeDefined();
+    });
+
+    it('main 给自己的节点收尾时不写误导读数', async () => {
+      // main 读自己的会话只会拿到整条主会话的累计，对「该节点开销」没有意义：
+      // 宿主既不采样、也不覆盖模型自报的值。宿主这里**故意**为根会话备了状态，
+      // 一旦实现误测 main 自己，samples 就会出现。
+      await seedNode();
+      const host = ownHost(SESSION);
+      const outcome = await executeDagTool(
+        {
+          sessionId: SESSION,
+          callerId: SESSION,
+          dagDir: dir,
+          agents: host.agents,
+          projections: host.projections,
+        },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass', tokens: 999 }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples).toBeUndefined();
+      // 自报值原样保留。
+      expect(read.doc.nodes[0]?.tokens).toBe(999);
+    });
+
+    it('没有投影注册表时子代理收尾照旧不写、不报错', async () => {
+      await seedNode();
+      const { agents } = ownHost('child-own');
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, callerId: 'child-own', dagDir: dir, agents },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass', tokens: 999 }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples).toBeUndefined();
+    });
+
+    it('旧路径（节点 agent）不覆盖自报的 tokens', async () => {
+      // main 收尾一个曾经配过子代理的节点：仍按节点的 `agent` 落 samples，但节点
+      // 字段留给模型自报——两条路径的差别只在 `own`。
+      await seedRunningNode();
+      const host = measurableHost();
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, callerId: SESSION, dagDir: dir, ...host },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass', tokens: 999 }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples?.['a']?.tokens).toBe(8);
+      expect(read.doc.nodes[0]?.tokens).toBe(999);
     });
 
     it('writes no sample when the node names a child the host cannot resolve', async () => {

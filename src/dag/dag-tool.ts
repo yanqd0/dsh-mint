@@ -23,6 +23,8 @@
  * that died, and `set status="done"` covers the one that reported back before
  * its session went away. That step is a second, best-effort write *after* the
  * action's own document, so a measurement can never delay or fail the answer.
+ * 测量键已改为「调用者自己的会话」（子代理收尾自己节点时它必然活着，且不受宿主
+ * 配对错位影响），只在 main 收尾时才退回节点的 `agent`——见 {@link measuredNode}。
  *
  * The worktree actions left this tool: they are the standalone `worktree` tool
  * (`worktree-tool.ts`), which owns the git side and writes back through the same
@@ -32,7 +34,7 @@ import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf 
 import type { DagDoc, DagWrite } from './dag.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
-import { rootSessionId } from '../shared/session-id.js';
+import { rootSessionId, sessionIdOf } from '../shared/session-id.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
   AgentsLike,
@@ -101,7 +103,10 @@ const DAG_TOOL_PARAMETERS: Record<string, unknown> = {
       description: 'set 的结论，仅 status="done" 时合法',
     },
     note: { type: 'string', description: 'set 的结论原文（写进节点 note，面板 tooltip 显示）' },
-    tokens: { type: 'integer', description: 'set 自报的 token 消耗（宿主无自动采集）' },
+    tokens: {
+      type: 'integer',
+      description: '节点 token 数；由子代理收尾时宿主实测并覆盖（实测优先，main 自有节点不填）',
+    },
     agent: { type: 'string', description: 'set 关联的子代理 sessionId' },
     nodes: {
       type: 'array',
@@ -184,8 +189,19 @@ export interface DagSampleInput {
   sessionId: string;
   /** The node that just settled. */
   nodeId: string;
-  /** The child session it was paired with, from the node's own `agent`. */
+  /**
+   * 这次读数按哪个会话读：`own` 为 true 时是**调用者自己的会话**（子代理收尾
+   * 自己的节点，它必然活着），否则是节点自己记的 `agent`（旧路径）。
+   */
   agentId: string;
+  /**
+   * 这次读的是**调用者自己的会话**。
+   *
+   * true 时宿主实测优先：读数落 `samples`，并把同一个 token 数覆盖写进节点的
+   * `tokens`（模型自报的值让位）。`status` 也随之为 `running`（调用者的 turn 还在
+   * 进行，计时按运行口径对采样钟算）；省略/false 表示旧路径，只落 `samples`。
+   */
+  own?: boolean;
   dagDir: string;
   agents: AgentsLike | undefined;
   projections: SessionProjectionsLike | undefined;
@@ -199,12 +215,14 @@ export interface DagSampleInput {
  * `subagent/end` listener covers the crash path, this covers the polite one. The
  * two writes are deliberately separate: the `set` above is the tool's answer and
  * may not be delayed or failed by a measurement, so this runs after it, as a
- * best-effort second write that only touches `samples`.
+ * best-effort second write that only touches `samples`（以及 `own` 路径下节点的
+ * `tokens`，同一次更新里覆盖自报值）。
  *
  * The reading is remembered as well as stored, so the route can still flush it
  * for a node that was re-opened (and is therefore `running` again) later.
  *
- * @param input - the owning session, the node's agent, and the host services.
+ * @param input - the owning session, the session this reading is keyed by (the
+ *   caller's own, or the node's `agent`), and the host services.
  * @returns nothing; every failure is a measurement that was not taken.
  */
 export async function persistNodeSample(input: DagSampleInput): Promise<void> {
@@ -212,9 +230,9 @@ export async function persistNodeSample(input: DagSampleInput): Promise<void> {
     const sampledMs = Date.now();
     const metrics = readAgentMetrics({
       agentId: input.agentId,
-      // The node just settled, and the projection's own `through` is the stamp
-      // that survived it — a reported-finished node has nothing in flight.
-      status: 'done',
+      // 两种口径分开：调用者自己的会话还在跑，计时按 running 对采样钟算；旧路径读的
+      // 是已经结算的节点，用它投影里的 `through`。token 与口径无关，两边同一读法。
+      status: input.own === true ? 'running' : 'done',
       agents: input.agents,
       projections: input.projections,
       sampledMs,
@@ -231,7 +249,10 @@ export async function persistNodeSample(input: DagSampleInput): Promise<void> {
           state.doc,
           input.nodeId,
           sample,
-          new Date(sampledMs).toISOString()
+          new Date(sampledMs).toISOString(),
+          // 只有「调用者自己的会话」这个测量键才把实测值写进节点字段：main 给自己
+          // 的节点收尾时读的是整条主会话的累计，对「该节点开销」没有意义，不能填。
+          input.own === true ? metrics.tokens : undefined
         );
         return next === undefined ? { skip: true } : { doc: next };
       },
@@ -243,20 +264,33 @@ export async function persistNodeSample(input: DagSampleInput): Promise<void> {
 }
 
 /**
- * The node a just-applied `set` left behind, as the measurement reads it.
+ * `set` 刚改完的那个节点，以及这次读数该按哪个会话读。
  *
- * @param doc - the document {@link applyDagWrite} produced.
- * @param action - the write that produced it.
- * @returns the node id and its child session, or `undefined` when there is
- *   nothing to measure (the node mint never paired with a child).
+ * 测量键按可信度排序：① **调用者自己的会话**——子代理给自己节点收尾时它必然活着，
+ * 不受宿主注册表释放、也不受「一批多节点整体错位」影响，且**不要求节点有 `agent`**
+ * （这正是修掉「没有 agent 的节点结构上永远没有读数」的地方）；② 否则退回节点自己
+ * 的 `agent`（旧路径：main 收尾一个曾经派过子代理的节点，仍只写 `samples`）；
+ * ③ main 给自己的节点（没有 `agent`）→ 不测——读到的会是整条主会话的累计，语义不对。
+ *
+ * @param doc - {@link applyDagWrite} 产出的文档。
+ * @param action - 产出它的那次写入。
+ * @param callerId - 调用者自己的会话 id；`undefined` 表示身份不可知，退回旧路径。
+ * @param rootId - 文档归属的根会话 id；与 `callerId` 相同即 main 自己在收尾。
+ * @returns 节点 id、测量键、以及这次读的是否是调用者自己的会话。
  */
 function measuredNode(
   doc: DagDoc,
-  action: Extract<DagWrite, { action: 'set' }>
-): { id: string; agentId: string } | undefined {
+  action: Extract<DagWrite, { action: 'set' }>,
+  callerId: string | undefined,
+  rootId: string | undefined
+): { id: string; agentId: string; own: boolean } | undefined {
   const node = doc.nodes.find((candidate) => candidate.id === action.id);
-  if (node?.agent === undefined) return undefined;
-  return { id: node.id, agentId: node.agent };
+  if (node === undefined) return undefined;
+  if (callerId !== undefined && callerId !== rootId) {
+    return { id: node.id, agentId: callerId, own: true };
+  }
+  if (node.agent === undefined) return undefined;
+  return { id: node.id, agentId: node.agent, own: false };
 }
 
 /**
@@ -266,14 +300,16 @@ function measuredNode(
  * installer resolves the session and the directory, this decides what happens.
  *
  * @param input - the owning session id (already resolved to the root), the
- *   optional DAG directory (tests point it at a temp directory), and the host
- *   services a settling measurement reads (`agents`/`projections`; absent means
- *   the sample step is skipped, never that the action fails).
+ *   caller's own session id (the measurement key when a subagent settles its
+ *   node), the optional DAG directory (tests point it at a temp directory), and
+ *   the host services a settling measurement reads (`agents`/`projections`;
+ *   absent means the sample step is skipped, never that the action fails).
  * @param rawArgs - the tool call's arguments, however malformed.
  */
 export async function executeDagTool(
   input: {
     sessionId: string | undefined;
+    callerId?: string | undefined;
     dagDir?: string;
     agents?: AgentsLike;
     projections?: SessionProjectionsLike;
@@ -330,14 +366,17 @@ export async function executeDagTool(
   }
   // A node the model just settled is the host's last chance to measure its
   // child: the sample is written after the answer's own document, so it can
-  // never delay or fail the `set` itself (#168).
+  // never delay or fail the `set` itself (#168). 测量键取调用者自己的会话（子代理
+  // 收尾自己的节点），退回节点 `agent` 只是旧路径，见 `measuredNode`。
   if (parsed.status === 'done') {
-    const settled = measuredNode(doc, parsed);
+    const settled = measuredNode(doc, parsed, input.callerId, sessionId);
     if (settled !== undefined) {
       await persistNodeSample({
         sessionId,
         nodeId: settled.id,
         agentId: settled.agentId,
+        // 只有 own 这条路才把实测 token 覆盖进节点字段；旧路径保持自报值。
+        ...(settled.own ? { own: true } : {}),
         dagDir: dir,
         agents: input.agents,
         projections: input.projections,
@@ -378,12 +417,16 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
     execute: async (rawArgs, exec: ToolExecutionLike) => {
       const agents = ctx.get?.('agents') as AgentsLike | undefined;
       const sessionId = rootSessionId(exec?.agent, agents);
+      // 测量键 = 调用者**自己**的会话：子代理收尾自己节点时它必然活着，比节点上可能
+      // 错位的 `agent` 可靠；`rootSessionId` 只回答图归谁，两者不是一回事。
+      const callerId = sessionIdOf(exec?.agent);
       // The sample step reads the same two host services the DAG route does,
       // resolved per call because a composition may mount them after this tool.
       const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
       return executeDagTool(
         {
           sessionId,
+          callerId,
           ...(dagDir === undefined ? {} : { dagDir }),
           ...(agents === undefined ? {} : { agents }),
           ...(projections === undefined ? {} : { projections }),

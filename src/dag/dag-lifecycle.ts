@@ -179,16 +179,28 @@ export function readAgentMetrics(input: {
  * sample must not be able to pre-empt or double-bump it. A reading that is
  * already stored with the same `at` is a skip rather than a second write, which
  * keeps the revision (and the panel's guard) still.
+ *
+ * 给了 `tokens` 时，**同一次**更新里也覆盖该节点的 `tokens`（实测优先于模型自报，
+ * revision 仍只 +1）；skip 的那条路径什么都不写，`tokens` 也不写。
+ *
+ * @param tokens - 宿主实测的 token 数；**实测优先于模型自报**，给了就在同一次
+ *   （revision 只 +1）更新里覆盖节点字段。省略表示这次只落 `samples`，节点自报值
+ *   保持原样（例如 main 收尾一个曾经配过子代理的节点，见 `dag-tool.ts` 的测量键）。
  */
 export function withSample(
   doc: DagDoc,
   nodeId: string,
   sample: DagSample,
-  now: string
+  now: string,
+  tokens?: number
 ): DagDoc | undefined {
   if (doc.samples?.[nodeId]?.at === sample.at) return undefined;
   return {
     ...doc,
+    nodes:
+      tokens === undefined
+        ? doc.nodes
+        : doc.nodes.map((node) => (node.id === nodeId ? { ...node, tokens } : node)),
     samples: { ...doc.samples, [nodeId]: sample },
     revision: doc.revision + 1,
     updated_at: now,

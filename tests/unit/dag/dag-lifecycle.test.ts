@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { clearMeasurements, lastMeasurement } from '../../../src/dag/dag-metrics.js';
 import { readDag, updateDag } from '../../../src/dag/dag-store.js';
-import { installDagLifecycle } from '../../../src/dag/dag-lifecycle.js';
+import { installDagLifecycle, withSample } from '../../../src/dag/dag-lifecycle.js';
+import type { DagDoc } from '../../../src/dag/dag.js';
 import type { DagRead } from '../../../src/dag/dag-store.js';
 import type { DagNodeView } from '../../../src/shared/records.js';
 import type { DshContext } from '../../../src/shared/types.js';
@@ -312,5 +313,52 @@ describe('subagent/end persists a sample (#168)', () => {
     await drain();
 
     expect((await stored('lonely')).state).toBe('missing');
+  });
+});
+
+describe('withSample', () => {
+  /** 一份最小文档：一个节点 `a`，可选带上模型自报的 `tokens`。 */
+  function doc(tokens?: number): DagDoc {
+    return {
+      version: 1,
+      session: SESSION,
+      title: 'DAG',
+      revision: 1,
+      created_at: 'T',
+      updated_at: 'T',
+      nodes: [
+        {
+          id: 'a',
+          label: '总①',
+          title: 't',
+          phase: 'exec',
+          status: 'running',
+          depends_on: [],
+          updated_at: 'T',
+          ...(tokens === undefined ? {} : { tokens }),
+        },
+      ],
+      edges: [],
+    };
+  }
+
+  it('给了实测 tokens 就写进节点字段，且 revision 只 +1', () => {
+    // 宿主实测优先于模型自报：读数与节点字段落在**同一次**更新里。
+    const next = withSample(doc(999), 'a', { tokens: 400, elapsed_ms: 100, at: 5 }, 'T2', 400);
+    expect(next?.revision).toBe(2);
+    expect(next?.nodes[0]?.tokens).toBe(400);
+    expect(next?.samples?.['a']).toEqual({ tokens: 400, elapsed_ms: 100, at: 5 });
+    expect(next?.updated_at).toBe('T2');
+  });
+
+  it('不给 tokens 时只落 samples，节点自报值原样保留', () => {
+    const next = withSample(doc(999), 'a', { tokens: 400, at: 5 }, 'T2');
+    expect(next?.nodes[0]?.tokens).toBe(999);
+    expect(next?.samples?.['a']).toEqual({ tokens: 400, at: 5 });
+  });
+
+  it('同一 at 已存过就 skip，也不写 tokens', () => {
+    const stored: DagDoc = { ...doc(999), samples: { a: { tokens: 400, at: 5 } } };
+    expect(withSample(stored, 'a', { tokens: 400, at: 5 }, 'T2', 400)).toBeUndefined();
   });
 });
