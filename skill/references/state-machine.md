@@ -61,7 +61,7 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
 - 合法正向链路：
   `issue add` → `issue state plan N` → `issue state start N` → `issue state commit N --sha <SHA>` →
   `issue state close N --test-cmd "<cmd>"` → done。
-- 放弃链路：`issue state drop N --reason "superseded by #12"` → dropped。
+- 放弃链路：`issue state drop N --reason "superseded by #<id>"` → dropped。
 
 ## 批量（变参多 id / plan 级）
 
@@ -72,7 +72,7 @@ kind=task（杂务/文档/调研/CI 等不改行为的工程工作）复用六�
   - `["issue","state","commit","42","43","--sha","<SHA>"]`
   - `["issue","state","close","42","43","--test-cmd","<cmd>"]`
 - **plan 级批量**：
-  - `["plan","plan","<plan_id>"]`：该 plan 下全部 `open` issue → `planned`（**开工锁定**；**登记阶段不要用**，#128）。
+  - `["plan","plan","<plan_id>"]`：该 plan 下全部 `open` issue → `planned`（**开工锁定**；**登记阶段不要用**）。
   - `["plan","close","<plan_id>","--test-cmd","<cmd>"]`：该 plan 下全部 `test` issue → `done`（统一测试后统一 close）。
   - `["plan","drop","<plan_id>"]`：**只允许空 plan**（无 issue）→ dropped，并落 `manual_dropped` 标记；
     有 issue 时报错（先 `state drop` 子 issue 或迁走）。手动终态不会被派生复活。
@@ -91,15 +91,15 @@ plan/milestone 状态由**子项集合派生**（CLI 只读，非手动设置）
 | **partial** | **恰为 {done, dropped} 混合（无 open、无活跃）——是完成态**（等同 done） |
 | open | **全部 open，或空 plan** |
 
-> **全 `open` 的 plan 派生 `open`，不是 `running`**：`open` 不算「活跃」。#128 的登记态
-> （建 plan + 拆 issue 全落 open）正落在这里，plan 绑定门禁与它按同一口径判（#135）。
+> **全 `open` 的 plan 派生 `open`，不是 `running`**：`open` 不算「活跃」。登记态
+> （建 plan + 拆 issue 全落 open）正落在这里，plan 绑定门禁与它按同一口径判。
 >
 > **判断 plan 是否完成看 issue 是否全终止（done/dropped）**，而非只看 status 标签；
 > `partial` 即完成（含被吸收/废弃项），不要把 partial 当"未完成"。
 >
 > **`running` 有两种来源**：子项活跃（`planned/dev/test`），或「曾运行」残留（混有 `done/dropped` + `open`）。
 > 于是一条已 `done` 的旧 plan 只要被新 attach 一个 `open` issue 就会复活成 `running`——门禁的
-> 「同 milestone 至多一个 running plan」把两种都计数（#140）；不想要这次复活就 `plan detach` 那个 issue。
+> 「同 milestone 至多一个 running plan」把两种都计数；不想要这次复活就 `plan detach` 那个 issue。
 
 ## 手动状态覆盖的边界
 

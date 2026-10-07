@@ -21,13 +21,13 @@ mint sync push --backend rclone --remote jianguo:/mint   # 首次指定（写入
 mint sync push                                           # 之后免参（复用缓存）
 ```
 - 导出本机快照 → git commit / rsync / rclone（gzip `.sql.gz`）→ 传输远端。
-- 快照无变化不产生空 commit（`#402`）。
+- 快照无变化不产生空 commit。
 
 ### 2. pull（远端 → 本机合并）
 ```bash
 mint sync pull                                          # 拉取远端快照 + 落地合并
 ```
-- git pull / rsync 拉取 / rclone（gunzip）→ `merge_remote_snapshots` 合并（跳本机快照；坏/旧快照 warn 跳过，`#400`）。
+- git pull / rsync 拉取 / rclone（gunzip）→ `merge_remote_snapshots` 合并（跳本机快照；坏/旧快照 warn 跳过）。
 
 ### 3. merge（本地 snapshots 目录落地，无传输）
 ```bash

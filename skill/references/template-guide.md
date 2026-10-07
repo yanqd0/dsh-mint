@@ -1,6 +1,6 @@
 # 标题与 body 模板纪律（template-guide）
 
-> 从 SKILL.md 迁出（#71）。目标：省 token、**只记 LLM 未知**。
+> 从 SKILL.md 迁出。目标：省 token、**只记 LLM 未知**。
 > 改写/追加既有 body 的纪律见 `body-editing.md`。
 
 ## 总则

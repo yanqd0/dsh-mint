@@ -1,6 +1,6 @@
 # 约束红线（constraints）
 
-> 从 SKILL.md「约束」迁出（#71）。挂载/测试/git/link/kind 的**决策表**在 `flow-conditions.md`；
+> 从 SKILL.md「约束」迁出。挂载/测试/git/link/kind 的**决策表**在 `flow-conditions.md`；
 > label 规范见 `labels.md`。
 
 ## 不可逆操作

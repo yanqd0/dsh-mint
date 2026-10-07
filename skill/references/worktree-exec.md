@@ -17,14 +17,16 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 
 ## 1. 何时用
 
-满足其一即可（不需要全满足）：
+满足其一即可（不需要全满足）；其中**第一条是默认路径，不是例外**：
 
 | 判据 | 共享模式下为什么不行 |
 |---|---|
-| 并行批次 **≥3 条互不相交 issue** | 主 agent 要逐条 `git add -- <白名单>` 拆提交，条数一多极易夹带 |
+| 并行批次 **≥3 条文件不相交 issue**（**默认**） | 主 agent 要逐条 `git add -- <白名单>` 拆提交，条数一多极易夹带 |
 | 需要**每条 issue 一个可独立验证的 commit** | 共享工作区的中间态混在一起，单个 commit 验不出单条 issue 的绿 |
 | 共享工作区**已被证明会互相污染** | 宿主不串行化保护兄弟子代理（`parallel-exec.md` §6），污染只能事后发现 |
 
+- **≥3 条文件不相交 issue 时 worktree 是默认执行方式**（`parallel-exec.md` §1.1）：不预检、也不因为
+  「可能失败」提前退缩（失败才按 §8 降级）；只有命中 §2 的例外才走共享工作区。
 - **提交不变量**（最硬的判据）：每个 commit **单独**跑 `check-types` / `test` 都绿。
   共享模式下这条不变量要靠主 agent 手工拆分才成立，worktree 模式下天然成立。
 - 白名单不相交仍是前提：worktree 只隔离工作目录，**不隔离语义**（接口依赖照旧串行，见 §4）。
@@ -35,6 +37,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 |---|---|
 | 单点改 / 只派一个子代理 | 建 worktree + merge 的成本高于收益 |
 | 同文件串行链（白名单相交） | 串行判据与 worktree 无关，见 `parallel-exec.md` §1 |
+| 本 plan 改的正是 worktree 能力本体（工具面 / `prune` 策略） | 「特性即隔离机制」：隔离手段自身不可用/不该用，共享工作区 + 一步一节点是**预期而非缺陷**（`parallel-exec.md` §1.1） |
 | 非 git 仓 / worktree 不可用 | 回退共享模式，本节不成立 |
 | 子代理需要 `build` / 全量 `lint` / `check-types` / `test:coverage` / 装依赖 / 重启 harness | worktree 内 pnpm 会触发重装且常在沙箱失败；这些重命令仍归主 agent（**节点内 UT 不在此列**，见下） |
 
@@ -59,36 +62,42 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 1. **建 worktree（主 agent，派发前）**：`worktree({action:"create", node:"a1", base:"<sha>"})`
    - 落点 `.git/dsh-mint/worktrees/<session前8位>/<node>`（`<common-git-dir>` 内部，
      `git status` 不可见，**无需** `.gitignore` 条目）；分支 `dsh-mint/wt/<session前8位>/<node>`。
-     仓里若残留旧的 `.worktrees/`（#177 之前），手工删掉即可。
+     仓里若残留旧的 `.worktrees/`（迁址前的遗留目录），手工删掉即可。
    - **一批的多个节点必须显式传同一个 `base`**（不同 base 的 commit 无法按序 merge）；
      `base` 取开工点的 `git rev-parse HEAD`。工具只校验 `base` 是本仓的 commit，
      **不会替你比对两个节点是否同 base**，这条靠口径守。
    - `create` 幂等：路径已是本仓注册的 worktree 就原样返回，重跑不重复建。
    - `create` 同时记下**开工时所在的分支**（`worktree.target`）：它就是该节点的 merge 目标，
      后续 merge/remove 都按它判定（§3.5/§5）。detached HEAD 下记成 `HEAD`，此时不校验。
+   - **dev/test 节点对只建一棵树**：`create` / `merge` / `remove` 的 `node` 都传 **dev 节点**（`<unit>d`），
+     一对共用同一棵树（`worktree` 记录落在 dev 节点）；test 子代理只在该树内跑只读验收，不另建树。
    - 先 `set` 该节点 `running`（见 `plan-dag.md` §4.1），再 create，再派活。
    - **一个 worktree 一个节点，一步一节点**：`set running` → `create` → 派活按这个顺序走，
      且派活的那一刻只让**一个**节点处于 `running` 且无 `agent`——同批多路派发会让宿主的
-     `agent` 配对整体错位（见 `parallel-exec.md` §3）。
+     `agent` 配对整体错位（见 `parallel-exec.md` §3）。**dev/test 对里两节点可同时 `running`**：
+     dev 被认领后由 dev 子代理把本对的 test 节点 `set running` 再派二级子代理（`parallel-exec.md` §3.1）。
 2. **派活（一批的活一起跑，但派发按「一步一节点」串行）**：提示词五段不变（`parallel-exec.md` §3），
    **必须写明该节点自己的 worktree 路径**，并写明「在本 worktree 内 `git add` / `git commit`」。
    漏写路径 = 子代理在主工作树上改，隔离失效。
-3. **子代理在自己的 worktree 内 commit**：
-   - 允许：在**其 worktree 内** `git add` / `git commit`；commit message **以 `#<issue-id>` 起头**。
+3. **子代理在自己的 worktree 内 commit**（dev/test 对里只有 **dev 子代理**做；test 子代理只读、不 commit）：
+   - 允许：在**其 worktree 内** `git add` / `git commit`；commit message 用 **Angular 前缀 + 中文描述**，
+     **不带任何 mint ID**——issue↔commit 关联由主 agent 收口时 `state commit --sha` 登记（§3 步骤 6）。
    - 仍禁止：`issue state`（一切 mint 写）、`build` / 全量 `lint` / `check-types` / `test:coverage` /
      装依赖 / 重启 harness、碰主工作树与别人的 worktree。
    - 一个 issue 多个 commit 也可以；merge 后 `state commit` 只登记最后一个 sha。
-4. **子代理在自己的 worktree 内跑该节点 UT**（逐个节点，交回前）：
+4. **在该 worktree 内跑该节点 UT**（逐个节点，交回前）：
+   - dev/test 对里由**二级 test 子代理**做正式验收：只在 dev 子代理共用的这棵树内跑只读命令，不改文件、
+     不 commit；dev 侧交回前也可先自查一次同一批 UT。
    - 在该 worktree 目录内跑 §2 那条命令（主仓 vitest + 该节点的测试文件），回报里给出**命令与输出摘要**。
-   - **红了先在本树内修**（改码 → 补 commit → 重跑），修绿再交回；**不要**带红 merge——带上红 merge，
-     单点红就混进收口全量里，定位成本高得多（§6、`flow-impl.md` §4）。
+   - **红了先在本树内修**（改码 → 补 commit → reopen test 节点重派，`dag-exec.md` §5），修绿再交回；
+     **不要**带红 merge——带上红 merge，单点红就混进收口全量里，定位成本高得多（§6、`flow-impl.md` §4）。
    - 只跑该节点的 UT：全量 `test:coverage` 与 `build` 仍归主 agent（§2）。
 5. **merge（主 agent，收齐后）**：`worktree({action:"merge", node:"a1"})`
    - 合回**建树时所在的分支**（目标分支），不是无条件合回 `main`；仅当该分支的工作树**干净**时执行
      （`git merge --no-ff`）；**按 issue 顺序** merge（不是完成先后）。
    - **工具会校验**：当前 checkout 的分支必须 == 该节点 `create` 时记录的分支（`worktree.target`），
      不一致**直接拒绝**（不执行 merge），并给出「先 `git checkout <建树时的分支>` 再 merge（或重建该节点的
-     worktree）」；缺记录（#189 之前的旧节点）与 detached HEAD 不做该校验。
+     worktree）」；缺记录（尚未写入 `worktree.target` 的旧节点）与 detached HEAD 不做该校验。
    - 冲突不裁决（§5）。进度查看：`worktree({action:"list"})`。
 6. **登记 sha（merge 之后）**：`mint({ args: ["issue","state","commit","<id>","--sha","<目标分支上的 sha>"] })`
    - sha 必须是**该目标分支 merge 后**的 sha（`git rev-parse --short=7 HEAD`，即在目标分支的工作树里读），
@@ -124,7 +133,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 | | 共享工作区（默认） | worktree 隔离（本文件） |
 |---|---|---|
 | 子代理改文件 | 主工作树 | 自己的 worktree |
-| commit | 主 agent 逐 issue `git add -- <白名单>` | 子代理在 worktree 内 commit（`#<id>` 起头） |
+| commit | 主 agent 逐 issue `git add -- <白名单>` | dev 子代理在共用的树内 commit（Angular 前缀 + 中文描述，**不带 mint ID**） |
 | 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <目标分支 sha>` |
 | 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
 | 测试命令 | 主 agent | 节点内 UT 归子代理（用主仓 vitest，§2/§3）；`build` / 全量 `lint` / `test:coverage` 归主 agent |
