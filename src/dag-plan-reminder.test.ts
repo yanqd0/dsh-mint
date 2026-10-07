@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { emptyDag, applyDagWrite } from './dag.js';
 import {
+  DAG_EMPTY_REMINDER,
   DAG_PLAN_REMINDER,
   MAX_REMINDED_SESSIONS,
   dagPlanReminderListener,
@@ -128,7 +129,8 @@ describe('dagPlanReminderListener (#169)', () => {
     expect(decision.content?.[0]).toEqual({ type: 'text', text: 'ok' });
   });
 
-  it('stays quiet on the second call of the same session', async () => {
+  it('stays quiet while the same gap is still the same gap', async () => {
+    // One nudge per gap (#171): a second call in the same state must not repeat it.
     const first = await call(exec, makeResult(), next);
     expect(first.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
 
@@ -139,14 +141,48 @@ describe('dagPlanReminderListener (#169)', () => {
     expect(second).toEqual({ kind: 'accept' });
   });
 
-  it('treats an initialized but node-less DAG as empty', async () => {
-    // The gap this reminder exists for: `init` alone never opens the panel
-    // (`src/client/dag-open.ts` requires `nodes.length > 0`), so it leaves no trace.
+  it('treats an initialized but node-less DAG as its own gap, and says so (init still not enough)', async () => {
+    // The trap this reminder exists for: `init` alone never opens the panel
+    // (`src/client/dag-open.ts` requires `nodes.length > 0`), so it leaves no
+    // trace — and the session that ran `init` and stopped needs its own line.
     await seed('sess-1', 0);
 
-    const decision = await call(exec, makeResult(), next);
+    const first = await call(exec, makeResult(), next);
+    expect(first.content?.map((block) => block.text)).toContain(DAG_EMPTY_REMINDER);
 
-    expect(decision.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
+    // Said once: the same empty graph does not repeat the line on every call.
+    const spy = vi.fn(next);
+    expect(await call(exec, makeResult(), spy)).toEqual({ kind: 'accept' });
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('nudges both gaps: missing first, then empty once the document exists (#171)', async () => {
+    const missing = await call(exec, makeResult(), next);
+    expect(missing.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
+
+    // `init` moved the session from "no DAG" to "0 nodes": that is a new gap, so
+    // it earns exactly one follow-up and then goes quiet.
+    await seed('sess-1', 0);
+    const empty = await call(exec, makeResult(), next);
+    expect(empty.content?.map((block) => block.text)).toContain(DAG_EMPTY_REMINDER);
+
+    const spy = vi.fn(next);
+    expect(await call(exec, makeResult(), spy)).toEqual({ kind: 'accept' });
+    expect(spy).toHaveBeenCalled();
+  });
+
+  it('goes quiet once a node lands, even for a session it was already nudging', async () => {
+    await call(exec, makeResult(), next);
+    await seed('sess-1', 1);
+    const spy = vi.fn(next);
+
+    const decision = await call(exec, makeResult(), spy);
+
+    expect(spy).toHaveBeenCalled();
+    // A graph with a node is no longer a gap, so nothing is appended — and the
+    // title text of the earlier nudge is not repeated either.
+    expect(decision).toEqual({ kind: 'accept' });
+    expect(decision.content).toBeUndefined();
   });
 
   it('stays quiet once the DAG has a node', async () => {
@@ -240,6 +276,8 @@ describe('dagPlanReminderListener (#169)', () => {
     expect(decision.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
   });
   it('keeps the reminded set bounded, evicting the oldest id (like the ledger)', async () => {
+    // Fill the bound with one nudge per session: each session is a *different*
+    // gap key, so each one is delivered and recorded.
     for (let index = 0; index < MAX_REMINDED_SESSIONS; index += 1) {
       const each: ToolExecutionLike = {
         name: 'bash',
