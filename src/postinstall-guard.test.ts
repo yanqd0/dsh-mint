@@ -1,15 +1,24 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 
 const GUARD = join(process.cwd(), 'scripts', 'install-skill-postinstall.mjs');
 
+/** Every scratch directory this file creates, removed again in `afterAll` (#54). */
+const scratchDirs: string[] = [];
+
 function tempDir(): string {
-  return mkdtempSync(join(tmpdir(), 'dsh-mint-postinstall-'));
+  const dir = mkdtempSync(join(tmpdir(), 'dsh-mint-postinstall-'));
+  scratchDirs.push(dir);
+  return dir;
 }
+
+afterAll(() => {
+  for (const dir of scratchDirs) rmSync(dir, { recursive: true, force: true });
+});
 
 function run(script: string, env: NodeJS.ProcessEnv = {}): { status: number; stderr: string } {
   const result = spawnSync(process.execPath, [script], {
