@@ -6,6 +6,11 @@
 
 - **一律用宿主 `mint` 工具**：插件进程内 spawn mint，不经 bash、不进会话沙箱、零授权；
   `args` 即 CLI 参数数组，输出原生 TSV（页脚 `# Page x/y` 在 stdout）。
+- **bash 兜底的专属症状（#60）**：workspace-write 下经 bash 跑 mint——**连只读命令 `mint list` 也算**——
+  报 `mint: error: SQLite error: attempt to write a readonly database`（普通输出，不是工具级 error）。
+  SQLite 打开库时即使只读也要写 journal，所以这不是 mint 损坏、也不是命令写错了。收敛路径：
+  改用宿主 `mint` 工具 → 确需 bash 时按常规沙箱提权审批重试 → 或落到可写目录（`--db <可写路径>`/`MINT_DB_PATH`）。
+  插件识别该串时会在结果末尾追加同一句提示（`src/reminders.ts`）。
 - 工具注册在 **root ctx（global layer）**，所有 agent 继承；**子代理也继承**，但子代理 approval 被
   pin 为 `never`，**bash 路径对子代理不可用**——子代理只能用 `mint` 工具。
 - **子代理继承什么**：工作区 cwd、`AGENTS.md` 指令、通用工具、`mint` 工具与 skill catalog；但**没有 `[Mint]` 注入**
