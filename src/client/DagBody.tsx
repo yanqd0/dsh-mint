@@ -14,13 +14,20 @@
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 
-import type { DagNodeMetrics, DagNodeView, DagVerdict, MintDagPayload } from '../records.js';
+import type {
+  DagNodeMetrics,
+  DagNodeView,
+  DagVerdict,
+  DagWorktreeState,
+  MintDagPayload,
+} from '../records.js';
 import { StateNotice } from './StateNotice.js';
 import {
   DAG_COPY_KEYS,
   dagCounts,
   dagStatusTone,
   dagTone,
+  dagWorktreeTone,
   formatCount,
   formatSeconds,
   isRunning,
@@ -562,6 +569,11 @@ interface NodeTooltipProps {
  * The time line is also where a *stored* reading gets its date (#168): the
  * number beside it was measured when the child was alive, so the card names that
  * moment in the local clock instead of letting the reader take it for now.
+ *
+ * The node's isolated working tree, when it has one, is the card's other chip
+ * row (#173): the state is colored like a status pill, and the branch it works
+ * on sits beside it. Nothing here touches git or the file system — the branch,
+ * the state and the path are all the route's own fields.
  */
 function NodeTooltip({
   node,
@@ -581,6 +593,7 @@ function NodeTooltip({
   const elapsed = measuredTimeMs(node, metrics, sampledAtMs, nowMs);
   const duration = elapsed === undefined ? undefined : formatSeconds(elapsed);
   const measuredAt = metrics?.at;
+  const worktree = node.worktree;
   return (
     <div
       style={{
@@ -602,6 +615,18 @@ function NodeTooltip({
           <span style={DAG_TOOLTIP_META}>{`#${String(node.issue)}`}</span>
         )}
       </p>
+      {worktree !== undefined && (
+        <p style={TOOLTIP_BADGES}>
+          <span style={pill(dagWorktreeTone(worktree.state))}>
+            {worktreeStateLabel(copy, worktree.state)}
+          </span>
+          {/* The path is the worktree's own identity, and too long for the card:
+              the native hover text carries it without spending a line on it. */}
+          <span style={DAG_TOOLTIP_META} title={worktree.path}>
+            {copy('dag.worktree.branch', { branch: worktree.branch })}
+          </span>
+        </p>
+      )}
       {tokens === undefined ? (
         // Nothing was measured: the node's own report is all there is, and it is
         // shown without the measure's color or source note — it is not one.
@@ -705,5 +730,19 @@ function verdictLabel(copy: MintBodyProps['copy'], verdict: DagVerdict): string 
       return copy('dag.verdict.pass');
     case 'fail':
       return copy('dag.verdict.fail');
+  }
+}
+
+/** As {@link phaseLabel}, for the state of a node's isolated working tree (#173). */
+function worktreeStateLabel(copy: MintBodyProps['copy'], state: DagWorktreeState): string {
+  switch (state) {
+    case 'active':
+      return copy('dag.worktree.state.active');
+    case 'merged':
+      return copy('dag.worktree.state.merged');
+    case 'conflict':
+      return copy('dag.worktree.state.conflict');
+    case 'removed':
+      return copy('dag.worktree.state.removed');
   }
 }

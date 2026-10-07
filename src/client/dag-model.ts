@@ -8,7 +8,7 @@
  * Node without a DOM, and the same view always draws the same picture.
  */
 import { dagLayers } from '../dag.js';
-import type { DagNodeMetrics, DagNodeView, DagView } from '../records.js';
+import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../records.js';
 import type { StatusTone } from './model.js';
 
 /**
@@ -89,6 +89,31 @@ export function isRunning(node: DagNodeView): boolean {
 export function dagStatusTone(node: DagNodeView): StatusTone {
   if (node.status === 'pending' || node.status === 'running') return 'warn';
   return node.verdict === 'fail' ? 'error' : 'success';
+}
+
+/**
+ * The tone the chip on a node's worktree state draws in (#173).
+ *
+ * The state is a fact about the branch, not about the node's own lifecycle, so
+ * it is read on its own axis: an unmerged worktree is work that is still out
+ * there (amber, like any unfinished node), a merge stopped on conflicts is the
+ * one thing a reader must not miss (red), and a branch that is in the main line
+ * is settled (green). A worktree that is gone is neither: it is a plain fact of
+ * the workspace, so it takes the neutral chip rather than a warning it is not.
+ *
+ * @param state - the worktree state as the document carries it.
+ */
+export function dagWorktreeTone(state: DagWorktreeState): StatusTone {
+  switch (state) {
+    case 'active':
+      return 'warn';
+    case 'merged':
+      return 'success';
+    case 'conflict':
+      return 'error';
+    case 'removed':
+      return 'idle';
+  }
 }
 
 /**

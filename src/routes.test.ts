@@ -804,6 +804,66 @@ describe('the plan DAG route (plan #31)', () => {
     });
   });
 
+  /** One node as a hand-written document carries it, over the fields it needs. */
+  function rawNode(extra: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      id: 'a',
+      label: '总①',
+      title: '第一轮',
+      phase: 'exec',
+      status: 'running',
+      depends_on: [],
+      updated_at: '2026-01-01T00:00:00.000Z',
+      ...extra,
+    };
+  }
+
+  /** Write one session's document straight to the store's file, bypassing the tool. */
+  function writeRawDoc(session: string, node: Record<string, unknown>): void {
+    const doc = {
+      ...emptyDag(session, '宿主面 DAG', '2026-01-01T00:00:00.000Z'),
+      revision: 2,
+      nodes: [node],
+    };
+    writeFileSync(dagFilePath(session, dir), `${JSON.stringify(doc)}\n`, 'utf8');
+  }
+
+  // The nodes the panel draws are the document's own objects: a field the tool
+  // wrote (#173) reaches the browser without the route reshaping it.
+  it('carries a node worktree through the envelope (#173)', async () => {
+    const worktree = {
+      path: join(dir, '.worktrees', 'aaaaaaaa', 'a'),
+      branch: 'mint/173-dag-worktree',
+      base: '0f1e2d3',
+      state: 'active',
+    };
+    writeRawDoc('s1', rawNode({ worktree }));
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      revision: 2,
+      dag: { nodes: [{ id: 'a', worktree }] },
+    });
+    const nodes = (payload.dag as { nodes: Array<Record<string, unknown>> }).nodes;
+    expect(nodes[0]?.['worktree']).toEqual(worktree);
+    expect(payload).not.toHaveProperty('warnings');
+  });
+
+  // The tolerant direction: a document written before #173 carries no such field,
+  // and that absence is not shape drift — no warning, no invented default.
+  it('answers an old document without a worktree and without drift (#173)', async () => {
+    writeRawDoc('s1', rawNode());
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const payload = (await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`)).json();
+    const nodes = (payload.dag as { nodes: Array<Record<string, unknown>> }).nodes;
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]).not.toHaveProperty('worktree');
+    expect(Object.keys(payload).sort()).toEqual(['autoOpen', 'dag', 'file', 'ok', 'revision']);
+  });
+
   it('publishes host-measured node metrics with the sample clock (#162)', async () => {
     await seed('s1', '宿主面 DAG');
     const asked: string[] = [];

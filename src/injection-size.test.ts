@@ -131,15 +131,18 @@ describe('per-request injection budget (#61)', () => {
   });
 
   // plan 31: the DAG tool's description is the second per-request tool budget.
-  // It is larger than `mint`'s because it carries a whole small DSL (four
-  // actions, the node fields, the edge direction), so it gets its own ceiling —
-  // and it must stay a description, not a manual: the full spec is
-  // `notes/plan-dag.md` §2.
-  it('keeps the plan DAG tool description under 700 bytes (plan #31)', () => {
-    expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
+  // It is larger than `mint`'s because it carries a whole small DSL (the document
+  // actions, the node fields, the edge direction); #172 added the worktree line
+  // for the second action family, so the ceiling grew with it — and it must stay
+  // a description, not a manual: the full spec is `notes/plan-dag.md` §2, the
+  // worktree flow is `skill/references/worktree-exec.md`, and the exact
+  // parameters live in the tool's own schema.
+  it('keeps the plan DAG tool description under 810 bytes (plan #31, #172)', () => {
+    expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(810);
     expect(DAG_TOOL_DESCRIPTION).toContain('init');
     expect(DAG_TOOL_DESCRIPTION).toContain('to 依赖 from');
     expect(DAG_TOOL_DESCRIPTION).toContain('label ≤6 字');
+    expect(DAG_TOOL_DESCRIPTION).toContain('wt 建/列/删');
     expect(DAG_TOOL_DESCRIPTION).toContain('mint_plan_dag({action:"add"');
   });
 

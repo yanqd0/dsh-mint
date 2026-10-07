@@ -35,7 +35,7 @@ import {
 import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
-import type { DagNodeMetrics, DagStatus } from './records.js';
+import type { DagNodeMetrics, DagStatus, MintDagPayload } from './records.js';
 import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
 import { hasControlCharacter } from './text.js';
 import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from './types.js';
@@ -491,11 +491,15 @@ export function createMintHandler(
     // out for a running node) so the number survives a restart, however long the
     // host happens to keep the finished child's session readable (#166).
     await flushRememberedSample(sessionId, read, deps.dagDir ?? DAG_DIR);
-    // `warnings` is declared rather than inferred: the payload it spreads into
-    // is `unknown`-typed, and a lone inferred string[] would read as a mistake.
-    const warnings: Record<string, unknown> =
+    // `warnings` is declared rather than inferred: the answer below carries the
+    // wire type the browser half reads, where `warnings` is an optional
+    // `string[]` — a lone inferred `string[]` would widen that field.
+    const warnings: Pick<MintDagPayload, 'warnings'> =
       read.state === 'unreadable' ? { warnings: [`unreadable dag: ${read.error}`] } : {};
-    sendJson(res, 200, {
+    // 声明的类型就是面板读的那份线格式：节点视图因此逐字段受编译期约束，含可选的
+    // 节点级 `worktree`（#173）。路由只把**已解析**的文档原样交出去，不在这里重新
+    // 投影——多一处投影就是多一个会悄悄漏字段的地方。
+    const payload: MintDagPayload = {
       ok: true,
       // A missing file and an unreadable one both answer `dag: null`: "this
       // session has no DAG yet" is a normal state, not a 404 (§4.2/§1.5).
@@ -507,7 +511,8 @@ export function createMintHandler(
       // compares the per-node numbers against, so it is read once, here.
       ...(metrics === undefined ? {} : { metrics, sampled_at: now() }),
       ...warnings,
-    });
+    };
+    sendJson(res, 200, payload);
   };
 
   /**

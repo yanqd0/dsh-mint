@@ -78,6 +78,7 @@ export const DAG_TOOL_DESCRIPTION = [
   '维护本会话的 plan 执行 DAG（节点=工作单元，边=依赖）；只回摘要，全图见面板。',
   '动作：init(title?) 新建/重置；add(nodes,edges?) 加节点连边；set(id,status,verdict?,note?,tokens?) 改节点；get 取摘要。',
   'nodes 每项 {id,label,title,phase:"research"|"exec",depends_on?,issue?}；edges 是 [from,to]，语义「to 依赖 from」；label ≤6 字。',
+  'worktree：wt 建/列/删，merge 合回主线；同批同 base、冲突不裁决（见 skill worktree-exec.md）。',
   '只有 main agent 建节点/连边，子代理只 set 自己的节点；DAG 归属根会话。',
   'set 的 status 取 pending|running|done，verdict(pass|fail) 仅 status="done" 合法。',
   '例：mint_plan_dag({action:"add",nodes:[{id:"a",label:"总①",title:"第一轮",phase:"exec"}]})。',

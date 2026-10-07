@@ -106,6 +106,14 @@ export const ZH = {
   // the label, never the timestamp.
   'dag.measuredAt': '实测于 {at}',
   'dag.note': '结果原文',
+  // A node's isolated working tree (#173): the branch it works on, and the state
+  // of that workspace. The four states are mint's own vocabulary, so they read
+  // the same in both locales (see `KEPT_IN_ENGLISH`).
+  'dag.worktree.branch': '分支 {branch}',
+  'dag.worktree.state.active': 'active',
+  'dag.worktree.state.merged': 'merged',
+  'dag.worktree.state.conflict': 'conflict',
+  'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
 } as const satisfies Record<string, string>;
 
@@ -194,6 +202,11 @@ export const EN = {
   'dag.seconds': 's',
   'dag.measuredAt': 'measured {at}',
   'dag.note': 'Result',
+  'dag.worktree.branch': 'Branch {branch}',
+  'dag.worktree.state.active': 'active',
+  'dag.worktree.state.merged': 'merged',
+  'dag.worktree.state.conflict': 'conflict',
+  'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
 } as const satisfies Record<CopyKey, string>;
 
@@ -206,9 +219,10 @@ export const EN = {
  * tab adds two more groups: the tab's own name (it *is* the plan's name), and the
  * enumerated values a node carries — `pending` / `running` / `done`, `pass` /
  * `fail`, `research` / `exec` are mint's vocabulary, and a tooltip that renamed
- * them would disagree with the tool the reader just called. The list is asserted
- * in both directions by `copy.test.ts`, so "kept in English" is a checked
- * decision rather than a habit.
+ * them would disagree with the tool the reader just called. The worktree states
+ * (`active` / `merged` / `conflict` / `removed`, #173) join the same group for
+ * the same reason. The list is asserted in both directions by `copy.test.ts`, so
+ * "kept in English" is a checked decision rather than a habit.
  */
 export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'type.label',
@@ -226,6 +240,10 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'dag.verdict.fail',
   'dag.phase.research',
   'dag.phase.exec',
+  'dag.worktree.state.active',
+  'dag.worktree.state.merged',
+  'dag.worktree.state.conflict',
+  'dag.worktree.state.removed',
   // A token count is a unit, not a sentence: `12 tokens` reads the same in both.
   'dag.tokens',
   // A node id is an opaque identifier; nothing about it is language-specific.

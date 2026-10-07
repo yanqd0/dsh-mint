@@ -14,6 +14,7 @@ import {
   dagCounts,
   dagStatusTone,
   dagTone,
+  dagWorktreeTone,
   formatCount,
   formatSeconds,
   isRunning,
@@ -250,6 +251,25 @@ describe('dagStatusTone', () => {
     const running = node('a', { status: 'running' });
     expect(dagStatusTone(running)).toBe('warn');
     expect(dagTone(running)).toBe('success');
+  });
+});
+
+// #173: the worktree state is a fact about the branch, drawn on its own axis —
+// the node's own status stays what its own pills say.
+describe('dagWorktreeTone', () => {
+  it('marks an unmerged worktree as work still out there', () => {
+    expect(dagWorktreeTone('active')).toBe('warn');
+  });
+
+  it('reads a branch that is in the main line as settled', () => {
+    expect(dagWorktreeTone('merged')).toBe('success');
+  });
+
+  // The one state a reader must not miss, and the one that is a plain fact
+  // rather than a warning: a removed workspace needs no attention.
+  it('makes a stopped merge the one error and a removed worktree neutral', () => {
+    expect(dagWorktreeTone('conflict')).toBe('error');
+    expect(dagWorktreeTone('removed')).toBe('idle');
   });
 });
 
@@ -496,5 +516,21 @@ describe('DAG live-metrics contract', () => {
     const source = readFileSync(fileURLToPath(new URL('DagBody.tsx', import.meta.url)), 'utf8');
     expect(source).toContain('DAG_COPY_KEYS.measuredAt');
     expect(source).toContain('toLocaleTimeString');
+  });
+});
+
+// #173: the card is a `.tsx` no Node test can render, so the wiring that shows a
+// node's worktree is guarded by reading its source. The branch and the state both
+// come from the envelope — the panel never touches git.
+describe('DAG worktree contract', () => {
+  it('shows the branch and the state the node carries', () => {
+    const source = readFileSync(fileURLToPath(new URL('DagBody.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('node.worktree');
+    expect(source).toContain('dagWorktreeTone');
+    expect(source).toContain("copy('dag.worktree.branch'");
+    expect(source).toContain("copy('dag.worktree.state.active')");
+    expect(source).toContain("copy('dag.worktree.state.merged')");
+    expect(source).toContain("copy('dag.worktree.state.conflict')");
+    expect(source).toContain("copy('dag.worktree.state.removed')");
   });
 });
