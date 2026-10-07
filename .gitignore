@@ -7,3 +7,6 @@ coverage/
 CLAUDE.md
 now.md
 notes/dsh
+
+# DAG 节点级 worktree（#172/#175）：隔离工作树不进版本控制
+.worktrees/

@@ -6,6 +6,7 @@ import { installCrossProjectGate } from './cross-project-gate.js';
 import { installDagLifecycle } from './dag-lifecycle.js';
 import { installDagPlanReminder } from './dag-plan-reminder.js';
 import { installDagTool } from './dag-tool.js';
+import { installWorktreeSweep } from './dag-worktree-sweep.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
@@ -127,6 +128,9 @@ export function apply(ctx: DshContext, config: Config): void {
   // ctx, so subagents inherit the tool and the listeners see every child run.
   installDagTool(ctx);
   installDagLifecycle(ctx);
+  // #175: a closed plan is the last moment anyone looks at the DAG, so leftover
+  // worktrees get named once instead of staying on disk unwatched.
+  installWorktreeSweep(ctx);
   installApprovalGate(ctx, config);
   installCrossProjectGate(ctx, mintEntry);
   installMintRoutes(ctx, mintEntry, { openDagTab: config.openDagTab });
