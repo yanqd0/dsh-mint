@@ -168,9 +168,11 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // one confirmation per session and target project — not per call. A subagent
   // has no approval channel at all, so a decision it hits travels back in its
   // final reply and the root agent merges the round's decisions into one
-  // question before writing anything. The target project is confirmed first,
-  // kind is problem/requirement, the title may stay free of the source, and the
-  // report avoids prescribing a fix.
+  // question before writing anything (the marker below pins that wording here,
+  // next to the gate it belongs to; the dispatch discipline lives in
+  // `parallel-exec.md`). The target project is confirmed first, kind is
+  // problem/requirement, the title may stay free of the source, and the report
+  // avoids prescribing a fix.
   [
     'references/cross-project.md',
     [
@@ -182,6 +184,7 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '`problem`',
       '`requirement`',
       '不要给具体实现方案',
+      '根 agent 合并成一次提问',
     ],
   ],
 ];
