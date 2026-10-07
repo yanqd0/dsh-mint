@@ -45,7 +45,9 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
     → merge → issue state commit --sha → wt remove
 
 1. **建 worktree（主 agent，派发前）**：`mint_plan_dag({action:"wt", op:"create", node:"a1", base:"<sha>"})`
-   - 落点 `.worktrees/<session前8位>/<node>`；分支 `dsh-mint/wt/<session前8位>/<node>`。
+   - 落点 `.git/dsh-mint/worktrees/<session前8位>/<node>`（`<common-git-dir>` 内部，
+     `git status` 不可见，**无需** `.gitignore` 条目）；分支 `dsh-mint/wt/<session前8位>/<node>`。
+     仓里若残留旧的 `.worktrees/`（#177 之前），手工删掉即可。
    - **一批的多个节点必须显式传同一个 `base`**（不同 base 的 commit 无法按序 merge）；
      `base` 取开工点的 `git rev-parse HEAD`。工具只校验 `base` 是本仓的 commit，
      **不会替你比对两个节点是否同 base**，这条靠口径守。
@@ -77,7 +79,8 @@ worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**
 - **冲突不自动裁决**：merge 冲突时工具保留冲突态，给出冲突文件清单与 `git merge --abort` 的收场路径；
   由主 agent（或用户）决定怎么解，不猜、不自动取一边。
 - 冲突的常见根因是白名单判据没守住（同一文件被两节点改）→ 先回 §4 复核批次表，再决定是否人工合并。
-- `.worktrees/` **必须**在 `.gitignore` 里：它是本地执行产物，不能进主分支、也不能被 `git add` 夹带。
+- worktree 落在 `<common-git-dir>` 内的 `dsh-mint/worktrees/`，`git status` 看不见它，**不需要**
+  `.gitignore` 条目；旧的 `.worktrees/` 条目可以删掉（残留目录手工删）。
 - **`plan close` 后清理 `active` worktree**：逐个 `op:"remove"`，`wt list` 不应再剩 `active` 项。
   `remove` 拒绝**尚未合并进主线**的分支（避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；
   它只删工作树、不删分支（分支可留可删，不删也不影响主分支）。

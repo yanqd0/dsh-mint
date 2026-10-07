@@ -643,20 +643,25 @@ describe('installDagLifecycle', () => {
 describe('executeDagTool: wt / merge (#172)', () => {
   let repo: string;
 
+  /**
+   * 合并提交也要有身份：merge 发生在工具进程内（`dag-worktree.ts`），拿不到上面
+   * `commit` 的 `-c`，只能靠仓内配置，否则在没有全局身份的机器上必失败。
+   */
+  const IDENTITY = ['-c', 'user.name=t', '-c', 'user.email=t@e.i'] as const;
+
   /** Commit a file in `cwd` so a branch has something to merge. */
   function commit(cwd: string, name: string, text: string, message: string): void {
     writeFileSync(join(cwd, name), text);
     execFileSync('git', ['add', '--', name], { cwd });
-    execFileSync(
-      'git',
-      ['-c', 'user.name=t', '-c', 'user.email=t@e.i', 'commit', '-q', '-m', message],
-      { cwd }
-    );
+    execFileSync('git', [...IDENTITY, 'commit', '-q', '-m', message], { cwd });
   }
 
   beforeEach(() => {
     repo = mkdtempSync(join(tmpdir(), 'dsh-mint-dag-wt-'));
     execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
+    for (const [key, value] of [['user.name', 't'], ['user.email', 't@e.i']] as const) {
+      execFileSync('git', ['config', key, value], { cwd: repo });
+    }
     commit(repo, 'README.md', '# fixture\n', 'init');
   });
 
@@ -689,7 +694,7 @@ describe('executeDagTool: wt / merge (#172)', () => {
 
     const stored = await node();
     expect(stored?.worktree?.state).toBe('active');
-    expect(stored?.worktree?.path).toContain(join(repo, '.worktrees'));
+    expect(stored?.worktree?.path).toContain(join(repo, '.git', 'dsh-mint', 'worktrees'));
     expect(stored?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
   });
 
@@ -778,5 +783,30 @@ describe('executeDagTool: wt / merge (#172)', () => {
 
     const forced = await runWorktree(repo, { action: 'wt', op: 'remove', node: 'a1', force: true });
     expect(forced.ok).toBe(true);
+  });
+
+  it('keeps the DAG readable after a merge conflict (#177)', async () => {
+    await seedGraph();
+    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
+    expect(created.ok).toBe(true);
+    const tree = (await node())?.worktree?.path;
+    if (tree === undefined) return;
+    // 两侧改同一文件：merge 必然停在冲突态，走「冲突也要落盘」那条分支。
+    commit(tree, 'README.md', '# from the node\n', 'node side');
+    commit(repo, 'README.md', '# from main\n', 'main side');
+
+    const conflicted = await runWorktree(repo, { action: 'merge', node: 'a1' });
+    expect(conflicted.ok).toBe(false);
+    expect(conflicted.summary).toContain('merge 冲突');
+
+    // 缺陷回归钉：#177 之前这里落盘 `base: ''`，`checkWorktree` 要求非空，
+    // 于是整份 DAG 下次读取变成 unreadable。
+    const read = await readDag(SESSION, dir);
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    expect(read.doc.nodes[0]?.worktree?.state).toBe('conflict');
+    expect(read.doc.nodes[0]?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
+
+    execFileSync('git', ['merge', '--abort'], { cwd: repo });
   });
 });

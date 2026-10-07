@@ -832,7 +832,7 @@ describe('the plan DAG route (plan #31)', () => {
   // wrote (#173) reaches the browser without the route reshaping it.
   it('carries a node worktree through the envelope (#173)', async () => {
     const worktree = {
-      path: join(dir, '.worktrees', 'aaaaaaaa', 'a'),
+      path: join(dir, '.git', 'dsh-mint', 'worktrees', 'aaaaaaaa', 'a'),
       branch: 'mint/173-dag-worktree',
       base: '0f1e2d3',
       state: 'active',

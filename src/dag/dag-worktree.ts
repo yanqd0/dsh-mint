@@ -11,17 +11,20 @@
  *
  * Two decisions shape everything below:
  *
- * - **Inside the workspace.** A worktree lives at `.worktrees/<session8>/<node>`
- *   under the repository, never outside it: the bash tool resolves `workdir`
- *   against the sandbox's workspace root, so a path outside it is unreachable
- *   for the agents that are supposed to work there.
+ * - **Inside the workspace, under the git common dir (#177).** A worktree lives
+ *   at `<common git dir>/dsh-mint/worktrees/<session8>/<node>`, never outside the
+ *   repository: the bash tool resolves `workdir` against the sandbox's workspace
+ *   root, so a path outside it is unreachable for the agents that are supposed to
+ *   work there. `git common dir` rather than the repo root because the repo root
+ *   would show every worktree as an untracked directory in `git status` (and
+ *   needed a `.gitignore` entry); git never reports its own directory.
  * - **The host runs git.** Creating and merging worktrees happens in the plugin
  *   process (like `runMint`), not through a subagent's sandboxed bash.
  *
  * This module is pure orchestration over a git runner, so the whole cycle is
  * testable against a real temporary repository with no host wiring.
  */
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 
 import type { DagWorktree } from '../shared/records.js';
 import type { GitRunResult } from '../shared/git.js';
@@ -32,8 +35,14 @@ const SESSION_PREFIX = 8;
 /** Default branch prefix; the `dsh-` namespace keeps it out of user branches. */
 export const DEFAULT_WORKTREE_BRANCH_PREFIX = 'dsh-mint/wt';
 
-/** Default directory name under the repository root. */
-export const DEFAULT_WORKTREE_DIR = '.worktrees';
+/**
+ * Directory under the git common dir (#177).
+ *
+ * Deliberately **not** `.git/worktrees/`: that path is git's own metadata
+ * directory for registered worktrees, and a worktree placed there collides with
+ * it. The `dsh-mint/` namespace keeps this plugin's trees apart from git's.
+ */
+export const WORKTREE_SUBDIR = 'dsh-mint/worktrees';
 
 /** The subset of a node a worktree operation needs. */
 export interface WorktreeNode {
@@ -49,7 +58,7 @@ export interface WorktreeDeps {
   repo: string;
   /** The owning (root) session id. */
   session: string;
-  /** Overrides for tests. */
+  /** 绝对目录覆盖（测试用）：给定时直接当根，不再取 git common dir。 */
   worktreeDir?: string;
   branchPrefix?: string;
 }
@@ -57,26 +66,51 @@ export interface WorktreeDeps {
 /**
  * The outcome of one worktree operation.
  *
- * `worktree` is the full new state on success; on a conflict the working tree is
- * left stopped and `files` names what has to be decided.
+ * `worktree` is the full new state on success, and also on a conflict — where the
+ * caller must persist a `conflict` record, because `path`/`branch`/`base` are all
+ * non-empty there (an empty `base` would make the stored DAG unreadable).
  */
 export type WorktreeOutcome =
   | { ok: true; worktree: DagWorktree; note?: string }
-  | { ok: false; error: string; conflict?: readonly string[] };
+  | { ok: false; error: string; conflict?: readonly string[]; worktree?: DagWorktree };
 
 /** Short prefix of the session id, used in both the path and the branch name. */
 function sessionSlug(session: string): string {
   return session.replace(/[^A-Za-z0-9_-]/g, '').slice(0, SESSION_PREFIX);
 }
 
+/**
+ * The repository's git common dir, absolute (#177).
+ *
+ * `rev-parse --git-common-dir` answers relative to `cwd`, so `.git` at the repo
+ * root and `../.git` from a subdirectory both have to be resolved against
+ * `deps.repo`. `--path-format=absolute` would be cleaner but needs git ≥ 2.31.
+ */
+async function commonGitDir(deps: WorktreeDeps): Promise<string | { error: string }> {
+  const result = await deps.git(deps.repo, ['rev-parse', '--git-common-dir']);
+  if (!result.ok) {
+    return { error: `无法确定 git 公共目录（不是 git 仓？）：${stderrOf(result)}` };
+  }
+  return resolve(deps.repo, result.stdout.trim());
+}
+
 /** The directory one session's worktrees live in. */
-export function worktreeRoot(deps: Pick<WorktreeDeps, 'repo' | 'session' | 'worktreeDir'>): string {
-  return join(deps.repo, deps.worktreeDir ?? DEFAULT_WORKTREE_DIR, sessionSlug(deps.session));
+export async function worktreeRoot(deps: WorktreeDeps): Promise<string | { error: string }> {
+  // 覆盖目录视为绝对路径（测试用），不再拼 git common dir 与 WORKTREE_SUBDIR。
+  if (deps.worktreeDir !== undefined) return join(deps.worktreeDir, sessionSlug(deps.session));
+  const root = await commonGitDir(deps);
+  if (typeof root !== 'string') return root;
+  return join(root, WORKTREE_SUBDIR, sessionSlug(deps.session));
 }
 
 /** The path one node's worktree occupies. */
-export function worktreePath(deps: WorktreeDeps, node: WorktreeNode): string {
-  return join(worktreeRoot(deps), node.id);
+export async function worktreePath(
+  deps: WorktreeDeps,
+  node: WorktreeNode
+): Promise<string | { error: string }> {
+  const root = await worktreeRoot(deps);
+  if (typeof root !== 'string') return root;
+  return join(root, node.id);
 }
 
 /** The branch one node's worktree is checked out on. */
@@ -108,6 +142,17 @@ async function shortHead(deps: WorktreeDeps, cwd = deps.repo): Promise<string> {
   return result.ok ? result.stdout.trim() : '';
 }
 
+/**
+ * 本轮 merge 的起点 commit，完整 sha（读不到时 `''`）。
+ *
+ * `base` 的契约是「这棵树从哪个 commit 起步」——`createWorktree` 也用完整 sha
+ * （{@link resolveBase}），合并记录保持同一形态，面板与 skill 才不必区分长短。
+ */
+async function fullHead(deps: WorktreeDeps): Promise<string> {
+  const result = await deps.git(deps.repo, ['rev-parse', 'HEAD']);
+  return result.ok ? result.stdout.trim() : '';
+}
+
 /** Resolve a commit argument; `HEAD` when the caller supplied none. */
 async function resolveBase(
   deps: WorktreeDeps,
@@ -130,7 +175,9 @@ export async function createWorktree(
   node: WorktreeNode,
   base?: string
 ): Promise<WorktreeOutcome> {
-  const path = worktreePath(deps, node);
+  const path = await worktreePath(deps, node);
+  // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
+  if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
   const existing = await registeredWorktrees(deps);
   if (existing.includes(path)) {
@@ -150,10 +197,9 @@ export async function createWorktree(
 /**
  * True when the main working tree has nothing a merge would sweep in.
  *
- * `--untracked-files=no` is required, not a shortcut: the worktree directory
- * itself (`.worktrees/`) is untracked until the user adds it to `.gitignore`, and
- * counting it as dirt would refuse every merge this module ever starts. Only
- * tracked modifications matter here — those are what a merge commit would carry.
+ * `--untracked-files=no` 是判据本身，不是省事：这里只关心会被 merge commit 卷走的
+ * **已跟踪**改动；untracked 文件从不进 merge commit，真要覆盖时 git 自己会拒绝。加上
+ * worktree 现在落在 git common dir（`.git/`）内部，本就不再出现在 `git status` 里。
  */
 async function mainTreeClean(deps: WorktreeDeps): Promise<boolean> {
   const result = await deps.git(deps.repo, ['status', '--porcelain', '--untracked-files=no']);
@@ -184,9 +230,11 @@ export async function mergeWorktree(
   deps: WorktreeDeps,
   node: WorktreeNode
 ): Promise<WorktreeOutcome> {
-  const path = worktreePath(deps, node);
+  const path = await worktreePath(deps, node);
+  // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
+  if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
-  const base = await shortHead(deps);
+  const base = await fullHead(deps);
   if (!(await mainTreeClean(deps))) {
     return {
       ok: false,
@@ -215,6 +263,9 @@ export async function mergeWorktree(
     return {
       ok: false,
       conflict: files,
+      // 冲突也是要落盘的节点状态：base 必须是真实 commit（空串会让整份 DAG
+      // 在下次读取时被判为 unreadable）。
+      worktree: { path, branch, base, state: 'conflict' },
       error:
         `merge 冲突（已停在冲突态，不做裁决）：${detail}；` +
         `在 ${path} 内解决后重跑 merge，或 git merge --abort 放弃`,
@@ -244,7 +295,9 @@ export async function removeWorktree(
   node: WorktreeNode,
   force = false
 ): Promise<WorktreeOutcome> {
-  const path = worktreePath(deps, node);
+  const path = await worktreePath(deps, node);
+  // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
+  if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
   const worktree: DagWorktree = { path, branch, base: await shortHead(deps, path), state: 'removed' };
   const existing = await registeredWorktrees(deps);

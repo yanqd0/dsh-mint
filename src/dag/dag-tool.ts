@@ -26,13 +26,7 @@
  */
 import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf } from './dag.js';
 import type { DagAction, DagDoc, DagWrite, DagWorktreeOp } from './dag.js';
-import {
-  createWorktree,
-  mergeWorktree,
-  removeWorktree,
-  worktreeBranch,
-  worktreePath,
-} from './dag-worktree.js';
+import { createWorktree, mergeWorktree, removeWorktree } from './dag-worktree.js';
 import type { WorktreeDeps, WorktreeNode } from './dag-worktree.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
@@ -299,14 +293,11 @@ async function executeWorktreeAction(
     const outcome = await mergeWorktree(deps, node);
     if (!outcome.ok) {
       // A conflict is a real state, not a refusal to hide: record it so the panel
-      // shows the node as conflicted, then answer with the actionable text.
-      if (outcome.conflict !== undefined) {
-        await persist(node, {
-          path: worktreePath(deps, node),
-          branch: worktreeBranch(deps, node),
-          base: '',
-          state: 'conflict',
-        });
+      // shows the node as conflicted, then answer with the actionable text. The
+      // outcome carries a complete record (path/branch/base) — persisting an empty
+      // `base` here once made the whole stored DAG unreadable on the next load.
+      if (outcome.conflict !== undefined && outcome.worktree !== undefined) {
+        await persist(node, outcome.worktree);
       }
       return refusal(outcome.error);
     }

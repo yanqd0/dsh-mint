@@ -70,23 +70,27 @@ afterEach(() => {
   rmSync(repo, { recursive: true, force: true });
 });
 
-describe('worktree naming (#172)', () => {
-  it('keeps the path inside the repository and under one session directory', () => {
+describe('worktree naming (#172/#177)', () => {
+  it('keeps the path under the git common dir and one session directory', async () => {
     const node: WorktreeNode = { id: 'a1' };
-    const root = worktreeRoot(deps());
+    const root = await worktreeRoot(deps());
+    expect(typeof root).toBe('string');
+    if (typeof root !== 'string') return;
     expect(root.startsWith(repo)).toBe(true);
-    expect(root).toContain(join(repo, '.worktrees'));
-    expect(worktreePath(deps(), node)).toBe(join(root, 'a1'));
+    expect(root).toContain(join('.git', 'dsh-mint', 'worktrees'));
+    expect(await worktreePath(deps(), node)).toBe(join(root, 'a1'));
     expect(worktreeBranch(deps(), node)).toBe(`dsh-mint/wt/${SESSION}/a1`);
   });
 
-  it('sanitises the session slug so a hostile id cannot escape the directory', () => {
+  it('sanitises the session slug so a hostile id cannot escape the directory', async () => {
     // Real session ids are already `[A-Za-z0-9_-]` (`isValidDagSession`), so this
     // is defence in depth: whatever reaches the path builder stays one component,
     // even when it is truncated to the session prefix.
     const hostile = deps({ session: '../../etc/passwd' });
-    const root = worktreeRoot(hostile);
-    expect(root.startsWith(join(repo, '.worktrees'))).toBe(true);
+    const root = await worktreeRoot(hostile);
+    expect(typeof root).toBe('string');
+    if (typeof root !== 'string') return;
+    expect(root.startsWith(join(repo, '.git', 'dsh-mint', 'worktrees'))).toBe(true);
     expect(root).not.toContain('..');
     expect(root.endsWith('etcpassw')).toBe(true);
   });
@@ -98,7 +102,8 @@ describe('createWorktree (#172)', () => {
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.worktree.state).toBe('active');
-    expect(outcome.worktree.path).toBe(worktreePath(deps(), { id: 'a1' }));
+    expect(outcome.worktree.path).toBe(await worktreePath(deps(), { id: 'a1' }));
+    expect(outcome.worktree.path).toContain(join('.git', 'dsh-mint', 'worktrees'));
     expect(outcome.worktree.branch).toBe(worktreeBranch(deps(), { id: 'a1' }));
     expect(outcome.worktree.base).toMatch(/^[0-9a-f]{40}$/);
     expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(outcome.worktree.path);
@@ -134,6 +139,22 @@ describe('createWorktree (#172)', () => {
     if (outcome.ok) return;
     expect(outcome.error).toContain('base 不是本仓的 commit');
   });
+
+  it('refuses a directory that is not a git repository instead of using it', async () => {
+    // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
+    const notARepo = mkdtempSync(join(tmpdir(), 'dsh-mint-wt-nogit-'));
+    try {
+      const outcome = await createWorktree(
+        { git, repo: notARepo, session: SESSION },
+        { id: 'a1' }
+      );
+      expect(outcome.ok).toBe(false);
+      if (outcome.ok) return;
+      expect(outcome.error).toContain('无法确定 git 公共目录');
+    } finally {
+      rmSync(notARepo, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('mergeWorktree (#172)', () => {
@@ -165,11 +186,30 @@ describe('mergeWorktree (#172)', () => {
     if (merged.ok) return;
     expect(merged.conflict).toContain('README.md');
     expect(merged.error).toContain('merge 冲突');
+    // 冲突也是要落盘的节点状态：path/branch/base 都必须齐备，base 为真实 commit
+    // （空串会让整份 DAG 在下次读取时被判为 unreadable）。
+    expect(merged.worktree?.state).toBe('conflict');
+    expect(merged.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
+    expect(merged.worktree?.path).toBe(created.worktree.path);
     // Left for a decision: the merge is still in progress and abortable.
     expect(gitIn(repo, 'status', '--porcelain')).toContain('UU README.md');
     gitIn(repo, 'merge', '--abort');
-    // Back to a clean working tree; `.worktrees/` is expected untracked state.
-    expect(gitIn(repo, 'status', '--porcelain', '--untracked-files=no').trim()).toBe('');
+    // Back to a clean working tree: the worktree lives inside `.git`, so it is not
+    // even untracked state in the main tree.
+    expect(gitIn(repo, 'status', '--porcelain').trim()).toBe('');
+  });
+
+  it('keeps the worktree out of the main tree status without a .gitignore', async () => {
+    // 落点改到 git common dir 内部（#177）的验收点：仓里**没有** `.gitignore`，
+    // 也不加 `--untracked-files=no`，主树仍必须看不见这棵树。
+    expect(() => gitIn(repo, 'status', '--porcelain')).not.toThrow();
+    const created = await createWorktree(deps(), { id: 'a1' });
+    expect(created.ok).toBe(true);
+    expect(gitIn(repo, 'status', '--porcelain').trim()).toBe('');
+    // 反过来确认它确实落在盘上，不是「没建出来所以干净」。
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(
+      join('.git', 'dsh-mint', 'worktrees')
+    );
   });
 
   it('refuses to merge into a main tree with tracked changes', async () => {
@@ -178,8 +218,8 @@ describe('mergeWorktree (#172)', () => {
     if (!created.ok) return;
     commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work #172');
     // A tracked file modified but not committed: exactly what a merge would drag
-    // into its commit. (An untracked `.worktrees/` must NOT count — see the
-    // successful-merge case above, where no `.gitignore` exists.)
+    // into its commit. (The worktree inside `.git` must NOT count — see the
+    // successful-merge and status cases above, where no `.gitignore` exists.)
     writeFileSync(join(repo, 'README.md'), '# dirty\n');
 
     const merged = await mergeWorktree(deps(), { id: 'a1' });

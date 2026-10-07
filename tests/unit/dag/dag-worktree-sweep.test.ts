@@ -63,7 +63,7 @@ async function seed(session: string, state: 'active' | 'merged' | 'conflict' | '
           status: 'done',
           verdict: 'pass',
           worktree: {
-            path: '/proj/.worktrees/s/a1',
+            path: '/proj/.git/dsh-mint/worktrees/s/a1',
             branch: 'dsh-mint/wt/s/a1',
             base: 'abc123',
             state,

@@ -215,7 +215,7 @@ export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
  * inside the workspace) plus file whitelists, not from confinement.
  */
 export interface DagWorktree {
-  /** Absolute path, always under the session workspace (`.worktrees/<s8>/<node>`). */
+  /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<s8>/<node>`（#177）。 */
   path: string;
   /** The branch the worktree is checked out on. */
   branch: string;
