@@ -41,7 +41,7 @@ mint({ args: ["plan","list","--milestone",""] })            // 空串 = 筛未�
 mint({ args: ["plan","list","--milestone","5","--status","running"] })
 ```
 
-TSV 列：`ID P Kind Status Title Labels Plan Updated`（`Plan` 形如 `#12`）。
+TSV 列：`ID P Kind Status Title Labels Plan Updated`（`Plan` 形如 `#<id>`）。
 
 ## show / get
 
@@ -79,7 +79,7 @@ mint({ args: ["search","keyword","--label","bug","--priority","0"] })
 ```js
 mint({ args: ["plan","list","--search","0.5.0"] })
 mint({ args: ["milestone","list","--search","running"] })
-mint({ args: ["plan","list","--search","#7"] })   // 按 id 过滤
+mint({ args: ["plan","list","--search","#<id>"] })   // 按 id 过滤（带 `#` 前缀）
 ```
 
 ## state（逐态推进）
@@ -157,7 +157,7 @@ mint({ args: ["milestone","set","4","--status","running","--force"] }) // 并行
 `milestone set --status` 语义：只有 `done`/`dropped` 是**手动终态**（不被派生覆盖）；
 写 `open`/`running` 只是临时覆盖，后续任何子项变化会按子项集合重算。
 
-**running 守卫（#104）**：任何**让 running 数增加**的写都会被拒——`--status running`、把在途
+**running 守卫**：任何**让 running 数增加**的写都会被拒——`--status running`、把在途
 （planned/dev/test/done）plan/issue 挂进 open milestone（挂载或随后的 `state plan`/`state start`）。
 错误文案直接给出放行命令；**唯一放行入口**是 `milestone set <ID> --status running --force`（`-f`），
 **只有用户明确要求并行版本时才用**。`done`/`dropped` 减少 running 数，不受守卫限制。

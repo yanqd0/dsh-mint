@@ -6,7 +6,7 @@
 
 - **一律用宿主 `mint` 工具**：插件进程内 spawn mint，不经 bash、不进会话沙箱、零授权；
   `args` 即 CLI 参数数组，输出原生 TSV（页脚 `# Page x/y` 在 stdout）。
-- **bash 兜底的专属症状（#60）**：workspace-write 下经 bash 跑 mint——**连只读命令 `mint list` 也算**——
+- **bash 兜底的专属症状**：workspace-write 下经 bash 跑 mint——**连只读命令 `mint list` 也算**——
   报 `mint: error: SQLite error: attempt to write a readonly database`（普通输出，不是工具级 error）。
   SQLite 打开库时即使只读也要写 journal，所以这不是 mint 损坏、也不是命令写错了。收敛路径：
   改用宿主 `mint` 工具 → 确需 bash 时按常规沙箱提权审批重试 → 或落到可写目录（`--db <可写路径>`/`MINT_DB_PATH`）。
@@ -28,21 +28,21 @@
 
 - 宿主 `exit_plan_mode` 的判据在 `src/host/planbind.ts`（`tools/pre-execute`），三条按序：
   1. 项目**没有已拆解的 mint plan** → 拒（`running`（有活跃子项），或 `open` 且已挂 ≥1 个 issue 都算已拆解；
-     **空 plan 不算**，#59/#135）。被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，不是门禁条件）。
-  2. **同一 milestone 内 `running` 的 plan 多于一个** → 拒并点名 id（#140）。mint 只守 milestone，这条纪律只能由本仓立；
+     **空 plan 不算**）。被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，不是门禁条件）。
+  2. **同一 milestone 内 `running` 的 plan 多于一个** → 拒并点名 id。mint 只守 milestone，这条纪律只能由本仓立；
      收敛路径（折进在跑的 plan / 停摆其 `planned` 子项 / `plan detach` 复活它的 open issue）写进拒绝文案，见 `flow-impl.md` §1。
      计数含「曾运行」派生的 running（子项混 `done/dropped` + `open`）。
-  3. **本会话不在计划模式** → 直接拒并给可行动文案，**不再白跑一次 mint spawn**（#142）。判定源取
+  3. **本会话不在计划模式** → 直接拒并给可行动文案，**不再白跑一次 mint spawn**。判定源取
      root 层能达到的那条：会话投影 `ctx.sessionProjections.stateOf(session,"plan").active`（宿主自己
      `exit_plan_mode` 用的就是这个值，日志投影、恢复安全）；投影读不到时退回本插件从 `session/event`
      观测到的 `plan/mode`（进程内；重启后的会话未知）。`ctx.planMode` **取不到**——plan-mode 挂在隔离的
      cordis group 里（`presets/standard.patch.yml` 的 `isolate: { planMode: true }`），隔离服务对 root 层不可见。
      两条都不可用时 fail-open，落到上面两条。
 - 门禁只管「项目里有没有已拆解的记录」与「一个 milestone 只跑一条 plan」；「是不是本会话的」交给下面两条软信号。
-- **会话级软信号（#111）**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
+- **会话级软信号**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
   结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；
   见到提示按 `flow-impl.md` 的补登记路径处理。
-- **非工具退出的软信号（#116）**：用户用 `/plan off` 或 GUI 切换离开计划模式时没有工具结果可挂，
+- **非工具退出的软信号**：用户用 `/plan off` 或 GUI 切换离开计划模式时没有工具结果可挂，
   改由概览条件行承载同一条软信号——本会话离开计划模式且尚无 mint 写操作时，`[Mint]` 概览会
   **一次性**多出一行补登记提示；本会话一旦有 mint 写操作即消失。工具路径与概览路径互斥，
   不会重复提示（插件监听 `session/event` 的 `plan/mode{active:false}`）。
@@ -53,7 +53,7 @@
   追加一条 `todo/write` 快照，客户端（`dsh-client-ui-conversation`）把 `todos` 投影渲染在
   **输入区上方的进度面板**（`conversation.input.dock`）。面板是只读展示。
 - 投影在**每个 `turn/start` 重置为 `null`**：一个 turn 里不写就没有面板；写一次后长期不更新，
-  显示的进度就是过期的（人类据此误判，这就是 #119 的现象）。
+  显示的进度就是过期的（人类据此误判）。
 - 插件只做**提醒**，不代写：`issue state` / `plan plan` / `plan close` 成功后在工具结果末尾追加
   一行「同步 todo」；子代理会话跳过（面板属于根 agent 的会话）。清单内容仍由模型写——
   它是实施步骤的拆解，不是 issue 行的镜像。
