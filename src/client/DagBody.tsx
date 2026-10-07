@@ -1,5 +1,5 @@
 /**
- * The plan DAG tab's body.
+ * The plan DAG tab's body (spec: `notes/plan-dag.md`).
  *
  * One SVG per document: nodes are `dag-model`'s boxes, edges its polylines, and
  * the status coloring comes from the same tone function the model tests cover.

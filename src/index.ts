@@ -41,7 +41,7 @@ export const inject = ['tools'];
  * inferred type stays a plain object (`apply` never sees `undefined`).
  */
 export const Config = z.object({
-  /** Reserved for mount-line config — no field here yet. */
+  /** 预留给挂载行配置：暂无消费方，等对应特性落地才起作用。 */
   debug: z.boolean().default(false),
   /**
    * Auto-allow mint sandbox escalations without any user prompt (B-v2).

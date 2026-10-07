@@ -147,7 +147,8 @@ export interface SubagentRunInfoLike {
  *
  * `stopReason` is the host's own wording (`error`, `cancelled`, …) and
  * `lastAssistantMessage` the child's final message — together they are the only
- * outcome available when a subagent died before reporting one.
+ * outcome available when a subagent died before reporting one (spec:
+ * `notes/plan-dag.md`).
  */
 export interface SubagentRunEndInfoLike extends SubagentRunInfoLike {
   stopReason?: string;

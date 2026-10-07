@@ -1,6 +1,6 @@
 /**
  * The plan DAG's drawing model: status coloring, node geometry, and the
- * topological layout the panel renders as SVG.
+ * topological layout the panel renders as SVG (spec: `notes/plan-dag.md`).
  *
  * The host publishes no coordinates — the document is a graph, and one layout
  * here keeps the browser the single place that decides pixels. Everything in
