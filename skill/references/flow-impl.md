@@ -43,6 +43,9 @@
 ## 2.5 并行批次执行
 
 批次判据与派发协议见 `references/parallel-exec.md`；plan 阶段在这里已经产出 `## 并行批次`。
+**分派边界**（哪些给子代理、哪些留主 agent）与全景 DAG 的分层见 `references/dag-exec.md`：
+测试/验证/远程与命令调用类低 context 任务派子代理（更省 token、判定更客观），
+总体评估、决策、流程控制与高 context 复杂任务留主 agent。
 
 - 一批在**同一条 assistant message** 里批量派 `subagent`（一 issue 一个）：并行启动，不要一条条等；
   提示词禁令必须写全（子代理看不到本对话）。
