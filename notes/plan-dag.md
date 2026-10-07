@@ -261,12 +261,15 @@
   新文件：`src/dag.ts` 100%、`src/dag-store.ts` 96.3%、`src/dag-tool.ts` 98.9%、`src/dag-lifecycle.ts` 87.4%、
   `src/client/dag-model.ts`+`dag-open.ts` 89–100%；`pnpm build` → `dist/index.js` + `dist/client.js`
   （bundle 内已含 `mint_plan_dag` / `/dsh-mint/dag` / `plan-dag`）。
-- **需要重启 harness 后才能验（本会话做不到：重启即结束本会话）**：
-  - `curl -s 'http://127.0.0.1:3081/dsh-mint/dag?session=<本会话 id>'` → `{ok:true,dag:{…},revision,file,autoOpen:true}`；
-    不存在的会话 → `dag:null`。
-  - 面板：自动打开（唯一 tab）/ 四态配色 / running 闪烁 / 悬停显示完整标题、`tokens`、`note` 原文；
-    `prefers-reduced-motion: reduce` 下降级为静态描边。
-  - 容错：文件缺失（空态）、损坏（「不可读 + 路径」）。
-  - 生命周期实机：派一个子代理（该节点先 `set running`），确认 `agent` 字段被回填、
-    `/tmp/mint/dag/<根会话>.json` 落在 main 会话（`parentSession` 语义已按宿主源码核对：
-    `packages/subagent/subagent/src/child-agent.ts` 的 `childSessionMeta()` 写 `parentSession: parentHeader.id`）。
+- **重启 harness 后实测（本机，2026-10-07，宿主换新 bundle 后）：**
+  - 路由：`curl 'http://127.0.0.1:3081/dsh-mint/dag?session=<本会话 id>'` → **200** + `{ok:true,dag:{version,session,title,revision,nodes,edges},revision,file,autoOpen:true}`；
+    不存在的会话 → **200 + `dag:null` + `file` + `autoOpen`**；`session=../etc` → **400**；无 `session` → **400**；
+    损坏文件（`{ not json`）→ **200 + `dag:null` + `warnings:["unreadable dag: invalid JSON: …"]` + `file`**。
+  - 工具实机：`mint_plan_dag({action:"get"})` → `[plan-dag] 节点 5，边 0：pending 1 / running 1 / done 3`（读的就是本会话文件）。
+  - **生命周期回填 + 根会话归属（实机，最强的一条）**：加节点 `agentcheck` 并 `set running` → 派一个探针子代理，让它自己调
+    `mint_plan_dag({action:"set",id:"agentcheck",status:"done",verdict:"pass",note:"…"})`：
+    文件里该节点 `agent = <子会话 id>`（`subagent/start` 回填）、`status/verdict/note/tokens` 是**子代理写的**
+    （`revision` 6→10，节点数 6）→ 归属解析到根会话成立，子代理无需 `init` 就写进了 main 的图。
+  - **仍需人眼确认（agent 无 DOM 可自证）**：tab 自动打开（唯一）、四态配色（黄 pending / 绿闪 running /
+    绿 done+pass / 红 done+fail）、悬停 tooltip（完整 `title`、`tokens`、`note` 原文）、
+    `prefers-reduced-motion: reduce` 降级；浏览器若命中旧 `client.js` 缓存需硬刷新。
