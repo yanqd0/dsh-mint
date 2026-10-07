@@ -96,6 +96,10 @@ plan/milestone 状态由**子项集合派生**（CLI 只读，非手动设置）
 >
 > **判断 plan 是否完成看 issue 是否全终止（done/dropped）**，而非只看 status 标签；
 > `partial` 即完成（含被吸收/废弃项），不要把 partial 当"未完成"。
+>
+> **`running` 有两种来源**：子项活跃（`planned/dev/test`），或「曾运行」残留（混有 `done/dropped` + `open`）。
+> 于是一条已 `done` 的旧 plan 只要被新 attach 一个 `open` issue 就会复活成 `running`——门禁的
+> 「同 milestone 至多一个 running plan」把两种都计数（#140）；不想要这次复活就 `plan detach` 那个 issue。
 
 ## 手动状态覆盖的边界
 

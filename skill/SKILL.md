@@ -28,8 +28,9 @@ description: >-
 
 ## 不可跳过（强制；见 `flow-impl.md`）
 
-- **plan 绑定（单向）**：计划模式退出前项目里必须有**已拆解**的 mint plan（`exit_plan_mode` 被拒）；
-  建 plan 不要求计划模式。存量 plan 整体接管仍先进计划模式，禁止 auto 跑完。
+- **plan 绑定（单向）**：计划模式退出前项目里必须有**已拆解**的 mint plan（`exit_plan_mode` 被拒），
+  且同一 milestone **至多一个 running plan**（>1 即被拒并点名）；建 plan 不要求计划模式。
+  存量 plan 整体接管仍先进计划模式，禁止 auto 跑完。
 - **并行批次**：plan 必带批次表（同批文件不相交）；见 `parallel-exec.md`。
 - **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue；**提 issue 一律 open；`plan plan` 在开工点（含计划模式退出口）执行**。
 - **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（→ dev）；open 直接改码 = 违反。

@@ -36,9 +36,11 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - **改码前门禁**：改某 issue 的代码前必须 `state start <id>`（dev）；commit 后立即 `state commit <id> --sha <前7位>`；
   同 plan 统一测试后 `plan close <plan> --test-cmd "<命令>"`。
 - **plan 绑定（单向）**：进计划模式的会话退出前必须有**已拆解**的 mint plan（`running`，或 `open` 且已挂 ≥1 个
-  issue；空 plan 不放行，门禁在 `src/planbind.ts`）；但**建 mint plan 不要求计划模式**。开工点（计划模式
+  issue；空 plan 不放行），且同一 milestone **至多一个 running plan**（>1 被拒并点名 id；跨 milestone 的 `-f`
+  并行版本放行）——门禁在 `src/planbind.ts`；但**建 mint plan 不要求计划模式**。开工点（计划模式
   退出口，或非计划模式开始改码前）对**本 plan** 的 issue 执行 `plan plan`（锁 `planned`）；登记到别的
-  plan/milestone 的建议一律留 `open`（#128/#135/#136，口径见 `skill/references/flow-impl.md`）。
+  plan/milestone 的建议一律留 `open`（#128/#135/#136/#140，口径见 `skill/references/flow-impl.md`）。
+  非计划模式下调用 `exit_plan_mode` 被插件直接拒并给可行动文案（#142，不再白跑一次 mint）。
 
 ## 架构事实（DSH 调研结论，写码前复核）
 

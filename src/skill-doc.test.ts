@@ -70,6 +70,9 @@ const SKILL_MARKERS: readonly string[] = [
   // #128: registration never pre-schedules; `plan plan` belongs to the start of
   // work, not to filing the issue.
   '提 issue 一律 open',
+  // #140: one milestone carries at most one running plan — the second is refused
+  // by the plan-mode exit gate, so the router has to carry the rule.
+  '至多一个 running plan',
 ];
 
 /** Rules that moved out of SKILL.md must still exist in their home file. */
@@ -103,6 +106,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '单向',
       '非计划模式',
       '开工点',
+      // #140: the three-condition gate sheet lives in flow-impl (the criterion,
+      // the milestone bucket, and the convergence paths for a refusal).
+      '至多一个 running plan',
     ],
   ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],

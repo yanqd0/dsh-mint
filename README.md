@@ -31,8 +31,15 @@ plan always has a mint plan behind it.
   `autoApprove` never silences this gate.
 - **Plan binding (one-way)** — `exit_plan_mode` is refused while the project has
   no **decomposed** mint plan (`running`, or `open` with at least one issue
-  attached; an empty plan never passes), so a host plan cannot drift away from
-  its mint record — but **creating a mint plan does not require plan mode**.
+  attached; an empty plan never passes) and while a **second plan in the same
+  milestone** is running (the refusal names the colliding plans and the ways to
+  converge: fold this session's work into the running plan, park its `planned`
+  issues, or `plan detach` the issue that revived a finished one; plans in
+  different milestones are the user's sanctioned parallel versions and pass), so
+  a host plan cannot drift away from its mint record — but **creating a mint plan
+  does not require plan mode**. Outside plan mode the plugin refuses
+  `exit_plan_mode` itself with an actionable message instead of the host-level
+  error, and pays no mint run for it (#142).
   Leaving plan mode (the start-of-work point) locks **this plan's** issues to
   `planned` via `plan plan`; advice filed for another plan or milestone stays
   `open`. Leaving plan mode from a session that has written nothing to mint

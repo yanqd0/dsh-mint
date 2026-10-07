@@ -21,10 +21,15 @@
 
 ## plan 绑定门禁
 
-- 宿主 `exit_plan_mode` 在项目**没有已拆解的 mint plan** 时被拒绝（对应 SKILL.md「plan 绑定（单向）」）：
-  `running`（有活跃子项），或 `open` 且已挂 ≥1 个 issue 都算已拆解；**空 plan 不算**（#59/#135）。
-- 门禁在 `tools/pre-execute` 实现；被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，
-  不是门禁条件）。门禁只管「项目里有没有已拆解的记录」；「是不是本会话的」交给下面两条软信号。
+- 宿主 `exit_plan_mode` 的判据在 `src/planbind.ts`（`tools/pre-execute`），三条按序：
+  1. 项目**没有已拆解的 mint plan** → 拒（`running`（有活跃子项），或 `open` 且已挂 ≥1 个 issue 都算已拆解；
+     **空 plan 不算**，#59/#135）。被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，不是门禁条件）。
+  2. **同一 milestone 内 `running` 的 plan 多于一个** → 拒并点名 id（#140）。mint 只守 milestone，这条纪律只能由本仓立；
+     收敛路径（折进在跑的 plan / 停摆其 `planned` 子项 / `plan detach` 复活它的 open issue）写进拒绝文案，见 `flow-impl.md` §1。
+     计数含「曾运行」派生的 running（子项混 `done/dropped` + `open`）。
+  3. **本会话不在计划模式**（宿主 `ctx.planMode.get(agent)` 报 `active === false` 且无 `pending`）→ 直接拒并给可行动文案，
+     **不再白跑一次 mint spawn**（#142）。服务缺失、判定抛错、`pending` 选择一律 fail-open 落到上面两条。
+- 门禁只管「项目里有没有已拆解的记录」与「一个 milestone 只跑一条 plan」；「是不是本会话的」交给下面两条软信号。
 - **会话级软信号（#111）**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
   结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；
   见到提示按 `flow-impl.md` 的补登记路径处理。

@@ -25,9 +25,13 @@ plan。
   **写**操作首次弹一次确认（写明目标项目与动作），之后同一会话同一项目不再询问。
   目标项目不存在时报候选清单而不是静默新建，且 `autoApprove` 不会让它免确认。
 - **plan 绑定（单向）** —— 项目没有**已拆解**的 mint plan 时 `exit_plan_mode` 被拒
-  （`running`，或 `open` 且已挂至少一个 issue；空 plan 不放行），宿主计划模式不会与 mint
-  plan 脱钩；但**建 mint plan 不要求计划模式**。退出计划模式（＝开工点）时对**本 plan**
-  的 issue 执行 `plan plan` 锁到 `planned`，挂到别的 plan/milestone 的建议一律保持 `open`。
+  （`running`，或 `open` 且已挂至少一个 issue；空 plan 不放行），且同一 milestone 里**第二条
+  running plan** 也会被拒（文案点名相撞的 plan 与收敛路径：折进在跑的那条、停摆其 `planned`
+  子项、或 `plan detach` 掉复活旧 plan 的那个 issue；跨 milestone 是用户授权的并行版本，放行），
+  宿主计划模式不会与 mint plan 脱钩；但**建 mint plan 不要求计划模式**。非计划模式下调
+  `exit_plan_mode` 由插件直接拒并给可行动文案（不再是宿主级错误，也不再白跑一次 mint，#142）。
+  退出计划模式（＝开工点）时对**本 plan** 的 issue 执行 `plan plan` 锁到 `planned`，
+  挂到别的 plan/milestone 的建议一律保持 `open`。
   本会话对 mint **零写操作**地离开计划模式时，结果里会附一条补登记提示——项目里的
   running plan 未必是本次工作的记录。
   **非工具退出**（`/plan off`、GUI 切换）没有工具结果可挂，改由 `[Mint]` 概览

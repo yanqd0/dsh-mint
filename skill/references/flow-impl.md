@@ -14,7 +14,12 @@
   逐 issue `state start` → 改码。两条序列只差是否走宿主计划审批与退出门禁。
 - **存量 plan 接管**：整体/多 issue 一次跑完 → **必须先进入宿主 plan 模式**再执行，**禁止 auto 模式直接跑完**；
   用户已点名**具体单个 issue** → 按指令直接 `state start`，不必先进计划模式。
-- 门禁由插件 pre-execute 实现（见 `host-dsh.md`）：项目里没有**已拆解**的 mint plan 时 `exit_plan_mode` 被拒。
+- 门禁由插件 pre-execute 实现（见 `host-dsh.md`），判据三条：①项目里有**已拆解**的 mint plan
+  （`running`，或 `open` 且已挂 ≥1 个 issue；空 plan 与完成态不算）；②同一 milestone 内 **至多一个 running plan**
+  （>1 即被拒并点名 id；跨 milestone 是用户 `-f` 授权的并行版本，放行）；③非计划模式下调用它直接给可行动文案，不跑 mint。
+- **被拒时怎么收敛（#140）**：①本次工作折进在跑的那条 plan（`plan attach`）；②那条 plan 属于别的会话 → 交回用户；
+  ③它只是被新登记的 `open` issue 复活的旧 plan（`running` 也派生自 `{done|dropped} + open`）→ `plan detach` 释放；
+  「停摆其排期」只能对其 `planned` 子项 `issue state reset`（`dev/test` 不可 reset，必须交回该会话）。
 
 **为什么 `plan plan` 在退出口做不算违反 #128**：#128 约束的是**登记别处的新 issue**（建议一律留在 `open`）；
 当前 plan 的 issue 在「本次工作开工」那一刻锁到 `planned`，计划模式退出口正是那一刻（#135/#136）。
