@@ -1,4 +1,15 @@
-import { cpSync, existsSync, lstatSync, readdirSync, readFileSync, rmSync } from 'node:fs';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
+  type Stats,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,17 +31,54 @@ import { fileURLToPath } from 'node:url';
  * untouched only when every file in the bundled skill already matches byte for
  * byte (a SKILL.md-only check missed `references/` edits — #72); anything else
  * is replaced. Extra files already in the target are tolerated on the skip
- * path, so a user's own additions survive a no-op sync. A target that already
- * IS a symlink is left alone — the dev flow (`scripts/install-dsh.sh`) owns
- * symlinks. Every failure logs one line and returns `{ ok: false }`; it never
- * breaks plugin load or package install.
+ * path, so a user's own additions survive a no-op sync.
+ *
+ * Ownership (#153) — this module only ever touches the copy **it** installed:
+ *
+ * - a copy carries {@link OWNER_MARKER}; a copy made before that marker existed
+ *   is recognised by its `SKILL.md` frontmatter. Anything else (a foreign
+ *   directory, a regular file) is reported once and left alone, and only an
+ *   explicit `force` takes it over;
+ * - a symlink target is never followed or clobbered: the dev flow
+ *   (`scripts/install-dsh.sh --link`) owns symlinks, so a dangling or foreign
+ *   one is reported instead of repaired — `force` unlinks it first.
+ *
+ * Every failure logs one line and returns `{ ok: false }`; it never breaks
+ * plugin load or package install.
  */
 
 const DIRNAME = dirname(fileURLToPath(import.meta.url));
 
+/** Skill name: the directory under `$DSH_HOME/skills` and the frontmatter `name`. */
+export const SKILL_NAME = 'mint';
+
+/**
+ * Marker file written into an installed copy (#153).
+ *
+ * Ownership has to be answerable *positively* before anything is deleted, and a
+ * copy interrupted mid-sync may have no `SKILL.md` yet — so the marker goes in
+ * first and identifies the directory even then.
+ */
+export const OWNER_MARKER = '.dsh-mint-skill';
+
+/** Marker body; the reader only checks that the file exists. */
+const OWNER_MARKER_CONTENT = '@yanqd0/dsh-mint\n';
+
 export interface InstallResult {
   ok: boolean;
   reason?: string;
+}
+
+/** Options for {@link installSkill}. */
+export interface InstallOptions {
+  /** Harness config root; defaults to `$DSH_HOME` or `~/.dsh`. */
+  dshHome?: string | undefined;
+  /** Bundled skill directory; defaults to `dist/skill` beside this module. */
+  source?: string | undefined;
+  /** Take over a target that cannot be identified as this plugin's own. */
+  force?: boolean | undefined;
+  /** One line per outcome worth explaining. */
+  log?: ((message: string) => void) | undefined;
 }
 
 /** DSH_HOME from the environment, else `~/.dsh` — mirrors scripts/install-dsh.sh. */
@@ -45,7 +93,44 @@ export function skillSource(): string {
 
 /** The discovery target `dsh-skill-filesystem` reads. */
 export function skillTarget(dshHome: string): string {
-  return join(dshHome, 'skills', 'mint');
+  return join(dshHome, 'skills', SKILL_NAME);
+}
+
+/**
+ * The `name` of a skill file's leading frontmatter block, or `undefined` when it
+ * does not parse.
+ *
+ * Only the first `name:` line of that block is read; this identifies an
+ * installation, it does not validate a skill file.
+ */
+export function frontmatterName(raw: string): string | undefined {
+  const block = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/u.exec(raw)?.[1];
+  if (block === undefined) return undefined;
+  const value = /^\s*name:\s*(.+?)\s*$/mu.exec(block)?.[1];
+  if (value === undefined) return undefined;
+  return value.replace(/^(['"])(.*)\1$/u, '$2');
+}
+
+/**
+ * True when `dir` is a copy this plugin installed.
+ *
+ * Positive identification only, so a guard never deletes something foreign: the
+ * marker written by {@link installSkill}, or — for a copy from before the
+ * marker — a `SKILL.md` whose frontmatter names this skill. An unreadable or
+ * dangling path answers `false`, which only ever means "leave it alone".
+ */
+export function looksLikeOurSkill(dir: string): boolean {
+  try {
+    readFileSync(join(dir, OWNER_MARKER));
+    return true;
+  } catch {
+    // no marker: fall back to the frontmatter of a pre-marker copy
+  }
+  try {
+    return frontmatterName(readFileSync(join(dir, 'SKILL.md'), 'utf8')) === SKILL_NAME;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -73,8 +158,9 @@ function listFiles(root: string, base: string = root): string[] {
  * bytes.
  *
  * Extra target files are deliberately ignored: the skip path must never delete
- * files a user put there, and an orphan reference in the copy is harmless
- * because SKILL.md — always synced — is the only router.
+ * files a user put there (the ownership marker among them), and an orphan
+ * reference in the copy is harmless because SKILL.md — always synced — is the
+ * only router.
  */
 function isCurrent(source: string, target: string): boolean {
   try {
@@ -89,33 +175,71 @@ function isCurrent(source: string, target: string): boolean {
   }
 }
 
+/** `lstatSync` without the throw: the shape check must see symlinks as links. */
+function lstatOrUndefined(path: string): Stats | undefined {
+  try {
+    return lstatSync(path);
+  } catch {
+    return undefined;
+  }
+}
+
 /**
  * Sync the bundled skill into the DSH skill directory.
  *
  * Never throws: every failure path returns `{ ok: false, reason }` after one
  * log line, so neither a postinstall nor a plugin load can fail over it.
  */
-export function installSkill(
-  opts: { dshHome?: string; source?: string; log?: (message: string) => void } = {},
-): InstallResult {
+export function installSkill(opts: InstallOptions = {}): InstallResult {
   const log = opts.log ?? ((message: string) => process.stderr.write(`${message}\n`));
   const source = opts.source ?? skillSource();
   const target = skillTarget(opts.dshHome ?? resolveDshHome());
+  const force = opts.force === true;
   try {
     if (!existsSync(source)) {
       log(`[dsh-mint] skill source missing (${source}) — skipping skill install`);
       return { ok: false, reason: 'source missing' };
     }
-    if (existsSync(target)) {
-      // the dev symlink (scripts/install-dsh.sh) owns the target — never clobber it
-      if (lstatSync(target).isSymbolicLink()) {
-        return { ok: true };
+    const existing = lstatOrUndefined(target);
+    if (existing !== undefined) {
+      if (existing.isSymbolicLink()) {
+        if (!force) {
+          // the dev flow (scripts/install-dsh.sh) owns symlinks — never clobber one
+          if (existsSync(target)) {
+            return { ok: true, reason: 'symlink' };
+          }
+          log(
+            `[dsh-mint] skill target is a dangling symlink (${target}) — repoint or remove it, then reload`,
+          );
+          return { ok: false, reason: 'dangling symlink' };
+        }
+        // unlink removes the link itself, never the directory it points at
+        unlinkSync(target);
+      } else if (existing.isDirectory()) {
+        if (!force) {
+          if (!looksLikeOurSkill(target)) {
+            log(
+              `[dsh-mint] skill target is not this plugin's copy, left alone (${target}) — use --force to replace it`,
+            );
+            return { ok: false, reason: 'foreign skill' };
+          }
+          if (isCurrent(source, target)) {
+            return { ok: true };
+          }
+        }
+        rmSync(target, { recursive: true, force: true });
+      } else {
+        if (!force) {
+          log(`[dsh-mint] skill target is not a directory, left alone (${target})`);
+          return { ok: false, reason: 'not a directory' };
+        }
+        unlinkSync(target);
       }
-      if (isCurrent(source, target)) {
-        return { ok: true };
-      }
-      rmSync(target, { recursive: true, force: true });
     }
+    // The marker goes in before the content, so an interrupted sync stays
+    // identifiable as this plugin's copy and is repaired on the next load.
+    mkdirSync(target, { recursive: true });
+    writeFileSync(join(target, OWNER_MARKER), OWNER_MARKER_CONTENT);
     cpSync(source, target, { recursive: true });
     return { ok: true };
   } catch (error) {
