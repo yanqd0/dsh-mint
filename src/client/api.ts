@@ -13,6 +13,7 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
+  MintDagPayload,
   MintDetailPayload,
   MintFailurePayload,
   MintIssuePayload,
@@ -130,5 +131,8 @@ export function createApi(options: CreateApiOptions): MintApiLike {
       get<MintDetailPayload<ContainerDetail>>(ROUTES.plan, { id: String(id) }, signal),
     milestone: (id, signal) =>
       get<MintDetailPayload<ContainerDetail>>(ROUTES.milestone, { id: String(id) }, signal),
+    // The DAG route takes no query beyond the session: the prober and the panel
+    // both read the same per-session file.
+    dag: (signal) => get<MintDagPayload>(ROUTES.dag, {}, signal),
   };
 }

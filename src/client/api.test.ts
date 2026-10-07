@@ -132,4 +132,31 @@ describe('createApi', () => {
     await api.meta(undefined, false);
     expect(calls[2]?.url).toBe('/app/dsh-mint/meta?session=s1');
   });
+
+  it('reads the DAG by session alone', async () => {
+    const calls: Call[] = [];
+    const controller = new AbortController();
+    const body =
+      '{"ok":true,"dag":null,"revision":0,"file":"/tmp/mint/dag/s1.json","autoOpen":true}';
+    const api = createApi({
+      sessionId: 's1',
+      baseUri: 'http://host/app/',
+      fetch: fetchStub(body, 200, calls),
+    });
+    await api.dag(controller.signal);
+    // The route is the only one keyed by the session file rather than a project,
+    // so nothing but the session travels in the query.
+    expect(calls[0]?.url).toBe('/app/dsh-mint/dag?session=s1');
+    expect(calls[0]?.method).toBe('GET');
+    expect(calls[0]?.signal).toBe(controller.signal);
+  });
+
+  it('reports a refused DAG read as a failure envelope', async () => {
+    const api = createApi({
+      sessionId: '../etc',
+      baseUri: 'http://host/',
+      fetch: fetchStub('{"ok":false,"error":"invalid session"}', 400),
+    });
+    expect(await api.dag()).toEqual({ ok: false, error: 'invalid session' });
+  });
 });

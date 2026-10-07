@@ -8,6 +8,7 @@
  */
 import type { CSSProperties } from 'react';
 
+import type { DagTone } from './dag-model.js';
 import type { StatusTone } from './model.js';
 
 export const SHELL: CSSProperties = {
@@ -230,3 +231,90 @@ export function placementChip(kind: PlacementKind): CSSProperties {
       };
   }
 }
+
+/**
+ * The DAG pane's frame. Same column shape as {@link SHELL}, minus the header:
+ * the pane is one scrollable canvas and one summary line.
+ */
+export const DAG_SHELL: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  height: '100%',
+  minHeight: 0,
+  color: 'var(--dsw-alias-label-primary)',
+};
+
+/**
+ * The scrolling viewport around the SVG.
+ *
+ * `position: relative` is what anchors the hover tooltip, and it must live on
+ * the canvas rather than on a node: an absolutely positioned tooltip inside an
+ * `<svg>` is not something every engine lays out the same way.
+ */
+export const DAG_CANVAS: CSSProperties = {
+  position: 'relative',
+  flex: 1,
+  minHeight: 0,
+  overflow: 'auto',
+  padding: 8,
+};
+
+/**
+ * The hover tooltip: the node's full text next to its box.
+ *
+ * `maxHeight` plus `overflow: auto` is the contract from the spec — a node's
+ * `note` is a subagent's conclusion quoted verbatim, and it can be long; the
+ * tooltip scrolls instead of stretching past the pane.
+ */
+export const DAG_TOOLTIP: CSSProperties = {
+  position: 'absolute',
+  zIndex: 1,
+  maxWidth: 320,
+  maxHeight: 240,
+  overflow: 'auto',
+  padding: '6px 8px',
+  borderRadius: 6,
+  border: '1px solid var(--dsw-alias-border-l1)',
+  background: 'var(--dsw-alias-bg-layer-2)',
+  color: 'var(--dsw-alias-label-primary)',
+  fontSize: 12,
+  lineHeight: 1.5,
+  whiteSpace: 'pre-wrap',
+  wordBreak: 'break-word',
+  pointerEvents: 'none',
+};
+
+/** The class a pulsing node carries; its keyframes live in the body's `<style>`. */
+export const DAG_RUNNING_CLASS = 'dsh-mint-dag-running';
+
+/**
+ * One node box, tinted by its tone.
+ *
+ * The fill is a mix of the tone into the panel's own layer, so a node keeps the
+ * page's light/dark surface instead of becoming a flat swatch; the stroke is the
+ * tone at full strength, which is what makes `running` read as brighter than
+ * `done`.
+ *
+ * @param tone - the node's theme state tone.
+ */
+export function dagNodeStyle(tone: DagTone): CSSProperties {
+  const token = `var(--dsw-alias-state-${tone}-primary)`;
+  return {
+    fill: `color-mix(in srgb, ${token} 12%, var(--dsw-alias-bg-layer-1))`,
+    stroke: token,
+    strokeWidth: 1.5,
+  };
+}
+
+/** The node label: the SVG text an ellipsis-free six-code-point label sits in. */
+export const DAG_NODE_LABEL: CSSProperties = {
+  fill: 'var(--dsw-alias-label-primary)',
+  fontSize: 12,
+  fontFamily: 'inherit',
+};
+
+/** One line of the tooltip: technical fields are secondary to the prose. */
+export const DAG_TOOLTIP_META: CSSProperties = {
+  color: 'var(--dsw-alias-label-secondary)',
+  fontSize: 11,
+};

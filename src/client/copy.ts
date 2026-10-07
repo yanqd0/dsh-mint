@@ -81,6 +81,25 @@ export const ZH = {
 
   'count.issue.one': '{count} 个 issue',
   'count.issue.other': '{count} 个 issue',
+
+  'dag.type.label': 'Plan DAG',
+  'dag.guide.title': 'Plan DAG',
+  'dag.guide.description': '查看本会话 plan 的节点与依赖',
+  'dag.empty': '本会话暂无 DAG',
+  'dag.unreadable': 'DAG 不可读',
+  'dag.file': '文件 {path}',
+  'dag.count': '{nodes} 个节点，{edges} 条边',
+  'dag.runningCount': '{count} 个 running',
+  'dag.status.pending': 'pending',
+  'dag.status.running': 'running',
+  'dag.status.done': 'done',
+  'dag.verdict.pass': 'pass',
+  'dag.verdict.fail': 'fail',
+  'dag.phase.research': 'research',
+  'dag.phase.exec': 'exec',
+  'dag.tokens': '{tokens} tokens',
+  'dag.note': '结果原文',
+  'dag.node.id': '{id}',
 } as const satisfies Record<string, string>;
 
 /** Every key the panel may ask for. A typo is a compile error, not a raw key. */
@@ -147,6 +166,25 @@ export const EN = {
 
   'count.issue.one': '{count} issue',
   'count.issue.other': '{count} issues',
+
+  'dag.type.label': 'Plan DAG',
+  'dag.guide.title': 'Plan DAG',
+  'dag.guide.description': "This session's plan DAG: nodes and dependencies",
+  'dag.empty': 'No DAG in this session',
+  'dag.unreadable': 'DAG is unreadable',
+  'dag.file': 'File {path}',
+  'dag.count': '{nodes} nodes, {edges} edges',
+  'dag.runningCount': '{count} running',
+  'dag.status.pending': 'pending',
+  'dag.status.running': 'running',
+  'dag.status.done': 'done',
+  'dag.verdict.pass': 'pass',
+  'dag.verdict.fail': 'fail',
+  'dag.phase.research': 'research',
+  'dag.phase.exec': 'exec',
+  'dag.tokens': '{tokens} tokens',
+  'dag.note': 'Result',
+  'dag.node.id': '{id}',
 } as const satisfies Record<CopyKey, string>;
 
 /**
@@ -154,9 +192,13 @@ export const EN = {
  *
  * `mint` is a brand, and `Issue` / `Plan` / `Milestone` are mint's key concepts:
  * the panel names them in English whatever the active locale (the concept words
- * also stay English *inside* the Chinese sentences, e.g. `所属 plan`). The list
- * is asserted in both directions by `copy.test.ts`, so "kept in English" is a
- * checked decision rather than a habit.
+ * also stay English *inside* the Chinese sentences, e.g. `所属 plan`). The DAG
+ * tab adds two more groups: the tab's own name (it *is* the plan's name), and the
+ * enumerated values a node carries — `pending` / `running` / `done`, `pass` /
+ * `fail`, `research` / `exec` are mint's vocabulary, and a tooltip that renamed
+ * them would disagree with the tool the reader just called. The list is asserted
+ * in both directions by `copy.test.ts`, so "kept in English" is a checked
+ * decision rather than a habit.
  */
 export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'type.label',
@@ -165,6 +207,19 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'view.milestones',
   'container.plan',
   'container.milestone',
+  'dag.type.label',
+  'dag.guide.title',
+  'dag.status.pending',
+  'dag.status.running',
+  'dag.status.done',
+  'dag.verdict.pass',
+  'dag.verdict.fail',
+  'dag.phase.research',
+  'dag.phase.exec',
+  // A token count is a unit, not a sentence: `12 tokens` reads the same in both.
+  'dag.tokens',
+  // A node id is an opaque identifier; nothing about it is language-specific.
+  'dag.node.id',
 ];
 
 /** The panel's translate seat: keys are checked against {@link CopyKey}. */

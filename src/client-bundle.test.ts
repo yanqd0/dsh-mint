@@ -99,7 +99,12 @@ describe('client bundle', () => {
   it('materializes into a plugin exporting apply and its service inject list', () => {
     const exports = materialize(loadBundle());
     expect(typeof exports.apply).toBe('function');
-    expect(Array.from(exports.inject as string[])).toEqual(['slots', 'locale', 'sidebarRightTabs']);
+    expect(Array.from(exports.inject as string[])).toEqual([
+      'slots',
+      'locale',
+      'sidebarRightTabs',
+      'sidebarRight',
+    ]);
   });
 
   it('requires only modules from the platform table', () => {

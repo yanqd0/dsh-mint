@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { labelBadge, pill, placementChip } from './styles.js';
+import { DAG_RUNNING_CLASS, dagNodeStyle, labelBadge, pill, placementChip } from './styles.js';
 
 describe('panel styles', () => {
   // The tone is the only thing that varies, and it must reach a real theme token:
@@ -30,6 +30,26 @@ describe('panel styles', () => {
     expect(plan.color).toBe('var(--dsw-alias-label-secondary)');
     expect(plan.borderColor).toBe('var(--dsw-alias-border-l1)');
     expect(plan.borderRadius).toBe(999);
+  });
+});
+
+describe('DAG node styles', () => {
+  // The tone reaches a real theme token, exactly like the status pill: an
+  // invented token would render every node as an unstyled box.
+  it('tints and strokes a node from the theme state tokens', () => {
+    for (const tone of ['warn', 'success', 'error'] as const) {
+      const style = dagNodeStyle(tone);
+      expect(style.stroke).toBe(`var(--dsw-alias-state-${tone}-primary)`);
+      expect(style.fill).toBe(
+        `color-mix(in srgb, var(--dsw-alias-state-${tone}-primary) 12%, var(--dsw-alias-bg-layer-1))`
+      );
+    }
+  });
+
+  // The class is the only hook the injected keyframes have; renaming it here
+  // without renaming the `<style>` block would silently stop the pulse.
+  it('names the pulsing node class once', () => {
+    expect(DAG_RUNNING_CLASS).toBe('dsh-mint-dag-running');
   });
 });
 

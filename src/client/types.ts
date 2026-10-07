@@ -11,6 +11,7 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
+  MintDagPayload,
   MintDetailPayload,
   MintIssuePayload,
   MintListPayload,
@@ -23,11 +24,17 @@ import type { CopyTranslate, Translate } from './copy.js';
 export type {
   ContainerChild,
   ContainerDetail,
+  DagNodeView,
+  DagPhase,
+  DagStatus,
+  DagVerdict,
+  DagView,
   IssueDetail,
   IssueItem,
   IssuePlacement,
   LabelItem,
   MilestoneItem,
+  MintDagPayload,
   MintDetailPayload,
   MintIssuePayload,
   MintListPayload,
@@ -78,6 +85,29 @@ export interface SidebarRightTabsLike {
   register(definition: TabDefinitionLike): () => void;
 }
 
+/** One open tab, as `openTabs.getSnapshot()` reports it. */
+export interface SidebarOpenTabLike {
+  sessionId: string;
+  kind: string;
+}
+
+/**
+ * Subset of the right sidebar runtime (`ctx.sidebarRight`).
+ *
+ * Only what the DAG tab's auto-open needs: the current on-screen session
+ * (`mounted`), what is already open (`openTabs`), and the one call that opens a
+ * page type. `subscribe` stays optional — the prober polls instead, so it works
+ * against a double that only implements snapshots.
+ */
+export interface SidebarRightLike {
+  openTab(kind: string, options?: { params?: Record<string, unknown> }): void;
+  readonly mounted: {
+    getSnapshot(): string | undefined;
+    subscribe?(listener: (value: string | undefined) => void): () => void;
+  };
+  readonly openTabs: { getSnapshot(): readonly SidebarOpenTabLike[] };
+}
+
 /** Registration options for a keyed slot body. */
 export interface SlotRegistrationLike {
   name: string;
@@ -100,6 +130,12 @@ export interface ClientContextLike {
   locale: LocaleServiceLike;
   slots: SlotsServiceLike;
   sidebarRightTabs: SidebarRightTabsLike;
+  /**
+   * The right sidebar runtime. Optional on purpose: `inject` declares the
+   * package, but a lean context (a test double, a host without the sidebar)
+   * simply has no such service, and the panel must still register.
+   */
+  sidebarRight?: SidebarRightLike;
   /** Owns a registration for the plugin's lifetime; the host always provides it. */
   effect?(callback: () => unknown, label?: string): unknown;
 }
@@ -133,6 +169,13 @@ export interface MintApiLike {
     id: number,
     signal?: AbortSignal
   ): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
+  /**
+   * The plan DAG of this session (plan #31).
+   *
+   * Unlike every other read it is keyed by the *session file* rather than the
+   * project, and a missing file is a normal answer (`dag: null`), not a failure.
+   */
+  dag(signal?: AbortSignal): Promise<MintResponse<MintDagPayload>>;
 }
 
 /** The actions a tab body may take on its own occurrence. */
