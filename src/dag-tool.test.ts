@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { dagFilePath, readDag, updateDag } from './dag-store.js';
+import { clearMeasurements, lastMeasurement } from './dag-metrics.js';
 import type { DagNodeView } from './records.js';
 import { installDagLifecycle } from './dag-lifecycle.js';
 import {
@@ -15,7 +16,13 @@ import {
   rootSessionId,
 } from './dag-tool.js';
 import type { DagToolOutcome } from './dag-tool.js';
-import type { AgentCwdLike, AgentsLike, DshContext, ToolDefinitionLike } from './types.js';
+import type {
+  AgentCwdLike,
+  AgentsLike,
+  DshContext,
+  SessionProjectionsLike,
+  ToolDefinitionLike,
+} from './types.js';
 
 /**
  * The `mint_plan_dag` surface (plan #31).
@@ -212,6 +219,132 @@ describe('executeDagTool', () => {
   it('reports a session without a DAG as an empty state, not an error', async () => {
     const outcome = await run(SESSION, { action: 'get' });
     expect(outcome).toEqual({ ok: true, summary: '[plan-dag] 本会话暂无 DAG' });
+  });
+
+  // #168: `set status="done"` is often the last moment the child session is
+  // still alive, so the tool takes the node's final measurement right there —
+  // after its own write, so the answer can never be delayed by a measurement.
+  describe('persists a sample when a node settles (#168)', () => {
+    const CHILD = 'child-168';
+
+    // The measurement cache is process-wide by design; these cases share one
+    // node id, so each starts from an empty cache.
+    beforeEach(() => {
+      clearMeasurements();
+    });
+
+    /** The agent registry and projections one measurable child needs. */
+    function measurableHost(): {
+      agents: AgentsLike;
+      projections: SessionProjectionsLike;
+    } {
+      const child = { id: CHILD, header: {} };
+      const states = new Map<unknown, Record<string, unknown>>([
+        [
+          child,
+          {
+            tokenUsage: {
+              totals: {
+                uncachedInputTokens: 3,
+                outputTokens: 5,
+                cacheReadTokens: 0,
+                cacheWriteTokens: 0,
+              },
+            },
+            subagentTiming: { settledMs: 1200, active: null },
+          },
+        ],
+      ]);
+      return {
+        // Only the child this case is about: any other agent id is one the host
+        // no longer knows, which is the case the tool has to survive.
+        agents: { get: (id) => (id === CHILD ? { session: child } : undefined) },
+        projections: { stateOf: (target, key) => states.get(target)?.[key] },
+      };
+    }
+
+    /** Seed one running node that already names its child session. */
+    async function seedRunningNode(agent = CHILD): Promise<void> {
+      expect((await run(SESSION, { action: 'init', title: 'plan' })).ok).toBe(true);
+      const added = await run(SESSION, {
+        action: 'add',
+        nodes: [{ id: 'a', label: '总①', title: '第一轮', phase: 'exec' }],
+      });
+      expect(added.ok).toBe(true);
+      const started = await run(SESSION, { action: 'set', id: 'a', status: 'running', agent });
+      expect(started.ok).toBe(true);
+    }
+
+    it('stores the reading next to the node it settles', async () => {
+      await seedRunningNode();
+      const host = measurableHost();
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, dagDir: dir, ...host },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass' }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      const sample = read.doc.samples?.['a'];
+      expect(sample?.tokens).toBe(8);
+      // A settled node's timing is the projection's own `settledMs`.
+      expect(sample?.elapsed_ms).toBe(1200);
+      expect(typeof sample?.at).toBe('number');
+      // The verdict the model reported is untouched by the measurement.
+      expect(read.doc.nodes[0]).toMatchObject({ status: 'done', verdict: 'pass' });
+      expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 8, elapsed_ms: 1200 });
+    });
+
+    it('writes no sample when the node names a child the host cannot resolve', async () => {
+      await seedRunningNode('gone');
+      const host = measurableHost();
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, dagDir: dir, ...host },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass' }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples).toBeUndefined();
+      expect(lastMeasurement(SESSION, 'a')).toBeUndefined();
+    });
+
+    it('writes no sample without a projection registry', async () => {
+      await seedRunningNode();
+      const { agents } = measurableHost();
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, dagDir: dir, agents },
+        { action: 'set', id: 'a', status: 'done', verdict: 'pass' }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples).toBeUndefined();
+    });
+
+    it('does not measure a node that is only being started', async () => {
+      // The same host that answers the `done` case: only the status decides
+      // whether a measurement is taken, so a `running` node stays unmeasured.
+      await seedRunningNode();
+      const host = measurableHost();
+      const outcome = await executeDagTool(
+        { sessionId: SESSION, dagDir: dir, ...host },
+        { action: 'set', id: 'a', status: 'running' }
+      );
+      expect(outcome.ok).toBe(true);
+
+      const read = await readDag(SESSION, dir);
+      expect(read.state).toBe('ok');
+      if (read.state !== 'ok') return;
+      expect(read.doc.samples).toBeUndefined();
+      expect(lastMeasurement(SESSION, 'a')).toBeUndefined();
+    });
   });
 
   it('refuses add/set before init without creating a file', async () => {

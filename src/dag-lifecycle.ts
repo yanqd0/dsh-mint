@@ -9,17 +9,31 @@
  * - `subagent/start` backfills the node's `agent` id, so the panel can show
  *   which child is executing a step.
  * - `subagent/end` settles a node the child never reported on: `fail` plus the
- *   stop reason, which is the "subagent crashed without a verdict" backstop.
+ *   stop reason, which is the "subagent crashed without a verdict" backstop —
+ *   and, before doing so, it measures the child one last time and persists that
+ *   reading into the document's `samples` (#168), because a child's live
+ *   projection state disappears with its session and the number must outlive it.
  *
  * Two rules keep it safe. It **never creates a node** — a node is a modelling
  * decision only `init`/`add` may make — and it **never throws or awaits**: these
  * are fire-and-forget listeners on the host's event bus, and one failing write
- * must not take down an unrelated event dispatch.
+ * must not take down an unrelated event dispatch. The persistence step is the
+ * same shape: it runs beside `settle`, never in front of it, so a measurement
+ * that cannot be read costs a sample rather than the settlement.
  */
-import { DAG_NOTE_MAX } from './dag.js';
+import { DAG_NOTE_MAX, sampleOf } from './dag.js';
+import { nodeMetrics, rememberMeasurement } from './dag-metrics.js';
 import { updateDag } from './dag-store.js';
-import type { DagDoc, DagNode } from './dag.js';
-import type { AgentsLike, DshContext, SubagentRunEndInfoLike, SubagentRunInfoLike } from './types.js';
+import type { DagDoc, DagNode, DagSample } from './dag.js';
+import type { DagNodeMetrics, DagStatus } from './records.js';
+import type {
+  AgentLike,
+  AgentsLike,
+  DshContext,
+  SessionProjectionsLike,
+  SubagentRunEndInfoLike,
+  SubagentRunInfoLike,
+} from './types.js';
 
 /**
  * How long a note assembled from a child's final message may get.
@@ -101,6 +115,87 @@ function settleNode(doc: DagDoc, agentId: string, note: string, now: string): Da
 }
 
 /**
+ * The node a child agent is paired with, in the order the pairing wrote it.
+ *
+ * The scan is backwards because `claimNextNode` claims the *last* waiting node,
+ * so the newest pairing wins when two nodes name the same agent.
+ */
+function nodeOf(doc: DagDoc, agentId: string): DagNode | undefined {
+  for (let index = doc.nodes.length - 1; index >= 0; index -= 1) {
+    const node = doc.nodes[index] as DagNode;
+    if (node.agent === agentId) return node;
+  }
+  return undefined;
+}
+
+/**
+ * One live measurement, once: the session behind an agent, and its two numbers.
+ *
+ * Shared by the two host paths that persist a sample — the `subagent/end`
+ * listener below and the tool's `set`-to-`done` step (`dag-tool.ts`) — because
+ * the reading and the "refuse rather than guess" rules are the same for both,
+ * and a second copy is a second thing to keep in step.
+ *
+ * Every reason the measurement can be missing is a `return`: the host has no
+ * projection registry, the registry knows no session for the agent, or the two
+ * numbers came back empty. None of them is an error worth reporting, and the
+ * node's own `tokens` stays the fallback the panel already knows.
+ *
+ * @param input.agentId - the child session an agent-registry lookup is keyed by.
+ * @param input.status - the node's lifecycle, which is what the timing formula
+ *   branches on (`running` measures against the sample clock, a settled node
+ *   against the `through` its projection recorded).
+ */
+export function readAgentMetrics(input: {
+  agentId: string;
+  status: DagStatus;
+  agents: AgentsLike | undefined;
+  projections: SessionProjectionsLike | undefined;
+  sampledMs: number;
+}): DagNodeMetrics | undefined {
+  const { projections, agents } = input;
+  if (projections === undefined) return undefined;
+  const agent = agents?.get(input.agentId) as AgentLike | undefined;
+  if (agent === undefined || agent === null) return undefined;
+  // The registry answers either an agent wrapper (`{ session }`) or the session
+  // itself, depending on the host's shape; the fallback eats both (as
+  // `dag-metrics.ts` does for the same read).
+  const session = (agent as { session?: unknown }).session ?? agent;
+  const metrics = nodeMetrics({
+    session,
+    projections,
+    status: input.status,
+    sampledMs: input.sampledMs,
+  });
+  if (metrics.tokens === undefined && metrics.elapsed_ms === undefined) return undefined;
+  return metrics;
+}
+
+/**
+ * The document with one node's measurement merged into `samples`.
+ *
+ * Only `samples` and the two timestamps move: the reading is *about* the node,
+ * and the node's own `status` is the next step's business (`settleNode`), so a
+ * sample must not be able to pre-empt or double-bump it. A reading that is
+ * already stored with the same `at` is a skip rather than a second write, which
+ * keeps the revision (and the panel's guard) still.
+ */
+export function withSample(
+  doc: DagDoc,
+  nodeId: string,
+  sample: DagSample,
+  now: string
+): DagDoc | undefined {
+  if (doc.samples?.[nodeId]?.at === sample.at) return undefined;
+  return {
+    ...doc,
+    samples: { ...doc.samples, [nodeId]: sample },
+    revision: doc.revision + 1,
+    updated_at: now,
+  };
+}
+
+/**
  * Install the subagent ↔ DAG node pairing.
  *
  * @param ctx - the plugin's root context; the listeners are registered there so
@@ -137,6 +232,53 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     ).catch(() => undefined);
   };
 
+  /**
+   * Persist one child's last measurement, without blocking its settlement.
+   *
+   * The stamp is one local constant for the whole step: `sampledMs` is the host
+   * clock the reading was taken at and becomes the stored `at`, so the sample
+   * and the live reading agree about when they were measured. The cache write
+   * (`rememberMeasurement`) happens *before* the file write, because the cache
+   * is what lets the route and the `set` path persist the reading later even if
+   * this document write loses the race or fails.
+   *
+   * @param parent - the DAG-owning session, resolved once by the caller.
+   * @param info - the host's own `subagent/end` payload.
+   */
+  const saveSample = (parent: string, info: SubagentRunEndInfoLike): void => {
+    const agentId = info.id;
+    if (typeof agentId !== 'string' || agentId.length === 0) return;
+    // Nothing here may throw into the host's dispatch; one `try` covers the
+    // whole step, including the service lookups.
+    try {
+      const sampledMs = Date.now();
+      const lookup = {
+        agentId,
+        agents: agents(),
+        projections: ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined,
+      };
+      write(parent, (doc) => {
+        const node = nodeOf(doc, agentId);
+        if (node === undefined) return undefined;
+        const metrics = readAgentMetrics({
+          ...lookup,
+          status: node.status,
+          sampledMs,
+        });
+        if (metrics === undefined) return undefined;
+        const sample = sampleOf(metrics, sampledMs);
+        if (sample === undefined) return undefined;
+        // The cache is written first: it is what lets the route or the `set`
+        // path persist this reading later even if this write loses the race.
+        rememberMeasurement(parent, node.id, metrics);
+        return withSample(doc, node.id, sample, new Date(sampledMs).toISOString());
+      });
+    } catch {
+      // A measurement is a bonus: a host whose services changed shape under us
+      // must still get its settlement.
+    }
+  };
+
   ctx.on('subagent/start', (info: SubagentRunInfoLike) => {
     const child = agents()?.get(info.id);
     const parent = child?.session.header.parentSession;
@@ -155,6 +297,10 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     // missed) still has a live agent to ask.
     const parent = remembered ?? agents()?.get(info.id)?.session.header.parentSession;
     if (parent === undefined) return;
+    // The measurement first, the settlement second: both are queued on the
+    // session's own lock, so the order here is the order on disk — and a
+    // measurement that cannot be taken never delays the backstop below.
+    saveSample(parent, info);
     const note = completedNote(info);
     write(parent, (doc, now) => settleNode(doc, String(info.id), note, now));
   });

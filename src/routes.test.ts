@@ -7,7 +7,8 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { applyDagWrite, emptyDag } from './dag.js';
-import { dagFilePath, updateDag } from './dag-store.js';
+import { rememberMeasurement } from './dag-metrics.js';
+import { dagFilePath, readDag, updateDag } from './dag-store.js';
 import {
   BODY_MAX_BYTES,
   META_LABELS_ARGV,
@@ -980,6 +981,120 @@ describe('the plan DAG route (plan #31)', () => {
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, dag: null });
     expect(runs).toEqual([]);
+  });
+
+  // #168: a node whose child the host can no longer measure still has the
+  // reading the lifecycle remembered, and the route is what flushes it into the
+  // document — once, so a polling panel does not rewrite the same file forever.
+  describe('the remembered-sample fallback (#168)', () => {
+    /** The sample the document carries for `node`, as it was persisted. */
+    async function storedSample(
+      session: string,
+      node: string
+    ): Promise<{ tokens?: number; at?: number } | undefined> {
+      const read = await readDag(session, dir);
+      if (read.state !== 'ok') throw new Error(`no document for ${session}`);
+      return read.doc.samples?.[node];
+    }
+
+    /** Seed a session whose single node is still running, as a live plan is. */
+    async function seedRunning(session: string): Promise<void> {
+      await seed(session, '样本 DAG');
+      const started = await updateDag(
+        session,
+        (state) => {
+          if (state.state !== 'ok') return { skip: true };
+          return applyDagWrite(
+            { action: 'set', id: 'a', status: 'running' },
+            state.doc,
+            session,
+            '2026-01-02T00:00:00.000Z'
+          );
+        },
+        dir
+      );
+      expect(started.ok).toBe(true);
+    }
+
+    it('writes the remembered reading once, then leaves the file alone', async () => {
+      await seedRunning('s168a');
+      rememberMeasurement('s168a', 'a', { tokens: 42, elapsed_ms: 900 });
+      const before = Date.now();
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        readDagMetrics: () => Promise.resolve({}),
+      });
+
+      const first = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168a`);
+      // The answer still carries no metrics: the fallback persists the reading
+      // for the *next* answer, it does not publish it out of nowhere.
+      expect(first.json()).not.toHaveProperty('metrics');
+      const stored = await storedSample('s168a', 'a');
+      expect(stored?.tokens).toBe(42);
+      expect(stored?.at).toBeGreaterThanOrEqual(before);
+
+      // A second poll has nothing left to flush: the sample on disk is byte for
+      // byte the one the first request wrote.
+      const second = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168a`);
+      expect(second.statusCode).toBe(200);
+      expect(await storedSample('s168a', 'a')).toEqual(stored);
+    });
+
+    it('writes nothing for a node the host never measured', async () => {
+      await seedRunning('s168b');
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        readDagMetrics: () => Promise.resolve({}),
+      });
+      const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168b`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ ok: true, revision: 3 });
+      expect(await storedSample('s168b', 'a')).toBeUndefined();
+    });
+
+    it('leaves a settled node out of the fallback', async () => {
+      // A `done` node is not running any more: whatever the cache remembers
+      // belongs to a run that already ended, and the settlement's own record is
+      // the better one.
+      await seed('s168c', '样本 DAG');
+      const settled = await updateDag(
+        's168c',
+        (state) => {
+          if (state.state !== 'ok') return { skip: true };
+          return applyDagWrite(
+            { action: 'set', id: 'a', status: 'done', verdict: 'pass' },
+            state.doc,
+            's168c',
+            '2026-01-02T00:00:00.000Z'
+          );
+        },
+        dir
+      );
+      expect(settled.ok).toBe(true);
+      rememberMeasurement('s168c', 'a', { tokens: 7 });
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        readDagMetrics: () => Promise.resolve({}),
+      });
+      await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168c`);
+      expect(await storedSample('s168c', 'a')).toBeUndefined();
+    });
+
+    it('still answers when the fallback write cannot land', async () => {
+      // No document at all: there is nothing to flush and nothing to fail on.
+      rememberMeasurement('s168d', 'a', { tokens: 5 });
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        readDagMetrics: () => Promise.resolve({}),
+      });
+      const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168d`);
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({ ok: true, dag: null });
+    });
   });
 
   it('names an unreadable file and keeps answering 200', async () => {

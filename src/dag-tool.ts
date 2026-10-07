@@ -17,14 +17,23 @@
  * - **A bounded answer.** Every action returns at most a few lines
  *   ({@link dagSummary}); the full graph goes to the panel through the read-only
  *   route, never back into the model's context (#61).
+ *
+ * Settling a node also persists the host's last measurement of its child
+ * ({@link persistNodeSample}, #168): the `subagent/end` listener covers a child
+ * that died, and `set status="done"` covers the one that reported back before
+ * its session went away. That step is a second, best-effort write *after* the
+ * action's own document, so a measurement can never delay or fail the answer.
  */
-import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction } from './dag.js';
+import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf } from './dag.js';
+import { readAgentMetrics, withSample } from './dag-lifecycle.js';
+import { rememberMeasurement } from './dag-metrics.js';
 import type { DagDoc, DagWrite } from './dag.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
   AgentsLike,
   ContentBlockLike,
   DshContext,
+  SessionProjectionsLike,
   ToolDefinitionLike,
   ToolExecutionLike,
 } from './types.js';
@@ -205,18 +214,105 @@ function setHeadline(action: Extract<DagWrite, { action: 'set' }>): string {
   return `${action.id} → ${action.status}${verdict}`;
 }
 
+/** Everything one `set`-to-`done` measurement needs. */
+export interface DagSampleInput {
+  sessionId: string;
+  /** The node that just settled. */
+  nodeId: string;
+  /** The child session it was paired with, from the node's own `agent`. */
+  agentId: string;
+  dagDir: string;
+  agents: AgentsLike | undefined;
+  projections: SessionProjectionsLike | undefined;
+}
+
+/**
+ * Persist the node's last host measurement as the `set` settles it (#168).
+ *
+ * `set status="done"` is the moment the model reports a node finished, and it is
+ * often the *last* moment the child session is still alive to be read — the
+ * `subagent/end` listener covers the crash path, this covers the polite one. The
+ * two writes are deliberately separate: the `set` above is the tool's answer and
+ * may not be delayed or failed by a measurement, so this runs after it, as a
+ * best-effort second write that only touches `samples`.
+ *
+ * The reading is remembered as well as stored, so the route can still flush it
+ * for a node that was re-opened (and is therefore `running` again) later.
+ *
+ * @param input - the owning session, the node's agent, and the host services.
+ * @returns nothing; every failure is a measurement that was not taken.
+ */
+export async function persistNodeSample(input: DagSampleInput): Promise<void> {
+  try {
+    const sampledMs = Date.now();
+    const metrics = readAgentMetrics({
+      agentId: input.agentId,
+      // The node just settled, and the projection's own `through` is the stamp
+      // that survived it — a reported-finished node has nothing in flight.
+      status: 'done',
+      agents: input.agents,
+      projections: input.projections,
+      sampledMs,
+    });
+    if (metrics === undefined) return;
+    const sample = sampleOf(metrics, sampledMs);
+    if (sample === undefined) return;
+    rememberMeasurement(input.sessionId, input.nodeId, metrics);
+    await updateDag(
+      input.sessionId,
+      (state) => {
+        if (state.state !== 'ok') return { skip: true };
+        const next = withSample(
+          state.doc,
+          input.nodeId,
+          sample,
+          new Date(sampledMs).toISOString()
+        );
+        return next === undefined ? { skip: true } : { doc: next };
+      },
+      input.dagDir
+    );
+  } catch {
+    // A measurement is a bonus; the tool's answer is already written.
+  }
+}
+
+/**
+ * The node a just-applied `set` left behind, as the measurement reads it.
+ *
+ * @param doc - the document {@link applyDagWrite} produced.
+ * @param action - the write that produced it.
+ * @returns the node id and its child session, or `undefined` when there is
+ *   nothing to measure (the node mint never paired with a child).
+ */
+function measuredNode(
+  doc: DagDoc,
+  action: Extract<DagWrite, { action: 'set' }>
+): { id: string; agentId: string } | undefined {
+  const node = doc.nodes.find((candidate) => candidate.id === action.id);
+  if (node?.agent === undefined) return undefined;
+  return { id: node.id, agentId: node.agent };
+}
+
 /**
  * Run one `mint_plan_dag` call.
  *
  * Kept free of host types so the whole action surface is unit-testable: the
  * installer resolves the session and the directory, this decides what happens.
  *
- * @param input - the owning session id (already resolved to the root) and the
- *   optional DAG directory (tests point it at a temp directory).
+ * @param input - the owning session id (already resolved to the root), the
+ *   optional DAG directory (tests point it at a temp directory), and the host
+ *   services a settling measurement reads (`agents`/`projections`; absent means
+ *   the sample step is skipped, never that the action fails).
  * @param rawArgs - the tool call's arguments, however malformed.
  */
 export async function executeDagTool(
-  input: { sessionId: string | undefined; dagDir?: string },
+  input: {
+    sessionId: string | undefined;
+    dagDir?: string;
+    agents?: AgentsLike;
+    projections?: SessionProjectionsLike;
+  },
   rawArgs: unknown
 ): Promise<DagToolOutcome> {
   const parsed = parseDagAction(rawArgs);
@@ -267,6 +363,22 @@ export async function executeDagTool(
   if (parsed.action === 'add') {
     return answer(`${addedCounts(parsed)}；${dagSummary(doc)}`);
   }
+  // A node the model just settled is the host's last chance to measure its
+  // child: the sample is written after the answer's own document, so it can
+  // never delay or fail the `set` itself (#168).
+  if (parsed.status === 'done') {
+    const settled = measuredNode(doc, parsed);
+    if (settled !== undefined) {
+      await persistNodeSample({
+        sessionId,
+        nodeId: settled.id,
+        agentId: settled.agentId,
+        dagDir: dir,
+        agents: input.agents,
+        projections: input.projections,
+      });
+    }
+  }
   return answer(`${setHeadline(parsed)}；${dagSummary(doc)}`);
 }
 
@@ -301,7 +413,18 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
     execute: async (rawArgs, exec: ToolExecutionLike) => {
       const agents = ctx.get?.('agents') as AgentsLike | undefined;
       const sessionId = rootSessionId(exec?.agent, agents);
-      return executeDagTool(dagDir === undefined ? { sessionId } : { sessionId, dagDir }, rawArgs);
+      // The sample step reads the same two host services the DAG route does,
+      // resolved per call because a composition may mount them after this tool.
+      const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+      return executeDagTool(
+        {
+          sessionId,
+          ...(dagDir === undefined ? {} : { dagDir }),
+          ...(agents === undefined ? {} : { agents }),
+          ...(projections === undefined ? {} : { projections }),
+        },
+        rawArgs
+      );
     },
   };
   return tools.register(definition);

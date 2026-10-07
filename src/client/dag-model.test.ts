@@ -331,6 +331,51 @@ describe('nodeMetricsMap', () => {
     expect(nodeMetricsMap({ dag: doc })).toEqual({});
     expect(nodeMetricsMap({ dag: null })).toEqual({});
   });
+
+  // `at` is what tells a *stored* sample from a live reading (#168), so the
+  // panel may not draw one it cannot date: absent stays absent (live), and a
+  // present one has to be a real epoch stamp.
+  it('keeps a usable `at` and leaves an absent one absent', () => {
+    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1, at: 0 } } })).toEqual({
+      a: { tokens: 1, at: 0 },
+    });
+    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1, at: 1_700_000_000_000 } } })).toEqual(
+      { a: { tokens: 1, at: 1_700_000_000_000 } }
+    );
+    // No `at` at all is the live case, and stays that way.
+    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1 } } })).toEqual({ a: { tokens: 1 } });
+  });
+
+  // A sample the panel cannot date is not a sample it may age: dropping the whole
+  // entry is what keeps a stale node out of the live clock, and it is also the
+  // same "refuse rather than relabel" rule the two numbers follow.
+  it('drops an entry whose `at` is present but unusable', () => {
+    expect(
+      nodeMetricsMap({
+        dag: doc,
+        metrics: asMetrics({
+          a: { tokens: 1, at: -1 },
+          b: { tokens: 2, at: 1.5 },
+        }),
+      })
+    ).toEqual({});
+    expect(
+      nodeMetricsMap({
+        dag: doc,
+        metrics: asMetrics({
+          a: { tokens: 1, at: 2 ** 53 },
+          b: { elapsed_ms: 10, at: Number.NaN },
+        }),
+      })
+    ).toEqual({});
+    // The object beside it still lands: one bad entry costs only itself.
+    expect(
+      nodeMetricsMap({
+        dag: doc,
+        metrics: asMetrics({ a: { tokens: 1, at: '1700000000000' }, b: { tokens: 2 } }),
+      })
+    ).toEqual({ b: { tokens: 2 } });
+  });
 });
 
 describe('formatCount', () => {
@@ -405,11 +450,13 @@ describe('liveElapsedMs', () => {
 
 describe('DAG_COPY_KEYS', () => {
   // `DagBody` (#164) is the caller; these literals are also what tells the copy
-  // guard that the dictionary's new keys have a use in the panel.
+  // guard that the dictionary's new keys have a use in the panel. `measuredAt`
+  // joined them with the stored-sample display (#168).
   it('names the live-metrics copy keys once', () => {
     expect(DAG_COPY_KEYS).toEqual({
       liveTokens: 'dag.liveTokens',
       seconds: 'dag.seconds',
+      measuredAt: 'dag.measuredAt',
     });
   });
 });
@@ -440,5 +487,14 @@ describe('DAG live-metrics contract', () => {
     expect(source).toContain('dagLiveTokensStyle');
     expect(source).toContain('dagLiveTimeStyle');
     expect(source).toContain('DAG_NODE_METRICS');
+  });
+
+  // #168: a stored sample is dated, and the card is where a reader can see when
+  // it was taken — as a local clock string, because the copy only supplies the
+  // label around it.
+  it('dates a stored sample in the card', () => {
+    const source = readFileSync(fileURLToPath(new URL('DagBody.tsx', import.meta.url)), 'utf8');
+    expect(source).toContain('DAG_COPY_KEYS.measuredAt');
+    expect(source).toContain('toLocaleTimeString');
   });
 });

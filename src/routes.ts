@@ -16,9 +16,10 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-import { isValidDagSession } from './dag.js';
-import { readDagMetrics } from './dag-metrics.js';
-import { DAG_DIR, readDag } from './dag-store.js';
+import { isValidDagSession, sampleOf } from './dag.js';
+import { withSample } from './dag-lifecycle.js';
+import { lastMeasurement, readDagMetrics } from './dag-metrics.js';
+import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type { DagRead } from './dag-store.js';
 import {
   isContainerDetail,
@@ -112,6 +113,19 @@ export function buildMilestoneIssuesArgv(id: number): string[] {
 
 /** A request these routes refuse: bad path, bad id, or a bad filter. */
 export class RouteRequestError extends Error {}
+
+/**
+ * The `(session, node)` pairs whose remembered measurement this process has
+ * already persisted (#168).
+ *
+ * The fallback below runs on every DAG poll — twice a second while a plan is on
+ * screen — so without this every read of a node the host can no longer measure
+ * would be another locked read-modify-write of the same file. What is being
+ * remembered is that the *cache* has been flushed for that node, not that the
+ * file has a sample: a node whose document was later rewritten by hand is not
+ * re-persisted either, which is the intended "once per process" contract.
+ */
+const flushedSamples = new Set<string>();
 
 /** Which collection a `list` route reads. */
 export type ListKind = 'issue' | 'plan' | 'milestone';
@@ -391,6 +405,63 @@ export function truncateBody(text: string | null): { body: string | null; trunca
 }
 
 /**
+ * Persist the last remembered reading of every node this answer could not
+ * measure, at most once per `(session, node)` per process (#168).
+ *
+ * The condition is narrow on purpose: the node is still `running` (so the
+ * reading describes a child that was alive when it was taken), this answer has
+ * no metrics for it (the host can no longer read the child — its session is
+ * gone, or the composition has no projection registry), and the process still
+ * remembers a reading for it. Only the cached numbers are stored; nothing here
+ * measures anything, so the route stays a reader.
+ *
+ * The whole step is best-effort and its caller does not depend on it: a failed
+ * or skipped write costs this answer nothing but the fallback the *next* answer
+ * would have shown.
+ *
+ * @param sessionId - the session whose document is being answered.
+ * @param read - what this request just read from disk (the node list).
+ * @param metrics - this answer's metrics; `undefined` when there are none.
+ * @param dir - the DAG directory override.
+ */
+async function flushRememberedSample(
+  sessionId: string,
+  read: DagRead,
+  metrics: Record<string, DagNodeMetrics> | undefined,
+  dir: string
+): Promise<void> {
+  if (read.state !== 'ok') return;
+  const now = Date.now();
+  for (const node of read.doc.nodes) {
+    if (node.status !== 'running') continue;
+    if (metrics !== undefined && node.id in metrics) continue;
+    const key = `${sessionId}\u0000${node.id}`;
+    if (flushedSamples.has(key)) continue;
+    const remembered = lastMeasurement(sessionId, node.id);
+    if (remembered === undefined) continue;
+    const sample = sampleOf(remembered, now);
+    if (sample === undefined) continue;
+    // Marked before the write: one attempt per node per process, however that
+    // attempt ends (the file may be unreadable, or already carry a newer sample).
+    flushedSamples.add(key);
+    try {
+      await updateDag(
+        sessionId,
+        (state) => {
+          if (state.state !== 'ok') return { skip: true };
+          const next = withSample(state.doc, node.id, sample, new Date(now).toISOString());
+          return next === undefined ? { skip: true } : { doc: next };
+        },
+        dir
+      );
+    } catch {
+      // Best-effort: the answer below is already the panel's, and a write of a
+      // *measurement* is never worth turning a 200 into an error.
+    }
+  }
+}
+
+/**
  * Build the route handler.
  *
  * @param deps - the session lookup, the optional CLI entry override, and the run seam.
@@ -431,6 +502,11 @@ export function createMintHandler(
         metrics = undefined;
       }
     }
+    // A node the child is still running but whose session the host can no longer
+    // measure has only one source left: the reading remembered while the child
+    // was alive (#168). Flush it into the document, once per process, so the
+    // next answer's stored fallback carries it even after a restart.
+    await flushRememberedSample(sessionId, read, metrics, deps.dagDir ?? DAG_DIR);
     // `warnings` is declared rather than inferred: the payload it spreads into
     // is `unknown`-typed, and a lone inferred string[] would read as a mistake.
     const warnings: Record<string, unknown> =

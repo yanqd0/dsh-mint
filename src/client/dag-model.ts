@@ -237,6 +237,7 @@ export function dagCounts(view: DagView): {
 export const DAG_COPY_KEYS = {
   liveTokens: 'dag.liveTokens',
   seconds: 'dag.seconds',
+  measuredAt: 'dag.measuredAt',
 } as const;
 
 /** A metric value the panel is willing to draw, or `undefined`. */
@@ -246,14 +247,32 @@ function measuredInt(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
-/** One node's entry, field by field: a bad `tokens` keeps a good `elapsed_ms`. */
-function keepMetrics(raw: unknown): DagNodeMetrics {
+/**
+ * One node's entry, field by field: a bad `tokens` keeps a good `elapsed_ms`.
+ *
+ * `at` is the third field and the one with a meaning of its own: it is present
+ * only on a *stored* sample, so it is what tells the panel "this reading is from
+ * an earlier turn" instead of "this is what the host is measuring right now".
+ * A missing `at` is therefore kept as missing — absence is the live case — while
+ * a present one must be a usable stamp: a bogus time would be drawn as a
+ * measurement that never happened, so the entry is dropped rather than relabelled.
+ *
+ * @param raw - the route's entry, however malformed.
+ * @returns the fields that may be drawn; `undefined` when not one of them is.
+ */
+function keepMetrics(raw: unknown): DagNodeMetrics | undefined {
   const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
   const tokens = measuredInt(entry['tokens']);
   const elapsedMs = measuredInt(entry['elapsed_ms']);
   const kept: DagNodeMetrics = {};
   if (tokens !== undefined) kept.tokens = tokens;
   if (elapsedMs !== undefined) kept.elapsed_ms = elapsedMs;
+  if (entry['at'] !== undefined) {
+    const at = measuredInt(entry['at']);
+    if (at === undefined) return undefined;
+    kept.at = at;
+  }
+  if (kept.tokens === undefined && kept.elapsed_ms === undefined) return undefined;
   return kept;
 }
 
@@ -279,7 +298,7 @@ export function nodeMetricsMap(payload: {
   for (const [id, raw] of Object.entries(metrics)) {
     if (!known.has(id)) continue;
     const entry = keepMetrics(raw);
-    if (entry.tokens === undefined && entry.elapsed_ms === undefined) continue;
+    if (entry === undefined) continue;
     kept[id] = entry;
   }
   return kept;

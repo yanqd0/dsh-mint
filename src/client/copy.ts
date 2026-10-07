@@ -102,6 +102,9 @@ export const ZH = {
   // whose child the host could not measure, and the marker keeps them apart.
   'dag.liveTokens': '{tokens} tokens（实测）',
   'dag.seconds': '秒',
+  // `at` is a local clock time, formatted by the caller: what is translated is
+  // the label, never the timestamp.
+  'dag.measuredAt': '实测于 {at}',
   'dag.note': '结果原文',
   'dag.node.id': '{id}',
 } as const satisfies Record<string, string>;
@@ -189,6 +192,7 @@ export const EN = {
   'dag.tokens': '{tokens} tokens',
   'dag.liveTokens': '{tokens} tokens (measured)',
   'dag.seconds': 's',
+  'dag.measuredAt': 'measured {at}',
   'dag.note': 'Result',
   'dag.node.id': '{id}',
 } as const satisfies Record<CopyKey, string>;

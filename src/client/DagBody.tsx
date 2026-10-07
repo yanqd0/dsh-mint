@@ -193,6 +193,12 @@ function sampleMetrics(payload: MintDagPayload | undefined): Record<string, DagN
  * anchors on the sample's clock. A settled node's time is the sample itself: it
  * must not drift with `now`, because nothing is still accumulating.
  *
+ * A *stored* sample (`at` present) is the one case where a running node stops
+ * counting: the reading describes a child the host measured earlier — its
+ * session is gone — so aging it on the browser clock would claim time this node
+ * never ran. It is still shown, as the host's own number (`?` would hide a real
+ * measurement), and the card dates it.
+ *
  * @param node - the node whose line is drawn.
  * @param metrics - the host's last sample for that node, if any.
  * @param sampledAtMs - when that sample was taken, on the host's clock.
@@ -204,9 +210,14 @@ function measuredTimeMs(
   sampledAtMs: number | undefined,
   nowMs: number
 ): number | undefined {
-  const elapsedMs = metrics?.elapsed_ms;
-  if (node.status !== 'running') return elapsedMs;
-  return liveElapsedMs(elapsedMs, sampledAtMs, nowMs);
+  if (metrics?.at !== undefined) return metrics.elapsed_ms;
+  if (node.status !== 'running') return metrics?.elapsed_ms;
+  return liveElapsedMs(metrics?.elapsed_ms, sampledAtMs, nowMs);
+}
+
+/** A stored sample's stamp as the local clock reads it; the copy supplies the label. */
+function measuredAtLabel(at: number): string {
+  return new Date(at).toLocaleTimeString();
 }
 
 /**
@@ -274,11 +285,16 @@ export function DagBody(props: MintBodyProps): ReactElement {
   const payload = state.status === 'ready' ? state.value : undefined;
   const metrics = sampleMetrics(payload);
   const sampledAtMs = payload?.sampled_at;
-  // The clock is only worth a timer while a running node has a sampled start:
-  // with nothing accumulating, every tick would redraw the same picture.
+  // The clock is only worth a timer while a running node is genuinely live: a
+  // node whose only reading is a stored sample is not accumulating, so every
+  // tick would redraw the same picture (its line shows the stored number, dated
+  // in the card).
   const liveClock =
     payload?.dag?.nodes.some(
-      (node) => node.status === 'running' && metrics[node.id]?.elapsed_ms !== undefined
+      (node) =>
+        node.status === 'running' &&
+        metrics[node.id]?.at === undefined &&
+        metrics[node.id]?.elapsed_ms !== undefined
     ) ?? false;
 
   useEffect(() => {
@@ -448,10 +464,11 @@ interface NodeMetricsLineProps {
  * line by itself.
  *
  * A `pending` node has no agent yet and therefore nothing to measure, so it
- * draws no line at all. A running node draws `?` in the time slot until a sample
- * arrives (a time is coming, none is known); a settled node with nothing in it
- * draws `-` (there is nothing left to wait for), and a settled node that only
- * ever reported tokens draws just those.
+ * draws no line at all. A running node draws `?` in the time slot until a *live*
+ * sample arrives (a time is coming, none is known) — a stored one is dated, not
+ * running, so it shows the same `?`; a settled node with nothing in it draws `-`
+ * (there is nothing left to wait for), and a settled node that only ever
+ * reported tokens draws just those.
  */
 function NodeMetricsLine({
   node,
@@ -541,6 +558,10 @@ interface NodeTooltipProps {
  * quiet line; the measured numbers keep the colors the node box gave them, so
  * the card and the box read as one reading of the node. A card is DOM, not SVG:
  * the same palette is applied through `color`, not `fill`.
+ *
+ * The time line is also where a *stored* reading gets its date (#168): the
+ * number beside it was measured when the child was alive, so the card names that
+ * moment in the local clock instead of letting the reader take it for now.
  */
 function NodeTooltip({
   node,
@@ -558,6 +579,8 @@ function NodeTooltip({
   const tone = dagStatusTone(node);
   const tokens = metrics?.tokens;
   const elapsed = measuredTimeMs(node, metrics, sampledAtMs, nowMs);
+  const duration = elapsed === undefined ? undefined : formatSeconds(elapsed);
+  const measuredAt = metrics?.at;
   return (
     <div
       style={{
@@ -590,10 +613,18 @@ function NodeTooltip({
           <LiveTokensLine copy={copy} tokens={tokens} />
         </p>
       )}
-      {elapsed !== undefined && (
+      {duration !== undefined && (
         <p style={TOOLTIP_LINE}>
-          <span style={{ color: LIVE_TIME_COLOR }}>{formatSeconds(elapsed)}</span>{' '}
+          <span style={{ color: LIVE_TIME_COLOR }}>{duration}</span>{' '}
           <span style={TOOLTIP_QUIET}>{copy(DAG_COPY_KEYS.seconds)}</span>
+          {/* A stored reading is dated: the card says *when*, because the number
+              it shows is what the host measured then, not what it reads now. */}
+          {measuredAt !== undefined && (
+            <span style={TOOLTIP_QUIET}>
+              {' '}
+              {copy(DAG_COPY_KEYS.measuredAt, { at: measuredAtLabel(measuredAt) })}
+            </span>
+          )}
         </p>
       )}
       {node.note !== undefined && (
