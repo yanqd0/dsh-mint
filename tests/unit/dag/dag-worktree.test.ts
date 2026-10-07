@@ -19,7 +19,7 @@ import { runGit } from '../../../src/shared/git.js';
 import type { GitRunResult } from '../../../src/shared/git.js';
 
 /**
- * The node-level worktree cycle (#172) against a **real** temporary repository.
+ * The node-level worktree cycle against a **real** temporary repository.
  *
  * The domain logic is orchestration over git, so a fake runner would only test
  * the fake. Every case here drives the production {@link runGit} in a throwaway
@@ -61,7 +61,7 @@ function commitFile(cwd: string, name: string, text: string, message: string): v
   gitIn(cwd, ...USER, 'commit', '-q', '-m', message);
 }
 
-// --- 老 git 的假 runner（#187）---
+// --- 老 git 的假 runner ---
 
 /** 老 git（< 2.5，没有 `worktree` 子命令）对 `git worktree …` 的实际答复。 */
 const NO_WORKTREE = "git: 'worktree' is not a git command. See 'git --help'.";
@@ -75,7 +75,7 @@ function answer(ok: boolean, stdout = '', stderr = ''): GitRunResult {
 }
 
 /**
- * 按参数分派的假 git（#187）。
+ * 按参数分派的假 git。
  *
  * 真 git（本机 ≥2.5）装不出「老版本没有 worktree」这个局面，所以「失败之后才给降级
  * 指引」这条只能在假 runner 上验。默认就是一台 git 1.9.0：读路径/读 ref 这些老版本
@@ -137,7 +137,7 @@ afterEach(() => {
   rmSync(repo, { recursive: true, force: true });
 });
 
-describe('worktree naming (#172/#177)', () => {
+describe('worktree naming', () => {
   it('keeps the path under the git common dir and one session directory', async () => {
     const node: WorktreeNode = { id: 'a1' };
     const root = await worktreeRoot(deps());
@@ -163,9 +163,9 @@ describe('worktree naming (#172/#177)', () => {
   });
 });
 
-describe('createWorktree (#172)', () => {
+describe('createWorktree', () => {
   it('creates the tree and its branch from HEAD', async () => {
-    const outcome = await createWorktree(deps(), { id: 'a1', issue: 172 });
+    const outcome = await createWorktree(deps(), { id: 'a1' });
     expect(outcome.ok).toBe(true);
     if (!outcome.ok) return;
     expect(outcome.worktree.state).toBe('active');
@@ -173,7 +173,7 @@ describe('createWorktree (#172)', () => {
     expect(outcome.worktree.path).toContain(join('.git', 'dsh-mint', 'worktrees'));
     expect(outcome.worktree.branch).toBe(worktreeBranch(deps(), { id: 'a1' }));
     expect(outcome.worktree.base).toMatch(/^[0-9a-f]{40}$/);
-    // #189：开工点所在的分支被记下来，后续 merge 的目标就是它。
+    // 开工点所在的分支被记下来，后续 merge 的目标就是它。
     expect(outcome.worktree.target).toBe('main');
     expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(outcome.worktree.path);
     // The branch really exists and is checked out there.
@@ -182,7 +182,7 @@ describe('createWorktree (#172)', () => {
     );
   });
 
-  it('records the branch it was created on, not always main (#189)', async () => {
+  it('records the branch it was created on, not always main', async () => {
     gitIn(repo, 'checkout', '-q', '-b', 'feature');
     const outcome = await createWorktree(deps(), { id: 'a1' });
     expect(outcome.ok).toBe(true);
@@ -239,23 +239,26 @@ describe('createWorktree (#172)', () => {
   });
 });
 
-describe('mergeWorktree (#172)', () => {
+describe('mergeWorktree', () => {
   it('brings the node branch back as one recorded commit', async () => {
-    const created = await createWorktree(deps(), { id: 'a1', issue: 172 });
+    const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work #172');
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
 
-    const merged = await mergeWorktree(deps(), { id: 'a1', issue: 172 });
+    const merged = await mergeWorktree(deps(), { id: 'a1' });
     expect(merged.ok).toBe(true);
     if (!merged.ok) return;
     expect(merged.worktree.state).toBe('merged');
     expect(merged.worktree.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
-    // 成功路径也要带 target（#189）：下游按它继续判定「已合并」。
+    // 成功路径也要带 target：下游按它继续判定「已合并」。
     expect(merged.worktree.target).toBe('main');
     // The file is on the target branch now, and the merge is recorded.
     expect(gitIn(repo, 'show', 'HEAD:feature.txt')).toContain('work');
-    expect(gitIn(repo, 'log', '--oneline', '-3')).toContain('merge a1 (#172)');
+    const log = gitIn(repo, 'log', '--oneline', '-3');
+    expect(log).toContain('merge a1');
+    // 上库内容不得出现 mint ID：merge commit 的 subject 只有节点 id。
+    expect(log).not.toMatch(/#\d/);
   });
 
   it('reports a conflict and leaves the main tree stopped (no auto-resolution)', async () => {
@@ -275,7 +278,7 @@ describe('mergeWorktree (#172)', () => {
     expect(merged.worktree?.state).toBe('conflict');
     expect(merged.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
     expect(merged.worktree?.path).toBe(created.worktree.path);
-    // 冲突分支同样要带 target，否则落盘记录会丢掉「合回哪里」这条契约（#189）。
+    // 冲突分支同样要带 target，否则落盘记录会丢掉「合回哪里」这条契约。
     expect(merged.worktree?.target).toBe('main');
     // Left for a decision: the merge is still in progress and abortable.
     expect(gitIn(repo, 'status', '--porcelain')).toContain('UU README.md');
@@ -286,7 +289,7 @@ describe('mergeWorktree (#172)', () => {
   });
 
   it('keeps the worktree out of the main tree status without a .gitignore', async () => {
-    // 落点改到 git common dir 内部（#177）的验收点：仓里**没有** `.gitignore`，
+    // 落点改到 git common dir 内部的验收点：仓里**没有** `.gitignore`，
     // 也不加 `--untracked-files=no`，主树仍必须看不见这棵树。
     expect(() => gitIn(repo, 'status', '--porcelain')).not.toThrow();
     const created = await createWorktree(deps(), { id: 'a1' });
@@ -302,7 +305,7 @@ describe('mergeWorktree (#172)', () => {
     const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work #172');
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
     // A tracked file modified but not committed: exactly what a merge would drag
     // into its commit. (The worktree inside `.git` must NOT count — see the
     // successful-merge and status cases above, where no `.gitignore` exists.)
@@ -326,12 +329,12 @@ describe('mergeWorktree (#172)', () => {
 });
 
 /**
- * 「merge 目标 = 建树时所在分支」的显式契约（#189）。
+ * 「merge 目标 = 建树时所在分支」的显式契约。
  *
  * 判据是**记录**（`deps.target`）对**当前 HEAD**，不是「永远是 main」：两个都是真
  * 分支名且不等就拒绝。缺记录与 detached 无从校验，照旧 merge。
  */
-describe('mergeWorktree target guard (#189)', () => {
+describe('mergeWorktree target guard', () => {
   it('refuses a merge when HEAD moved off the recorded branch', async () => {
     gitIn(repo, 'checkout', '-q', '-b', 'feature');
     const created = await createWorktree(deps(), { id: 'a1' });
@@ -359,7 +362,7 @@ describe('mergeWorktree target guard (#189)', () => {
   });
 
   it('skips the guard when the record has no target', async () => {
-    // 缺记录 = #189 之前建的树：无从校验，不能因此把旧 DAG 判成不可合并。
+    // 缺记录 = 早期建的树：无从校验，不能因此把旧 DAG 判成不可合并。
     const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
@@ -369,7 +372,7 @@ describe('mergeWorktree target guard (#189)', () => {
     expect(merged.ok).toBe(true);
     if (!merged.ok) return;
     expect(merged.worktree.state).toBe('merged');
-    // 没传 target 时按当前分支记录，退回 #189 之前的形态。
+    // 没传 target 时按当前分支记录，退回早期形态。
     expect(merged.worktree.target).toBe('main');
   });
 
@@ -399,7 +402,7 @@ describe('mergeWorktree target guard (#189)', () => {
   });
 });
 
-describe('removeWorktree (#172)', () => {
+describe('removeWorktree', () => {
   it('refuses an unmerged branch, then removes it with force', async () => {
     const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
@@ -419,11 +422,11 @@ describe('removeWorktree (#172)', () => {
   });
 
   it('removes a merged worktree and is idempotent afterwards', async () => {
-    const created = await createWorktree(deps(), { id: 'a1', issue: 172 });
+    const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work #172');
-    expect((await mergeWorktree(deps(), { id: 'a1', issue: 172 })).ok).toBe(true);
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work');
+    expect((await mergeWorktree(deps(), { id: 'a1' })).ok).toBe(true);
 
     const removed = await removeWorktree(deps(), { id: 'a1' });
     expect(removed.ok).toBe(true);
@@ -436,7 +439,7 @@ describe('removeWorktree (#172)', () => {
     expect(again.note).toContain('不存在');
   });
 
-  it('judges the merge criterion against the recorded target branch (#189)', async () => {
+  it('judges the merge criterion against the recorded target branch', async () => {
     // 已合入目标分支：按记录的目标分支判定即可 remove，返回记录也带 target。
     const merged = await createWorktree(deps(), { id: 'a1' });
     expect(merged.ok).toBe(true);
@@ -465,13 +468,13 @@ describe('removeWorktree (#172)', () => {
 });
 
 /**
- * 失败之后才查版本、给可行动报错（#187）。
+ * 失败之后才查版本、给可行动报错。
  *
  * 默认路径仍是 worktree：不预检（happy path 不付版本检查的成本）、不静默失败，也
  * 绝不因为失败把路径回落到主工作树。这条行为的全部价值都在失败分支上，所以三条用例
  * 都走假 runner——真 git 装不出老版本那个局面。
  */
-describe('worktree 降级指引 (#187)', () => {
+describe('worktree 降级指引', () => {
   it('appends the local version and the shared-workspace fallback to a failed add', async () => {
     const withFake = deps({ git: fakeGit() });
     const outcome = await createWorktree(withFake, { id: 'a1' });

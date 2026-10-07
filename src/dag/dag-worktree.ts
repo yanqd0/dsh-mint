@@ -48,8 +48,6 @@ export const WORKTREE_SUBDIR = 'dsh-mint/worktrees';
 /** The subset of a node a worktree operation needs. */
 export interface WorktreeNode {
   id: string;
-  /** The node's mint issue, used for the merge commit's subject. */
-  issue?: number;
 }
 
 /** What the caller supplies; everything has a default except the git runner and repo. */
@@ -383,7 +381,10 @@ async function conflictedFiles(deps: WorktreeDeps): Promise<string[]> {
  * branch the caller did not expect is the mistake this guard prevents.
  *
  * `--no-ff` is deliberate: the merge is recorded even when it could fast-forward,
- * so the issue's work stays one identifiable unit on the target branch.
+ * so the issue's work stays one identifiable unit on the target branch. The
+ * subject is `merge <node id>` and carries **no** mint id: committed content must
+ * not name issue/plan/milestone numbers, and the issue ↔ commit link is registered
+ * with `mint issue state commit --sha` instead of the message.
  *
  * A conflict is **not** resolved here: the merge is left stopped, the conflicted
  * files are reported, and the caller decides (resolve inside the worktree and
@@ -426,12 +427,13 @@ export async function mergeWorktree(
       worktree: { path, branch, base, state: 'merged', target },
     };
   }
-  const issue = node.issue === undefined ? '' : ` (#${String(node.issue)})`;
+  // subject 只写节点 id：上库内容（含 commit message）不得出现 mint ID，issue ↔ commit
+  // 的关联由 `mint issue state commit --sha` 登记，不靠 message。
   const merged = await deps.git(deps.repo, [
     'merge',
     '--no-ff',
     '-m',
-    `merge ${node.id}${issue}`,
+    `merge ${node.id}`,
     branch,
   ]);
   if (!merged.ok) {

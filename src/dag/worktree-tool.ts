@@ -324,10 +324,7 @@ export async function executeWorktreeTool(
   // 不在 `WorktreeNode` 里，只能从文档节点的 `worktree.target` 取；这里一次读出。
   const node = read.doc.nodes.find((candidate) => candidate.id === parsed.node);
   if (node === undefined) return refusal(`节点不存在：${String(parsed.node)}`);
-  const target: WorktreeNode = {
-    id: node.id,
-    ...(node.issue === undefined ? {} : { issue: node.issue }),
-  };
+  const target: WorktreeNode = { id: node.id };
   // 把记录里的目标分支交给 worktree 层：契约「merge 目标 = 建树时所在分支」
   // 靠这个字段落地；缺记录（早期版本的旧节点）就不传，让 git 层退回按当前分支判定。
   const stored: DagWorktree | undefined = node.worktree;
