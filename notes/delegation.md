@@ -10,12 +10,13 @@
 | --- | --- |
 | 继承 | 工作区 cwd（`/home/user/yanqd0/dsh-mint`）、`AGENTS.md` 工作区指令（以 `<system-reminder>` 形式到达）、27 个通用工具（含 `bash`/`write`/`edit`/`glob`/`grep`/`read`/`web_*`）、`skill` 工具 + 10 个 skill 的 catalog（含 `mint`）、**`mint` 工具**、运行时策略快照 |
 | 缺少 | 父 agent 的对话历史 / 推理 / tool output、用户原话、任何 `[Mint]` 开头的注入 |
-| 深度 | 委派深度默认 1：子代理不能再派子代理（`subagent`/`workflow` 仍在工具清单里，调用只得到出错结果） |
+| 深度 | 由 Host `subagent.maxDepth` 决定（用户值写进 profile 的 `cordis.patch.yml` 的 `- id: subagent` 行；**本机已设为 `2`**，改设置**下一次委派**生效）：`0` 禁委派、`1` 仅直接子级、`2` 允许一级子代理再派一级。**实测（2026-10-07，本计划开工点）：一级子代理再派二级子代理成功，两级链跑通** —— 旧口径「默认 1、子代理不能再派子代理」已作废 |
 | 审批 | 权限在启动时固定，approval pin `never`：审批一律自动拒绝、**会话内不可提权** → 跨项目 mint 写、工作区外写都会失败 |
 
 - **`mint` 工具确实可用**（不是只有 catalog 条目）：探针实测 `mint({"args":["list","--page-size","1"]})` 返回原生 TSV。
 - **无 `[Mint]` 注入是有意为之**：出处 `src/host/context.ts` 的 `installOverviewChannel()`——`agent/created` 监听里遇到 `agent.session.header.delegationDepth > 0`（即 `origin: 'subagent'`）直接 return，跳过整个概览 + 指引注入（省三次 mint spawn；子代理继承 `mint` 工具已够用）。
-- 因此「工具清单里有 `subagent`/`workflow`」**不代表**子代理能再委派；同理 `bash` 在清单里，但需要审批的命令对子代理一律失败。
+- 因此「工具清单里有 `subagent`/`workflow`」**不代表**这一层还能再委派：能不能委派由 Host 的
+  `subagent.maxDepth` 裁决（本机 `2` → 两级可用；`0` 禁、`1` 只到直接子级）。同理 `bash` 在清单里，但需要审批的命令对子代理一律失败。
 
 ## 对派活口径的影响
 

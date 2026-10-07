@@ -1,6 +1,6 @@
-# plan DAG 规格真源（plan #31 / issue #148）
+# plan DAG 规格真源
 
-> 来源：mint plan #31 正文（`plan show 31 --json`，milestone 0.3.0 / #4，version 0.3.0）。
+> 来源：mint plan 正文（milestone 0.3.0，version 0.3.0）。
 > 范围：宿主工具 `mint_plan_dag`（init/add/set/get）+ 状态文件 `/tmp/mint/dag/<sessionId>.json`
 > + 只读路由 `GET /dsh-mint/dag` + 右侧边栏并列新 tab（`kind=plan-dag`）。
 > **worktree 动作（create/list/merge/remove）已从本工具拆出**，成为独立的 `worktree` 工具：
@@ -58,7 +58,7 @@
 | `note` | 否 | 子代理回给 main 的结论原文；tooltip 显示，可滚动 |
 | `updated_at` | 是 | 该节点最后一次变更时间 |
 
-### 1.4.1 文档级 `samples`（宿主实测样本，plan #35 / #167）
+### 1.4.1 文档级 `samples`（宿主实测样本）
 
 节点里的 `tokens` 是**节点级的那一个数**（模型自报，或被 own 路径的宿主实测覆盖，见 §1.4）；宿主实测样本另存一层，避免两种语义混在一起：
 
@@ -68,9 +68,9 @@
 
 - `at` = 该样本的采样时刻（宿主 epoch ms）；`tokens`/`elapsed_ms` 与线上 `DagNodeMetrics` **同语义**。
 - **校验是「整份严格、单条宽松」**：`samples` 不是对象 → 整份文档不可读；某条自身的字段非法（`at` 缺失/负数/小数、已出现的数字字段非法）→ **只丢该条**，图照常渲染；条目里一个数字都没有也丢。无 `samples` 的旧文档解析后**不产生该键**（round-trip 不变）。
-- **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 #168。
+- **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 §3 与 §4.7。
   - **`set → done` 的两条路径**：子代理收尾自己的节点（**own 路径**）时测量键是**调用者自己的会话**，读数落 `samples`，并把同一个 token 数写进节点 `tokens`（**同一次** `updateDag`，`revision` 只 +1，实测优先于自报）；main 收尾一个曾配过子代理的节点时退回节点 `agent`，只写 `samples`；main 给自己的节点（没有 `agent`）收尾不测。
-- **为什么落盘**：子代理结束、`ctx.agents.get(id)` 不再返回 session 之后，实测值否则会整份消失（#166 的真机实测）。
+- **为什么落盘**：子代理结束、`ctx.agents.get(id)` 不再返回 session 之后，实测值否则会整份消失（真机实测）。
 
 ### 1.5 缺失与损坏的容错
 
@@ -123,8 +123,17 @@
 
 - 监听 `subagent/start` / `subagent/end`：宿主 `SubagentRunInfo` / `SubagentRunEndInfo` 含
   `runId`、`id`（子 sessionId）、`stopReason`（`end` 侧）。
-- `start`：把 `id` 回填到**最近一个 `status='running'` 且 `agent` 为空**的节点，并把这次认领
-  **记下来**：`runId → { parent, nodeId }`（`nodeId` 由认领回调**回填**——回调是异步排队的，
+- **归属会话 = 根会话**：两个监听都用 `rootSessionId`（`src/shared/session-id.ts`）沿
+  `session.header.parentSession` 上溯到顶。二级子代理的**直接父**是中间子代理，拿它当归属就会写到一张
+  不存在的 `<中间子会话>.json`（`updateDag` 对没有的会话静默 skip）——上溯到根才写进 main 的那张图。
+  上溯不出来时（注册表 entry 没有 `session.id`、链上有环、超过 16 跳）**退回直接父会话**：那正是本改动
+  前的口径，一级委派仍然正确，也仍然不会新建文档。
+- `start` 的**认领是父感知的**（`claimNextNode`）：① 按**直接父会话**（`child.session.header.parentSession`）
+  在文档里找父节点（`node.agent === 父会话`，从后往前）；② 找到后在 `status='running'` 且 `agent` 为空的
+  节点里**优先**认领 `depends_on` 指向该父节点的那个（多个时取数组里最后一个）——dev/test 对里 test 节点
+  依赖 dev 节点，**这条边就是配对凭据**；③ 找不到父节点、或没有等待节点依赖它时**退回**「数组末尾最近的
+  `running` 且 `agent` 为空」。
+- **认领结果记下来**：`runId → { 图归属会话, nodeId }`（`nodeId` 由认领回调**回填**——回调是异步排队的，
   `end` 可能先到把这一项从 map 删掉，所以对象由回调闭包持有，认领结果写在对象自身上）。
 - `end`（① 按 `agent` 结算）：若该 agent 名下仍有 `running` 节点 → 标 `verdict:'fail'`，并附
   `stopReason`（写入节点 `note`，即结果原文）；这是「子代理崩了没收尾」的兜底。
@@ -132,13 +141,13 @@
   宿主登记前就把节点改掉），退回它 `start` 时**认领过的**那个节点 id 结算——守卫相同（只动
   `running`），note = 前缀 `[fallback 认领] ` + 原文（两者一起截在 `DAG_NOTE_MAX` 字节内）。
   样本同理：`agent` 找不到节点时落到认领过的那个节点。
-- **兜底的三条边界**：① 它只救「文档里没有任何节点带这个 agent」的情形；② 认领本身错位时它落到
-  的仍是**认领过的**那个节点——能自证「发生过兜底」，但**不修错位**（错位靠「一步一节点」的纪律
-  避免，§7.8.1）；③ 宿主 `DshContext` 没有 logger、`subagent/end` 也没有工具回答，所以「这次是
+- **兜底的三条边界**：① 它只救「文档里没有任何节点带这个 agent」的情形；② 认领错位时（父感知的依赖边
+  对不上、退回了末尾规则）它落到的仍是**认领过的**那个节点——能自证「发生过兜底」，但**不修错位**；
+  ③ 宿主 `DshContext` 没有 logger、`subagent/end` 也没有工具回答，所以「这次是
   兜底」**唯一**能存活下来的痕迹就是节点 `note` 的前缀（面板 tooltip 可见）。
 - 监听器**仍然不抛、不 await 阻塞**：兜底是同一个 `write` 里的一次追加尝试，认不出就跳过。
 - **不自动建节点**：没有任何节点可回填时只跳过，绝不为子代理新建节点——节点一律来自 `init`/`add`。
-- **`set → done` 的测量键**：优先取**调用者自己的会话**（子代理收尾自己的节点时它必然活着，不受注册表释放与 §7.8.1 的配对错位影响，且**不要求节点有 `agent`**）；`callerId === 根会话`（main 自己）时退回节点 `agent`（旧路径，只写 `samples`）；节点没有 `agent` 就不测——main 自有节点的整会话累计对「该节点开销」没有意义（§7.8.3）。
+- **`set → done` 的测量键**：优先取**调用者自己的会话**（子代理收尾自己的节点时它必然活着，不受注册表释放与配对错位（§7.8.1）影响，且**不要求节点有 `agent`**）；`callerId === 根会话`（main 自己）时退回节点 `agent`（旧路径，只写 `samples`）；节点没有 `agent` 就不测——main 自有节点的整会话累计对「该节点开销」没有意义（§7.8.3）。
 
 ## 4. 客户端可视化
 
@@ -193,14 +202,14 @@
 ### 4.6 刷新
 
 - `useTabInfo().tab.visible` 为真时每 **2000 ms** 轮询；不可见时不轮询。
-- 跳过写的判据是「**整份读数**与上次相同」：`revision` + `sampled_at` + 逐字段 `metrics` 全等（plan #34）；
+- 跳过写的判据是「**整份读数**与上次相同」：`revision` + `sampled_at` + 逐字段 `metrics` 全等；
   只比 `revision` 会让实时数字停住，只比 `sampled_at` 会让静止的图每 2 s 重渲一次。
 - **走秒**：存在 `running` 且该节点有实测 `elapsed_ms` 时才起一个 **1 s** 本地定时器，把
   `sampled_at` 当锚算"最后一次采样又过了多久"；没有这样的节点、tab 不可见、组件卸载都会清掉它。
 - `tab.signal` 中止在途请求；失败的一轮会忘掉上次读数，避免"恢复后样本未变"被跳过而停在错误页。
 - **不做 SSE**。
 
-### 4.7 实时指标：token 与执行时间（plan #34）
+### 4.7 实时指标：token 与执行时间
 
 **真源 = 宿主会话投影，不是子代理自报**（dsh 子代理 UI 用的就是同一对值）：
 
@@ -211,14 +220,14 @@
 
 - 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
   key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
-  `dag-lifecycle.ts` 读 `header.parentSession` 是同一条路径。
+  `dag-lifecycle.ts` 沿 `header.parentSession` 解析图归属（`rootSessionId`）走的是同一类注册表查找。
 - **宿主侧**：`src/dag/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `mergeMetrics` /
   `measureDagNodes`；`readDagMetrics` 是它的薄封装），由 `/dsh-mint/dag` 调用；**只发实测过的字段**——
   缺失就是缺失，绝不写 0 猜测。
 - **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?, at?}}` 与 `sampled_at`（宿主 epoch ms）
   **只在非空时出现**；无 `agents`/`sessionProjections`、会话已消失、文件缺失/不可读、投影形状漂移 → 一个字段都不出现。
-  条目**没有 `at` = 本轮实测**（钟是 `sampled_at`）；**有 `at` = 文档里的落盘样本**（#167/#168，钟是 `at`）。
-- **回落顺序（#168/#166 修正版）**：`measureDagNodes` 先实测（并**顺手记进进程内缓存**）、实测缺失再用
+  条目**没有 `at` = 本轮实测**（钟是 `sampled_at`）；**有 `at` = 文档里的落盘样本**（钟是 `at`）。
+- **回落顺序（修正版）**：`measureDagNodes` 先实测（并**顺手记进进程内缓存**）、实测缺失再用
   **文档样本**、文档也没有才用**缓存里最后一次读数**；因此子代理结束后仍能看到实测值（带 `at`），只是不再增长。
   落盘时机：`mint_plan_dag` 的 `set → done`，以及路由的兜底补写（「文档没有该节点样本 + 本轮量不到它」即写，
   每 session+node 每进程一次，`at` 用**测量时刻**）。**`subagent/end` 测不到**（真机实测：注册表先放掉子会话），
@@ -243,8 +252,8 @@
 ### 4.9 文案
 
 - 沿用 locale 命名空间 `mint`，新键统一 `dag.` 前缀；ZH/EN 双字典，沿用 `src/client/copy.ts` 纪律。
-- plan #34 新增：`dag.liveTokens`（实测 token 行，占位 `{tokens}`）、`dag.seconds`（时长单位，ZH `秒` / EN `s`）；
-  plan #35 新增 `dag.measuredAt`（落盘样本的采样时刻，占位 `{at}`）；键名在 `src/client/dag-model.ts` 的
+- 新增：`dag.liveTokens`（实测 token 行，占位 `{tokens}`）、`dag.seconds`（时长单位，ZH `秒` / EN `s`）、
+  `dag.measuredAt`（落盘样本的采样时刻，占位 `{at}`）；键名在 `src/client/dag-model.ts` 的
   `DAG_COPY_KEYS` 里只写一次（`copy.test.ts` 的"无死 key"判据读源码文本）。
 
 ## 5. 落点与测试文件清单
@@ -297,19 +306,19 @@
 - **并行 `add` / `set`** → 按 session 锁串行；锁只在本插件进程内有效，**同机多 harness 进程下退化**，
   属已知限制。
 - **环 / 未知依赖 / 未知 node id / 非终态 `verdict`** → 工具拒绝并回显，不写文件。
-- **token 采集（plan #31 的旧结论已作废）**：宿主 `sessionStats` 确实只有 turns / steps / 墙钟时间，
+- **token 采集（旧结论已作废）**：宿主 `sessionStats` 确实只有 turns / steps / 墙钟时间，
   但 `@deepseek-ai/dsh-token-meter` 另外注册了 **`tokenUsage`** 投影，`@deepseek-ai/dsh-subagent`
   注册了 **`subagentTiming`**；两者都能经 `ctx.sessionProjections.stateOf(session, key)` 按子会话读到
-  （plan #34 落地，见 §4.7）。节点 `tokens` 仍是可选字段（模型自报，own 路径下由宿主实测覆盖，§1.4），
+  （见 §4.7）。节点 `tokens` 仍是可选字段（模型自报，own 路径下由宿主实测覆盖，§1.4），
   现在只作**降级**用：实测缺失时 tooltip 显示它。
 - **实测的读取窗口**：子代理结束后若其 agent 已不在 `ctx.agents` 注册表，该节点取不到时长与实测 token
   （见 §4.7 末尾），属已知边界而非 bug。
 - **客户端产物不走 HMR**：改 `src/client/**` 必须重建 `dist/client.js` 并**重启 harness + 刷新页面**。
 
-## 7. 实现落点与实测（plan #31 开工记录）
+## 7. 实现落点与实测（开工记录）
 
-> issue 拆分：#150 宿主核心（数据模型 + 状态文件 + 线上类型/路由名，**接口冻结批**）、
-> #155 宿主工具 + 生命周期 + 路由、#156 客户端面板。批次 2 的两条并行改互不相交的文件。
+> 拆分：宿主核心（数据模型 + 状态文件 + 线上类型/路由名，**接口冻结批**）、
+> 宿主工具 + 生命周期 + 路由、客户端面板。批次 2 的两条并行改互不相交的文件。
 > 端到端结论（面板四态、自动打开）**需要重启 harness 后**才有：宿主 bundle 与 client 产物都只在启动时加载。
 
 ### 7.1 与本文规格的偏差（有意）
@@ -327,8 +336,9 @@
 
 ### 7.2 口径（本轮用户拍板）
 
-- **DAG 归属会话解析到根会话**：工具沿 `session.header.parentSession` 上溯（上限 16 跳 + visited 集合防环），
-  子代理 `set` 写的**就是 main 会话那张图**；面板只读 main 会话文件。
+- **DAG 归属会话解析到根会话**：工具与生命周期监听都沿 `session.header.parentSession` 上溯（工具与
+  `rootSessionId` 同一规则：上限 16 跳 + visited 集合防环），子代理 `set` 与宿主 `subagent/start` 写的
+  **就是 main 会话那张图**；面板只读 main 会话文件。
 - **`init` / `add` 不做身份硬拦**（只做数据校验），靠 skill 口径约束：
   `skill/references/plan-dag.md` §4.1——新增节点/连边归 main，子代理只 `set` 自己的节点、可 `get`。
 - **自动打开**：客户端 5s 探测 `GET /dsh-mint/dag`；有 DAG（≥1 节点）且该会话尚无 `kind='plan-dag'` tab 就
@@ -369,10 +379,10 @@
     绿 done+pass / 红 done+fail）、悬停 tooltip（完整 `title`、`tokens`、`note` 原文）、
     `prefers-reduced-motion: reduce` 降级；浏览器若命中旧 `client.js` 缓存需硬刷新。
 
-### 7.5 plan #34：实时指标落地与实测
+### 7.5 实时指标落地与实测
 
-> issue 拆分：#161 宿主投影读取 + 线上类型（接口冻结）、#162 路由信封、#163 客户端模型/样式/文案、
-> #164 面板渲染。**客户端产物不走 HMR**：宿主的 `dist/index.js` 只在 harness 启动时载入，
+> 拆分：宿主投影读取 + 线上类型（接口冻结）、路由信封、客户端模型/样式/文案、
+> 面板渲染。**客户端产物不走 HMR**：宿主的 `dist/index.js` 只在 harness 启动时载入，
 > 所以新路由字段要**重启 harness** 才有；`dist/client.js` 重建后刷新页面即可。
 
 - 落点：`src/dag/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`）、
@@ -394,17 +404,17 @@
   `subagent/start` 回填 `agent`；同一时刻 `curl '/dsh-mint/dag?session=<本会话>'` 得到
   `metrics: {"liveprobe": {"tokens": 28067, "elapsed_ms": 3231}}` + `sampled_at`（number）——
   「子会话真值 → 宿主信封」这条路在真机成立（数字取自该子会话自己的 `tokenUsage`/`subagentTiming`）。
-- **真机暴露的边界（已登记 #166）**：子代理**结束之后**，同一个子会话 id 再取 `agents.get(id)` 不再
+- **真机暴露的边界**：子代理**结束之后**，同一个子会话 id 再取 `agents.get(id)` 不再
   返回 agent，于是该节点的实测值整份消失（`done` 节点只剩自报 `tokens` 与 `note`）。所以实测时长
-  目前**只覆盖 `running` 期间**；缓存/落盘的取舍见 #166。
+  目前**只覆盖 `running` 期间**；缓存/落盘的取舍见 §7.6。
 - **仍留给人眼确认**：紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、`?` 与 `-` 的出现时机，
  以及 tab 自动打开（agent 无 DOM 可自证）。
 
-### 7.6 plan #35：样本落盘与调研阶段 DAG 化
+### 7.6 样本落盘与调研阶段 DAG 化
 
-> issue 拆分：#167 文档 `samples` + 度量/合并（接口冻结）、#168 落盘钩子与陈旧样本口径、
-> #169 skill 纪律 + 空 DAG 软提醒。触发：真机实测发现「子代理结束后实测值整份消失」（#166），
-> 以及本轮计划模式的调研阶段**全程没有 DAG**（#165）。
+> 拆分：文档 `samples` + 度量/合并（接口冻结）、落盘钩子与陈旧样本口径、
+> skill 纪律 + 空 DAG 软提醒。触发：真机实测发现「子代理结束后实测值整份消失」，
+> 以及本轮计划模式的调研阶段**全程没有 DAG**。
 
 - 落点：`src/dag/dag.ts`（`DagSample` / `samples` 校验 / `sampleOf`）、`src/dag/dag-metrics.ts`
   （`mergeMetrics` / `measureDagNodes` / `rememberMeasurement` / `lastMeasurement` / `clearMeasurements`）、
@@ -419,7 +429,7 @@
 - **产物级端到端实测（构建后的 `dist/index.js`，假 ctx）**，也是本 plan 最关键的一条：
   - 子会话还活着时：信封给出实时 `metrics`（不带 `at`）；
   - **触发 `subagent/end`：真机与探针都显示 `agents.get(childId)` 已经取不到 agent**（注册表先于
-    `end` 事件释放），所以「结束时测一次」这条路**永远拿不到数**——原先 #168 的落盘钩子因此不生效；
+    `end` 事件释放），所以「结束时测一次」这条路**永远拿不到数**——原先的落盘钩子因此不生效；
   - 修正后的路径成立：**每次实时读数都记进进程内缓存**，之后无论节点怎么终结，路由都会把缓存里的读数
     （连同**测量时刻** `at`，不是写入时刻）补写进文档 → 子会话消失后的下一次答案返回
     `{"n1":{"tokens":3700,"elapsed_ms":…,"at":…}}`（探针实测），且 `samples` 落盘。
@@ -430,7 +440,7 @@
   `samples` 始终是 `null` → 说明**宿主在子代理结束后仍然保留该子会话可读**（与第一轮"`end` 时取不到"
   并不矛盾：那是 `end` 事件当下的窗口，之后注册表仍在）。于是「等实测消失再落盘」永远不会触发，
   **重启就会丢掉所有实测值**。
-- **修正 #2（本轮）**：落盘判据改为**不再等实测消失**——每次实测后都落一次，但对 `running` 节点**节流**
+- **第二次修正（本轮）**：落盘判据改为**不再等实测消失**——每次实测后都落一次，但对 `running` 节点**节流**
   （`SAMPLE_WRITE_MS = 10s`：测量时长至少推进 10 s 且 token 有变化才重写；`done` 节点只写一次），
   写入的是**测量时刻** `at`。至此「面板看到数」与「文档留下数」解耦，重启不再丢样本。
 - **真机第三轮（重启新 bundle 后，本会话实测）——三条路径全部实证**：
@@ -448,17 +458,17 @@
 - skill 侧实测：`grep -n "进计划模式\|空图\|0 节点" skill/references/plan-dag.md` 命中新触发语与新增 §3.1；
   `skill/SKILL.md` 未改（路由行与新纪律不冲突，`tests/guard/skill-doc.test.ts` 仍 23 passed）。
 
-### 7.7 plan #33：空图提醒的第二次机会 + 两条「误判成坏掉」的宿主提示
+### 7.7 空图提醒的第二次机会 + 两条「误判成坏掉」的宿主提示
 
-> issue：#171（空图软提醒不重复）、#53（挂载行缺 config）、#60（bash 兜底只读库），
-> 以及 skill 侧 #157/#158、#159/#160 的提醒文案。触发：plan #33 的调研期真的踩了一次
+> 涉及：空图软提醒不重复、挂载行缺 config、bash 兜底只读库，
+> 以及 skill 侧两组提醒文案。触发：那一轮计划的调研期真的踩了一次
 > 「收到空图提醒 → `init` → 忘了 `add` → 面板与提醒一起消失」（用户当场发现）。
 
-- **真机现象与根因（#171）**：本会话 DAG 文件在 `init` 后是 `nodes: []`，而面板自动打开的判据是
+- **真机现象与根因**：本会话 DAG 文件在 `init` 后是 `nodes: []`，而面板自动打开的判据是
   「本会话 DAG **≥1 节点**」（`src/client/dag-open.ts` `shouldOpenDag`）——0 节点等于没有图、也没有面板，
-  这是 #165/§3.1 早已记录的边界。**但** `src/dag/dag-plan-reminder.ts` 的注释写着「空图的会话故意不记为已提醒」，
+  这是 §3.1 早已记录的边界。**但** `src/dag/dag-plan-reminder.ts` 的注释写着「空图的会话故意不记为已提醒」，
   实现却是无条件 `remember(sessionId)`：提醒只在会话的**第一次**工具调用出现，`init` 之后不再有第二次。
-  注释与实现相反 → 独立的 #171。
+  注释与实现相反 → 独立的缺陷。
 - **口径（本轮拍板）**：提醒记的是**状态**不是次数——「没有 DAG」与「有 DAG 但 0 节点」是两个 gap，
   各提醒一次；落到 ≥1 节点后彻底安静。实现为 `Map<sessionId, 'missing'|'empty'>`（值就是「上次提醒的是哪个 gap」），
   原来「每会话一次」的语义被这条取代；`MAX_REMINDED_SESSIONS` 只作内存上界，命中即先删再插入，
@@ -466,36 +476,41 @@
   `DAG_EMPTY_REMINDER`（只差「先 `add` 一个节点」，不再重复 `init`）。
   实测：`tests/unit/dag/dag-plan-reminder.test.ts` 13 passed（新增「missing → empty 两次提醒」「同一 gap 不重复」
   「落节点后安静」三条路径）。
-- **#53 实测（宿主同一条校验路径）**：cordis 的 `resolveConfig` 把挂载行**缺省**的 config 以 `undefined`
+- **挂载行缺 config 的实测（宿主同一条校验路径）**：cordis 的 `resolveConfig` 把挂载行**缺省**的 config 以 `undefined`
   直接交给 `Config['~standard'].validate`，**不做归一化**；`z.object({…})` 于是报
   `invalid config: - Required (at )`（issue 里的原文），而 `{}` 与 `.default({})` 之后都得到完整默认值。
   修法是 `z.object({…}).default({})`；测试就用 `Config['~standard'].validate(undefined)`（standard-schema 的
   返回值是 `Result | Promise<Result>`，用例内收窄到同步分支），红/绿自检=临时删掉 `.default({})` 即复现 `Required`。
   `cordis.patch.yml` 里「config 必须显式给」的过时注释同步改掉（`config: {}` 行保留，`package-manifest.test.ts` 守约）。
-- **#60 实测**：workspace-write 下经 bash 跑 mint，**连只读命令**也报
+- **bash 兜底只读库的实测**：workspace-write 下经 bash 跑 mint，**连只读命令**也报
   `mint: error: SQLite error: attempt to write a readonly database`（SQLite 打开库时即使只读也要写 journal），
   宿主 `mint` 工具与 `mint --db <可写目录>` 都正常。落点两条：`src/host/reminders.ts` 的
   `readonlyDbHintListener`（只扫结果文本里的 `READONLY_DB_SYMPTOM`，不看工具名/退出码；append 一句
   「用宿主工具 / 提权重试 / `--db` 指可写目录」）与 skill `host-dsh.md` §执行面 的同一症状记录。
-- **skill 侧**：#157 把「无独立工作就地结束本轮 / 运行时以 follow-up 轮次唤醒 / `sleep` 把结算通知推迟到
-  sleep 结束之后」写进 `parallel-exec.md` §5；#158 把「清单条目只写 issue，不得写成批次/DAG 节点名」
+- **skill 侧**：「无独立工作就地结束本轮 / 运行时以 follow-up 轮次唤醒 / `sleep` 把结算通知推迟到
+  sleep 结束之后」写进 `parallel-exec.md` §5；「清单条目只写 issue，不得写成批次/DAG 节点名」
   写成显式禁令（`flow-impl.md` §3，`parallel-exec.md` §4 交叉引用）。
   实测：`tests/guard/skill-doc.test.ts` 23 passed（SKILL.md 字节预算未变，未动 SKILL.md）。
 - **仍留给人眼确认**：本会话 DAG 面板由空变有节点后的自动打开（agent 无 DOM，无法自证）。
 
-### 7.8 plan #36 调研：配对错位与 DAG 自测口径（#176）
+### 7.8 配对错位与 DAG 自测口径（调研记录）
 
-> **只读调研，未改产品代码**。证据源：plan #33 那批 5 节点会话的 DAG 文件
+> **只读调研，未改产品代码**。证据源：某一轮 5 节点会话的 DAG 文件
 > `/tmp/mint/dag/session-b14be033-d215-443e-b8d0-b5342d930d3e.json`（mtime `2026-10-07 15:33:16 +0800`，
 > `revision 172`）与该会话的宿主日志
 > `~/.dsh/sessions/--home-user-yanqd0-dsh-mint--/session-b14be033-…/session.v4.jsonl.zstd`（zstd 压缩，
 > `zstd -dc` 后逐行 JSON），以及每个子会话自己的日志目录（同父目录下以子会话 id 命名）。
 
-#### 7.8.1 一批多节点的 `subagent/start` ↔ 节点配对为何整体错位
+#### 7.8.1 一批多节点的 `subagent/start` ↔ 节点配对为何整体错位（**已被父感知认领取代**）
 
-**机制（代码）**：`claimNextNode`（`src/dag/dag-lifecycle.ts:85-94`）从节点数组**末尾向前**扫，认领第一个
+> **历史结论，保留作依据；机制已改**：下面的错位是**旧的**末尾规则的必然结果。现在认领是**父感知**的
+> （先按直接父会话认出父节点，再优先认 `depends_on` 指向它的等待节点，见 §3），所以「一批多节点」只要
+> 每对 dev/test 之间有那条依赖边，配对就是确定的；只有父节点认不出来时才退回末尾规则。下面这组数据跑的
+> 是改动前的代码，置换因此照旧复现。
+
+**机制（旧代码）**：`claimNextNode` 从节点数组**末尾向前**扫，认领第一个
 `status === 'running' && agent === undefined` 的节点；`installDagLifecycle` 把它挂在 `subagent/start`
-（`src/dag/dag-lifecycle.ts:282-290`，`write(parent, doc => claimNextNode(doc, String(info.id), now))`）。
+（`write(parent, doc => claimNextNode(doc, String(info.id), now))`）。
 于是「谁配谁」由两个**外部顺序**相乘决定：① 数组里还剩哪些 running-无 agent 节点；② 宿主
 `subagent/start` 的**发射顺序**（不是模型派发的顺序）。`n7` 当时也是 running-无 agent，但它在数组里排在
 a 批之前，所以永远轮不到它——判据是**位置**，不是「最近 set running」。
@@ -512,22 +527,22 @@ description/label、也当然没有 DAG 节点概念。
 `list_agents` 也给 `{id, label, status}`——但「哪个节点」只存在于模型自己的 `set` 里。）
 
 **本轮实测（可复现）**：派发意图写在父会话 5 个 `subagent` 调用的【DAG 节点】段里（同一 `step=37`）：
-`#157→a1`、`#158→a2`、`#159→a3`、`#53→a4`、`#90→a5`；节点在 `step=34`（早 32 s）已全部 `running`。
-DAG 文件实际记的是：`a1←7d07d0ac`、`a2←3a3381e0`、`a3←9a5711cd`、`a4←66e77f36`、`a5←3301f89c`。
-子代理真实身份取自各自日志第 2 行的 `subagent/descriptor.label`：`66e77f36=#157`、`7d07d0ac=#158`、
-`3301f89c=#159`、`3a3381e0=#53`、`9a5711cd=#90`。宿主的 start 发射顺序取自父日志的
-`subagent/catalog`（`seq` 依次 `508/509/511/512/513`）：`#159 → #157 → #90 → #53 → #158`。
-把 claimNextNode 的规则套上去（a1..a5 全在 running、从后往前占位）：第 1 个 start 拿 `a5`、第 2 个拿
-`a4`…第 5 个拿 `a1` → 预测 `a5←#159、a4←#157、a3←#90、a2←#53、a1←#158`，**与文件逐条相同**。
+`i1→a1`、`i2→a2`、`i3→a3`、`i4→a4`、`i5→a5`（那 5 个 issue 在此记作 `i1`–`i5`）；节点在 `step=34`
+（早 32 s）已全部 `running`。DAG 文件实际记的是：`a1←7d07d0ac`、`a2←3a3381e0`、`a3←9a5711cd`、
+`a4←66e77f36`、`a5←3301f89c`。子代理真实身份取自各自日志第 2 行的 `subagent/descriptor.label`：
+`66e77f36=i1`、`7d07d0ac=i2`、`3301f89c=i3`、`3a3381e0=i4`、`9a5711cd=i5`。宿主的 start 发射顺序取自父日志的
+`subagent/catalog`（`seq` 依次 `508/509/511/512/513`）：`i3 → i1 → i5 → i4 → i2`。
+把**旧的** claimNextNode 规则套上去（a1..a5 全在 running、从后往前占位）：第 1 个 start 拿 `a5`、第 2 个拿
+`a4`…第 5 个拿 `a1` → 预测 `a5←i3、a4←i1、a3←i5、a2←i4、a1←i2`，**与文件逐条相同**。
 所以「整体错位」不是随机，而是「宿主发射顺序 × 从后往前占位」的一个置换；发射顺序又**不等于**工具调用
-顺序（同一 step 里模型按 #157/#158/#159/#53/#90 派发，宿主按 #159/#157/#90/#53/#158 起跑）。
+顺序（同一 step 里模型按 `i1`–`i5` 的顺序派发，宿主按上面的顺序起跑）。
 
 **连带损伤（数字也归错人）**：`samples` 由 `node.agent` 决定写进哪个节点——`saveSample`
-（`src/dag/dag-lifecycle.ts:248-280`：`nodeOf(doc, agentId)` → `withSample(doc, node.id, …)`）与
+（`src/dag/dag-lifecycle.ts`：`nodeOf(doc, agentId)` → `withSample(doc, node.id, …)`）与
 `set → done` 的 `measuredNode`（`src/dag/dag-tool.ts:401-407`）用的是同一个键。实测：5 条样本的 `tokens`
 **恰好等于被记那个 agent 的子会话当时的累计 token**（逐条 delta = 0，其它四支都不等，按「usage 四桶求和、
-截至 `samples.<node>.at`」算）。本轮（plan #36）同样复现：`b1`（issue 172）的 `agent` 是 `872cb7dc`
-（`label = "#173 面板透出 worktree"`，本该是 b2 的活），`b1` 的样本 `14597` 也正是 `872cb7dc` 当时的累计。
+截至 `samples.<node>.at`」算）。本轮同样复现：`b1` 的 `agent` 是 `872cb7dc`
+（它的 `label` 指向的是**另一批**的节点名，本该是 b2 的活），`b1` 的样本 `14597` 也正是 `872cb7dc` 当时的累计。
 
 **复现步骤（只读）**：
 
@@ -544,29 +559,34 @@ zstd -dc $D/$S/session.v4.jsonl.zstd | jq -rc 'select(.type=="subagent/catalog")
 zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
 ```
 
-**推荐纪律（零改动，本轮不改代码）**：
+**当时的推荐纪律（零改动，那一轮不改代码）**：
 
 1. **一步一节点一派发**：派发前**至少早一个 step** 把该节点的 `set running` 落地（同一 step 里的多个
    `set`/`subagent` 是并发工具调用，谁先到不保证——本轮 a 批是 step 34 全置 running、step 37 才派发，
    b 批是 step 14 置 b1、step 16 派 3 支），且保证此刻**只有一个** running-无 agent 节点。此时
    「最后一个」就是它，配对确定，`subagent/end` 的兜底结算与 `samples` 也都落在对的人身上。
+   **现已放宽**：父感知认领只要求**同时只有一个 `running` 且 `agent` 为空的节点**；同一 issue 的
+   dev/test 一对里两个节点同时 `running` 是允许的（test 依赖 dev，靠那条边认领）。
 2. **派发后显式校正**：从 `subagent` 结果或 `list_agents` 拿到子会话 id 后，
    `mint_plan_dag({action:"set", id:"<node>", agent:"<childId>"})`——`set` 的 `agent` 是**覆盖写**
    （`src/dag/dag.ts:713`），参数已在工具 schema 里（`src/dag/dag-tool.ts:106`）。代价：每节点多一次调用 + 需要
    一次 id/label 对应查询。
 3. **或接受 `agent` 仅作参考**：不要拿 `subagent/end` 的兜底（`settleNode` 按 `node.agent` 定位，
-   `src/dag/dag-lifecycle.ts:102-115`）判断节点成败，节点结论以子代理自己 `set` 的 verdict/note 为准；
+   `src/dag/dag-lifecycle.ts`）判断节点成败，节点结论以子代理自己 `set` 的 verdict/note 为准；
    面板上的 `agent` 只当「有一支子代理在跑」的弱提示，`samples` 的数字不当作该节点自己的开销。
-4. **（需用户拍板，另拆）** 若要把配对做成确定映射，只能请宿主在生命周期 payload 里补派发身份
-   （如 `callId`/`label`），或让工具层把「本次派发的子会话」与工具调用关联——本仓改不了宿主，属上游需求。
+4. **（本仓已解，不必等上游）** 派发身份确实不在宿主 payload 里（见上），但**同一 issue 的 dev/test 对
+   自带一条 `depends_on` 边**，父感知认领用它把配对做成确定映射，无需请宿主补 `callId`/`label`。
+   边界仍在：一个 dev 节点配**多个**下游节点时，仍只能按数组顺序认领最后一个（节点模型不表达「哪个
+   test 归哪个 dev」的更细粒度）。
 
-**正例：一步一节点（本轮实测，旧口径）**
+**正例：一步一节点（实测，旧口径）**
 
 §3 的「认领记录 + 兜底认领」已在宿主侧落地（`claimNextNode` 返回认领到的节点 id、
 `subagent/end` 先按 `agent` 再按该 id 兜底）。**但下面这组数据跑的是改动前的 dist**：
 当时 `node.agent` 是旧口径（节点 `tokens` 全为空），兜底路径还不存在——所以它是
 「**一步一节点时配对天然正确**」的正例，不是新口径的复验；**新口径（测调用者会话 + 写 `tokens`）
-的复验留待重启 harness 之后**。
+的复验留待重启 harness 之后**。父感知认领落地后，这条纪律只在**两条父感知路径都认不出**时才需要
+（父会话在文档里没有节点，或没有等待节点 `depends_on` 指向它）。
 
 本会话（`session-4911cb07-a368-44f8-8a89-25f0112cf3d2`）的 DAG 文件实测（`revision 235`，
 读取时 `e179` 刚派发、另有 `t1`/`p1`/`p2` 三个 main 自有节点无 `agent`）：全程按「先 `set running`
@@ -595,12 +615,12 @@ for(const n of d.nodes) if(n.agent) console.log(n.id, n.agent, JSON.stringify(d.
 每个有 `agent` 的节点都该有 `samples[node.id]`，且各节点 `agent` 两两不同（有重复或空样本 =
 配对退回了「一批多路」的错位模式，见上文）。
 
-#### 7.8.2 worktree 内 commit 的 sha 口径（#176）
+#### 7.8.2 worktree 内 commit 的 sha 口径
 
 **mint 侧语义**：`issue state commit <id> --sha <sha>` 写 `last_commit_id`；显式 `--sha` 在 git 仓库内做
 存在性校验——**不存在** → 报错 `commit <s> not found in this repository`；**存在但不是 HEAD 祖先** →
 只打警告 `mint: warning: <s> is not an ancestor of HEAD`（仍写入）；`--sha` 省略时取**当前 cwd 的 HEAD**
-（非 git 目录报错）——mint 仓 `src/cli/issue/state.rs:110-127` 与 `src/git.rs:83-108`（`#477`）。
+（非 git 目录报错）——mint 仓 `src/cli/issue/state.rs:110-127` 与 `src/git.rs:83-108`。
 插件把 cwd 取成**调用会话的** `session.header.cwd`（本仓 `src/mint/mint-tool.ts:385`），所以「在 worktree 里跑
 mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，HEAD 是**开工时所在分支（目标分支）**的头」——
 **「取哪个 sha」首先是「在哪个 worktree、什么时候跑」**。
@@ -609,7 +629,7 @@ mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，H
 取 **merge 落地之后、开工时所在分支（目标分支）的工作树 HEAD**，即 `--no-ff` 产生的那个 merge commit。
 
 节点存储的 worktree 记录（`DagWorktree`）：`path` / `branch` / `base` / `state` / `merged_sha?`，以及
-`target?`（#189）——**开工（建树）时所在的分支名**，即 merge 目标；`create` 写入，`merge`/`remove` 都带它
+`target?`——**开工（建树）时所在的分支名**，即 merge 目标；`create` 写入，`merge`/`remove` 都带它
 落盘，detached HEAD 时为 `'HEAD'`（该值视为「无可校验」，退回按当前 HEAD 判定）。
 
 1. 节点分支里的 commit（在 worktree 内 `git rev-parse --short=7 HEAD`）**不登记**；它在 merge 后仍可
@@ -626,7 +646,7 @@ git rev-parse --short=7 HEAD                 # ① 与登记值逐字符相同
 git log -1 --format='%h %p %s' <sha>         # ② 两个父 + subject 形如 Merge branch 'node/a1'
 git diff <sha>^1 <sha> --stat                # ③ 只列该节点的文件 = 该 issue 的改动
 git rev-parse <sha>^2                        # ③' == worktree 里的分支头 sha（两条口径的关系）
-git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint #477 同一条判定 → 0
+git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint 的同一条祖先判定 → 0
 ```
 
 ④ 为 0 即「该 sha 是当前 HEAD 的祖先」，也就是 mint 不告警的条件；若在 merge **前**从会话当前工作树登记
@@ -636,7 +656,7 @@ worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancest
 若改用了 squash/ff 合并，则没有 merge commit（ff 时 HEAD 就是分支头，两条口径合一），自证 ② 的「两个父」
 不再成立，需要按「HEAD 即分支头」读。
 
-#### 7.8.3 DAG 怎么「自报 token 开销」（#176）
+#### 7.8.3 DAG 怎么「自报 token 开销」
 
 **先纠正前提**：同一份 DAG 文件（`revision 172`）里，20 个节点**全部没有 `tokens` 字段**（自报路径从未被
 写过），`samples` 只有 6 条（`a1`–`a5`、`b1`），**剩下 14 条为空**（`n1`–`n8`、`a6`、`b2`–`b6`）——这 14 个

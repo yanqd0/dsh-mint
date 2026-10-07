@@ -1,5 +1,5 @@
 /**
- * The plan DAG's host lifecycle pairing (plan #31).
+ * The plan DAG's host lifecycle pairing.
  *
  * A node's `status` is the model's own claim; the host knows something the model
  * does not — that a subagent it delegated to has actually started or ended. This
@@ -11,7 +11,7 @@
  * - `subagent/end` settles a node the child never reported on: `fail` plus the
  *   stop reason, which is the "subagent crashed without a verdict" backstop —
  *   and, before doing so, it measures the child one last time and persists that
- *   reading into the document's `samples` (#168), because a child's live
+ *   reading into the document's `samples`, because a child's live
  *   projection state disappears with its session and the number must outlive it.
  *
  * Two rules keep it safe. It **never creates a node** — a node is a modelling
@@ -23,10 +23,14 @@
  *
  * 「哪次派发属于哪个节点」宿主不给（`SubagentRunInfo` 只有 runId/id/provider/local，
  * 见 `notes/plan-dag.md` §7.8.1），所以认领结果只能自己在 `start` 时记下来，`end` 时
- * 拿它兜底（{@link FALLBACK_MARK}）。批内多节点同时 `running` 时认领本身就会整体错位
- * ——这一步只做到「发生过兜底能被看见」，错位靠「一步一节点」的纪律避免。
+ * 拿它兜底（{@link FALLBACK_MARK}）。两级委派下配对靠两条规则站住：**图归属**解析到
+ * **根会话**（{@link rootSessionId}——孙代理的直接父是中间子代理，拿它当归属就会写到
+ * 一张不存在的文件），**认领**改成**父感知**（先认父节点，再优先认 `depends_on` 指向
+ * 它的等待节点，见 {@link claimNextNode}）。旧的「一批多节点从后往前占位」在并发下必错位
+ * （§7.8.1 的历史结论），这条「test 依赖 dev」的边已经把它收敛掉。
  */
 import { DAG_NOTE_MAX, sampleOf } from './dag.js';
+import { rootSessionId } from '../shared/session-id.js';
 import { nodeMetrics, rememberMeasurement } from './dag-metrics.js';
 import { updateDag } from './dag-store.js';
 import type { DagDoc, DagNode, DagSample } from './dag.js';
@@ -96,7 +100,17 @@ function completedNote(info: SubagentRunEndInfoLike): string {
 }
 
 /**
- * The last node waiting for an agent — the one a starting child belongs to.
+ * The node a starting child belongs to: parent-aware first, tail rule second.
+ *
+ * 两级委派下这条链是确定的：**直接父会话**（`parentAgentId`）在文档里认领过哪个节点，
+ * 那个节点 `agent` 字段就记着它（{@link nodeOf}，从后往前）。父节点找到后，在 `running`
+ * 且无 `agent` 的节点里**优先**认领 `depends_on` 指向它的那个（多个时仍取数组里最后一个）
+ * ——dev/test 一对里 test 节点依赖 dev 节点，这条边就是**配对凭据**，不必再靠「数组末尾
+ * 最近的 running」猜；多个 dev 子代理同时给自己的 test 节点置 `running` 也不会错位。
+ *
+ * 找不到父节点、或没有等待节点依赖它时**退回**旧规则（数组末尾最近的 running 且无 `agent`
+ * 节点）：一步一节点派发、main 直接派发（父会话的 id 不是任何节点的 `agent`）等既有路径
+ * 都要照旧工作。
  *
  * 返回**认领到的那个节点 id**：`subagent/end` 拿它兜底，所以认领必须能被调用方
  * 记住（宿主 payload 里没有「哪次派发」的关联信息，这是唯一的配对凭据）。
@@ -104,16 +118,36 @@ function completedNote(info: SubagentRunEndInfoLike): string {
 function claimNextNode(
   doc: DagDoc,
   agentId: string,
+  parentAgentId: string,
   now: string
 ): { doc: DagDoc; nodeId: string } | undefined {
+  const index = claimIndex(doc, parentAgentId);
+  if (index < 0) return undefined;
+  const node = doc.nodes[index] as DagNode;
+  const nodes = [...doc.nodes];
+  nodes[index] = { ...node, agent: agentId, updated_at: now };
+  return { doc: { ...doc, nodes, revision: doc.revision + 1, updated_at: now }, nodeId: node.id };
+}
+
+/**
+ * 要认领的节点下标：父感知优先，退回「数组末尾最近的 `running` 且无 `agent`」。
+ *
+ * 两轮都从后往前扫，保持「多个候选时取数组里最后一个」的既有口诀。
+ */
+function claimIndex(doc: DagDoc, parentAgentId: string): number {
+  const waiting = (node: DagNode): boolean => node.status === 'running' && node.agent === undefined;
+  const parent = nodeOf(doc, parentAgentId);
+  if (parent !== undefined) {
+    for (let index = doc.nodes.length - 1; index >= 0; index -= 1) {
+      const node = doc.nodes[index] as DagNode;
+      if (waiting(node) && node.depends_on.includes(parent.id)) return index;
+    }
+  }
   for (let index = doc.nodes.length - 1; index >= 0; index -= 1) {
     const node = doc.nodes[index] as DagNode;
-    if (node.status !== 'running' || node.agent !== undefined) continue;
-    const nodes = [...doc.nodes];
-    nodes[index] = { ...node, agent: agentId, updated_at: now };
-    return { doc: { ...doc, nodes, revision: doc.revision + 1, updated_at: now }, nodeId: node.id };
+    if (waiting(node)) return index;
   }
-  return undefined;
+  return -1;
 }
 
 /**
@@ -143,8 +177,8 @@ function settleNode(doc: DagDoc, agentId: string, note: string, now: string): Da
  * 守卫与 {@link settleNode} 一致（**只动 `running` 节点**）：子代理已经自己
  * `set` 过结论时，它的记录比兜底更好，也不该让 revision 再跳一次。
  * 三条边界：① 它只救「文档里**没有任何节点**带这个 agent」的情形（按 `agent` 找不到
- * 才走到这里）；② 认领本身错位时，它落到的仍是**认领过的**那个节点——所以它能自证
- * 「发生过兜底」，但**不修错位**（错位只能靠「一步一节点」的纪律避免）；③ 调用方
+ * 才走到这里）；② 认领本身错位时（父感知认领的依赖边对不上、退回了末尾规则），它落到的
+ * 仍是**认领过的**那个节点——所以它能自证「发生过兜底」，但**不修错位**；③ 调用方
  * 必须给带 {@link FALLBACK_MARK} 前缀的 note，这是兜底唯一的可见面。
  */
 function settleNodeById(doc: DagDoc, nodeId: string, note: string, now: string): DagDoc | undefined {
@@ -174,7 +208,11 @@ function fallbackNote(note: string): string {
 }
 
 /**
- * 一次派发的配对记录：runId → {父会话, 认领到的节点 id}。
+ * 一次派发的配对记录：runId → {图归属会话, 认领到的节点 id}。
+ *
+ * `parent` 是**图归属会话**（根会话，认领出的节点就写在它的文档里），不是直接父会话：
+ * 直接父会话只用来做父感知认领（{@link claimNextNode}），解析完就不必留下——它对孙代理
+ * 是中间子代理，拿它当归属就会写到一张不存在的 `<中间会话>.json`。
  *
  * `nodeId` 故意**可变**：它由 `start` 里那次认领回调**回填**，而回调与
  * `subagent/end` 是两条互不等待的路径——`end` 可能先到，把 map 里的这一项删掉。
@@ -287,7 +325,7 @@ export function withSample(
  * @param dagDir - DAG directory override; absent means `DAG_DIR`.
  */
 export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
-  /** runId → 配对记录（父会话 + 认领到的节点 id），见 {@link PendingRun}。 */
+  /** runId → 配对记录（**图归属会话** + 认领到的节点 id），见 {@link PendingRun}。 */
   const pending = new Map<string, PendingRun>();
 
   const agents = (): AgentsLike | undefined => ctx.get?.('agents') as AgentsLike | undefined;
@@ -371,18 +409,23 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
 
   ctx.on('subagent/start', (info: SubagentRunInfoLike) => {
     const child = agents()?.get(info.id);
-    const parent = child?.session.header.parentSession;
-    if (parent === undefined) return;
+    // 两个键**不可混用**：认领键是**直接父会话**（父节点的 `agent` 记的就是它），图归属
+    // 是**根会话**（孙代理沿链上溯，写进 main 的那张图）。
+    const parentAgentId = child?.session.header.parentSession;
+    if (parentAgentId === undefined) return;
+    // 上溯不出来时退回直接父会话——那正是本改动前的口径，一级委派仍然正确；两条路径都
+    // 写不出文档时 `updateDag` 一样跳过，所以「注册表里没有这个 child 就跳过」的语义不变。
+    // 只有注册表形状漂移（entry 没有 `session.id`，如 `dag-tool.test.ts` 的最小夹具）、
+    // 链上有环或超过 16 跳才会走到退回这条。
+    const owner = rootSessionId(child, agents()) ?? parentAgentId;
     // 先建对象再写 map，并让下面的 mutation 闭包**持有同一个对象**：认领是异步的
     // （排队等 `updateDag` 的锁），而 `subagent/end` 不排队等它——`end` 完全可以先到，
     // 把 map 里这一项 `pending.delete` 掉。map 只负责把对象交给回调；认领结果写在
     // 对象自身上，所以即使 map 项已经消失，那位仍握着引用的读者也能看到它。
-    const entry: PendingRun = { parent };
+    const entry: PendingRun = { parent: owner };
     pending.set(String(info.runId), entry);
-    // `parent` is the session that owns the DAG: a subagent's parent is the
-    // root (or the DAG of a nested chain is written by that same root rule).
-    write(parent, (doc, now) => {
-      const claimed = claimNextNode(doc, String(info.id), now);
+    write(owner, (doc, now) => {
+      const claimed = claimNextNode(doc, String(info.id), parentAgentId, now);
       if (claimed === undefined) return undefined;
       entry.nodeId = claimed.nodeId;
       return claimed.doc;
@@ -395,9 +438,15 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     const fallbackId = remembered?.nodeId;
     pending.delete(runId);
     // A session started before this plugin loaded (or one the `start` event
-    // missed) still has a live agent to ask.
+    // missed) still has a live agent to ask — and the question is the same one
+    // `start` asked: the DAG belongs to the **root** session, not to the
+    // intermediate child a grandchild was delegated from. 上溯不出来时退回直接
+    // 父会话，与 `start` 同一口径（形状漂移 / 环 / 超深）。
+    const child = agents()?.get(info.id);
     const parent =
-      remembered?.parent ?? agents()?.get(info.id)?.session.header.parentSession;
+      remembered?.parent ??
+      rootSessionId(child, agents()) ??
+      child?.session.header.parentSession;
     if (parent === undefined) return;
     // The measurement first, the settlement second: both are queued on the
     // session's own lock, so the order here is the order on disk — and a
