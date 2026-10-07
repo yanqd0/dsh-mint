@@ -9,7 +9,7 @@
 # 本地开发安装：
 #   dsh plugin --profile web add ./
 #
-# 缺 `config` 走 Config 的默认值（#53）；显式给空对象同样有效。
+# 缺 `config` 走 Config 的默认值；显式给空对象同样有效。
 #
 # 本文件必须随包发布（package.json 的 files 项）：dsh 从已安装包的目录读它。
 # 注意：若 profile 的 cordis.patch.yml 里另有手写的 `id: mint` insert 行，
