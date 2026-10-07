@@ -456,3 +456,153 @@
   写成显式禁令（`flow-impl.md` §3，`parallel-exec.md` §4 交叉引用）。
   实测：`src/skill-doc.test.ts` 23 passed（SKILL.md 字节预算未变，未动 SKILL.md）。
 - **仍留给人眼确认**：本会话 DAG 面板由空变有节点后的自动打开（agent 无 DOM，无法自证）。
+
+### 7.8 plan #36 调研：配对错位与 DAG 自测口径（#176）
+
+> **只读调研，未改产品代码**。证据源：plan #33 那批 5 节点会话的 DAG 文件
+> `/tmp/mint/dag/session-b14be033-d215-443e-b8d0-b5342d930d3e.json`（mtime `2026-10-07 15:33:16 +0800`，
+> `revision 172`）与该会话的宿主日志
+> `~/.dsh/sessions/--home-user-yanqd0-dsh-mint--/session-b14be033-…/session.v4.jsonl.zstd`（zstd 压缩，
+> `zstd -dc` 后逐行 JSON），以及每个子会话自己的日志目录（同父目录下以子会话 id 命名）。
+
+#### 7.8.1 一批多节点的 `subagent/start` ↔ 节点配对为何整体错位
+
+**机制（代码）**：`claimNextNode`（`src/dag-lifecycle.ts:85-94`）从节点数组**末尾向前**扫，认领第一个
+`status === 'running' && agent === undefined` 的节点；`installDagLifecycle` 把它挂在 `subagent/start`
+（`src/dag-lifecycle.ts:282-290`，`write(parent, doc => claimNextNode(doc, String(info.id), now))`）。
+于是「谁配谁」由两个**外部顺序**相乘决定：① 数组里还剩哪些 running-无 agent 节点；② 宿主
+`subagent/start` 的**发射顺序**（不是模型派发的顺序）。`n7` 当时也是 running-无 agent，但它在数组里排在
+a 批之前，所以永远轮不到它——判据是**位置**，不是「最近 set running」。
+
+**宿主不提供关联信息（判定依据）**：`SubagentRunInfo` 只有 `{ runId, provider, id, local }`
+（宿主 checkout `…/@deepseek-ai/dsh-subagent@0.2.0-rc.2/lib/types/types.d.ts:71-86`），
+`SubagentRunEndInfo` 再加 `stopReason` / `lastAssistantMessage`；两个 emit 点
+（`observeRun`，`lib/index.js:268-280`；`createActivationObserver.start`，同文件 `:306`）都只发这个
+`identity`，第二个参数 `parent`（一个活 Agent）只被 `createLifecycleEmitter` 拿来当 scoped dispatch 的
+carrier，**不传给 listener**（它显式只调 `callback(info)`）。payload 里没有 callId、没有
+description/label、也当然没有 DAG 节点概念。
+→ **判定：宿主根本不提供「哪次派发 / 哪个节点」的关联信息，本仓的错位是设计边界而非用法 bug**。
+（「哪次派发」还部分可查——父会话日志的 `subagent/catalog` 事件带 `{childId, label, mode}`，
+`list_agents` 也给 `{id, label, status}`——但「哪个节点」只存在于模型自己的 `set` 里。）
+
+**本轮实测（可复现）**：派发意图写在父会话 5 个 `subagent` 调用的【DAG 节点】段里（同一 `step=37`）：
+`#157→a1`、`#158→a2`、`#159→a3`、`#53→a4`、`#90→a5`；节点在 `step=34`（早 32 s）已全部 `running`。
+DAG 文件实际记的是：`a1←7d07d0ac`、`a2←3a3381e0`、`a3←9a5711cd`、`a4←66e77f36`、`a5←3301f89c`。
+子代理真实身份取自各自日志第 2 行的 `subagent/descriptor.label`：`66e77f36=#157`、`7d07d0ac=#158`、
+`3301f89c=#159`、`3a3381e0=#53`、`9a5711cd=#90`。宿主的 start 发射顺序取自父日志的
+`subagent/catalog`（`seq` 依次 `508/509/511/512/513`）：`#159 → #157 → #90 → #53 → #158`。
+把 claimNextNode 的规则套上去（a1..a5 全在 running、从后往前占位）：第 1 个 start 拿 `a5`、第 2 个拿
+`a4`…第 5 个拿 `a1` → 预测 `a5←#159、a4←#157、a3←#90、a2←#53、a1←#158`，**与文件逐条相同**。
+所以「整体错位」不是随机，而是「宿主发射顺序 × 从后往前占位」的一个置换；发射顺序又**不等于**工具调用
+顺序（同一 step 里模型按 #157/#158/#159/#53/#90 派发，宿主按 #159/#157/#90/#53/#158 起跑）。
+
+**连带损伤（数字也归错人）**：`samples` 由 `node.agent` 决定写进哪个节点——`saveSample`
+（`src/dag-lifecycle.ts:248-280`：`nodeOf(doc, agentId)` → `withSample(doc, node.id, …)`）与
+`set → done` 的 `measuredNode`（`src/dag-tool.ts:401-407`）用的是同一个键。实测：5 条样本的 `tokens`
+**恰好等于被记那个 agent 的子会话当时的累计 token**（逐条 delta = 0，其它四支都不等，按「usage 四桶求和、
+截至 `samples.<node>.at`」算）。本轮（plan #36）同样复现：`b1`（issue 172）的 `agent` 是 `872cb7dc`
+（`label = "#173 面板透出 worktree"`，本该是 b2 的活），`b1` 的样本 `14597` 也正是 `872cb7dc` 当时的累计。
+
+**复现步骤（只读）**：
+
+```bash
+S=session-b14be033-d215-443e-b8d0-b5342d930d3e
+D=~/.dsh/sessions/--home-user-yanqd0-dsh-mint--
+# ① 节点 ↔ 被记 agent
+jq -r '.nodes[]|select(.agent)|"\(.id)\t\(.agent)"' /tmp/mint/dag/$S.json
+# ② 被记 agent 的真实身份（子会话日志第 2 行的 descriptor.label）
+zstd -dc $D/<agentId>/session.v4.jsonl.zstd | sed -n 2p | jq -r '.data.label'
+# ③ 宿主 start 发射顺序（父会话日志里的 subagent/catalog）
+zstd -dc $D/$S/session.v4.jsonl.zstd | jq -rc 'select(.type=="subagent/catalog")|"\(.time)\t\(.data.label)"'
+# ④ 样本 ↔ 子会话累计：把 samples.<node>.tokens 与该 agent 的 usage 四桶累计（截至 samples.<node>.at）比对
+zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
+```
+
+**推荐纪律（零改动，本轮不改代码）**：
+
+1. **一步一节点一派发**：派发前**至少早一个 step** 把该节点的 `set running` 落地（同一 step 里的多个
+   `set`/`subagent` 是并发工具调用，谁先到不保证——本轮 a 批是 step 34 全置 running、step 37 才派发，
+   b 批是 step 14 置 b1、step 16 派 3 支），且保证此刻**只有一个** running-无 agent 节点。此时
+   「最后一个」就是它，配对确定，`subagent/end` 的兜底结算与 `samples` 也都落在对的人身上。
+2. **派发后显式校正**：从 `subagent` 结果或 `list_agents` 拿到子会话 id 后，
+   `mint_plan_dag({action:"set", id:"<node>", agent:"<childId>"})`——`set` 的 `agent` 是**覆盖写**
+   （`src/dag.ts:713`），参数已在工具 schema 里（`src/dag-tool.ts:106`）。代价：每节点多一次调用 + 需要
+   一次 id/label 对应查询。
+3. **或接受 `agent` 仅作参考**：不要拿 `subagent/end` 的兜底（`settleNode` 按 `node.agent` 定位，
+   `src/dag-lifecycle.ts:102-115`）判断节点成败，节点结论以子代理自己 `set` 的 verdict/note 为准；
+   面板上的 `agent` 只当「有一支子代理在跑」的弱提示，`samples` 的数字不当作该节点自己的开销。
+4. **（需用户拍板，另拆）** 若要把配对做成确定映射，只能请宿主在生命周期 payload 里补派发身份
+   （如 `callId`/`label`），或让工具层把「本次派发的子会话」与工具调用关联——本仓改不了宿主，属上游需求。
+
+#### 7.8.2 worktree 内 commit 的 sha 口径（#176）
+
+**mint 侧语义**：`issue state commit <id> --sha <sha>` 写 `last_commit_id`；显式 `--sha` 在 git 仓库内做
+存在性校验——**不存在** → 报错 `commit <s> not found in this repository`；**存在但不是 HEAD 祖先** →
+只打警告 `mint: warning: <s> is not an ancestor of HEAD`（仍写入）；`--sha` 省略时取**当前 cwd 的 HEAD**
+（非 git 目录报错）——mint 仓 `src/cli/issue/state.rs:110-127` 与 `src/git.rs:83-108`（`#477`）。
+插件把 cwd 取成**调用会话的** `session.header.cwd`（本仓 `src/mint-tool.ts:385`），所以「在 worktree 里跑
+mint，HEAD 是节点分支头；在主 worktree 里跑，HEAD 是主线头」——**「取哪个 sha」首先是「在哪个
+worktree、什么时候跑」**。
+
+**口径（沿用既有 skill 口径 `worktree-exec.md` §5 / `flow-impl.md:89`，此处补自证）**：
+取 **merge 落地之后、主 worktree（主线）的 HEAD**，即 `--no-ff` 产生的那个 merge commit：
+
+1. 节点分支里的 commit（在 worktree 内 `git rev-parse --short=7 HEAD`）**不登记**；它在 merge 后仍可
+   `git show`，因为它就是 merge commit 的第二个父。
+2. **登记时刻** = `merge` 命令成功返回后的**第一条命令**：`git rev-parse --short=7 HEAD` →
+   `mint({ args: ["issue","state","commit","<id>","--sha","<前7位>"] })`。取与登记之间不得再落任何 commit。
+3. 一个 issue 多个 commit：merge 把它们收进一个 merge commit → 「只登记最后一个 sha」天然满足；
+   不要在 merge 前逐个登记（那会在 merge 前从主线看触发上面的 NotAncestor 警告，merge 后还得重登记）。
+
+**自证四连（全部只读，在 merge 后的主 worktree 执行）**：
+
+```bash
+git rev-parse --short=7 HEAD                 # ① 与登记值逐字符相同
+git log -1 --format='%h %p %s' <sha>         # ② 两个父 + subject 形如 Merge branch 'node/a1'
+git diff <sha>^1 <sha> --stat                # ③ 只列该节点的文件 = 该 issue 的改动
+git rev-parse <sha>^2                        # ③' == worktree 里的分支头 sha（两条口径的关系）
+git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint #477 同一条判定 → 0
+```
+
+④ 为 0 即「该 sha 是当前 HEAD 的祖先」，也就是 mint 不告警的条件；若在 merge **前**从主 worktree 登记
+worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancestor of HEAD`——这就是「时刻」的
+机器判据。短 sha（前 7 位）足够：mint 只做 `rev-parse --verify` 存在性检查，存的是你给的字符串。
+**边界**：merge 后若因冲突裁决又改代码 → 新 commit，需重新 `state commit`（口径仍是「只留最后一个」）；
+若改用了 squash/ff 合并，则没有 merge commit（ff 时 HEAD 就是分支头，两条口径合一），自证 ② 的「两个父」
+不再成立，需要按「HEAD 即分支头」读。
+
+#### 7.8.3 DAG 怎么「自报 token 开销」（#176）
+
+**先纠正前提**：同一份 DAG 文件（`revision 172`）里，20 个节点**全部没有 `tokens` 字段**（自报路径从未被
+写过），`samples` 只有 6 条（`a1`–`a5`、`b1`），**剩下 14 条为空**（`n1`–`n8`、`a6`、`b2`–`b6`）——这 14 个
+**全都没有 `agent`**。测量键就是 `node.agent`（`measuredNode`，`src/dag-tool.ts:401-407`；路由侧同规则），
+没有 `agent` 的节点**结构上不可能**有实测读数；有 `agent` 的节点则确实留下了样本。所以「面板没打开」
+不是空样本的充分原因——**`set → done` 本身就是一条测量入口**（§7.6 第三轮已证；a1–a5 的样本就是它留下的）。
+真正的两条缺口是：① 无 `agent` 的节点没有测量键；② 唯一的补充来源（`tokens` 自报）没人写，而宿主从不
+自动写它（表里只有 `samples`）。
+
+**方案（分层，从零改动到需上游）**：
+
+- **L1 零改动（今天可用）**：让**节点的 owner 自己**在还活着的最后一步 `set done`（工具描述里已是这条纪律，
+  `src/dag-tool.ts:70`）——配对正确时 `persistNodeSample` 会测到它并把样本落盘（`at` = 测量时刻）；需要
+  数字时再 `curl 'http://127.0.0.1:<port>/dsh-mint/dag?session=<root>'` 主动制造一次观测（§4.7/§7.6 已证
+  路由读一次即落盘，`running` 节点 10 s 节流）。代价：数字只在「有 agent + 那一刻可读」时存在；无 `agent`
+  的调研节点（`n1`–`n8` 这类）仍然空，而且错位未修时数字会归错节点。
+- **L2 小改（推荐；约 15 行 + 2–3 条用例）**：在 `set → done` 的既有落盘路径上，除 `node.agent` 外（或优先）
+  测**调用者自己的会话**——子代理自测时它的 session 必然活着，不受注册表释放、路由/面板是否被访问影响；
+  读数照旧写 `samples`，并把同一个 token 数**也写进节点的 `tokens`**（面板的降级来源，§1.4/§4.7 已定义且已
+  消费，**不需要新字段**）。这同时把「数字归错人」在**自报**这一层消掉（调用者才是它自己节点的权威）。
+  代价与边界：a) 仍只覆盖「由 owner 自己 `set done`」的节点；b) 是收尾时刻的**采样**，不是最终账单；
+  c) **不要**用它给 main 自己的调研节点填数——那是整条主会话的累计，语义不对（要的是「该节点 running 期间
+  的增量」，属新语义，另议）；d) `tokens` 的语义要从「子代理自报」改成「宿主代子代理读取」，§1.4 表格与
+  §4.7 回落顺序各需同步一句。
+- **L3 需宿主配合（另拆上游）**：在 `subagent/end` 的 payload 里带上子会话的 token/时长，这样
+  「结束即终值」不再受注册表释放与观测时刻影响。现状 payload 没有这些字段
+  （宿主 `lib/types/types.d.ts:88-105` 只有 `runId/provider/id/local/stopReason/lastAssistantMessage`）；
+  要改 dsh 事件契约，本仓改不了 → 适合提给 `dsh-dev-dsh`。
+- **不推荐写进 `note`**：`note` 是结论原文、按字节截断（`DAG_NOTE_MAX`），塞数字既不可结构化消费，也会
+  挤掉结论；`tokens` 字段就是为此存在的。
+
+**口径修正**：§7.6 末尾的「实测值只在被观测时成立」，准确表述是「只在**有一个活着的测量键、且真的有人读了
+一次**时成立」。L2 把「有人读」固定成「owner 收尾时的那次 `set`」，于是「面板开不开」不再是必要条件；
+L3 才能把它变成「结束即有终值」。
