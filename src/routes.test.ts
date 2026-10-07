@@ -991,7 +991,7 @@ describe('the plan DAG route (plan #31)', () => {
     async function storedSample(
       session: string,
       node: string
-    ): Promise<{ tokens?: number; at?: number } | undefined> {
+    ): Promise<{ tokens?: number; elapsed_ms?: number; at?: number } | undefined> {
       const read = await readDag(session, dir);
       if (read.state !== 'ok') throw new Error(`no document for ${session}`);
       return read.doc.samples?.[node];
@@ -1098,6 +1098,52 @@ describe('the plan DAG route (plan #31)', () => {
       const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168d`);
       expect(res.statusCode).toBe(200);
       expect(res.json()).toMatchObject({ ok: true, dag: null });
+    });
+
+    it('persists a running node while the host can still measure it', async () => {
+      // The real host keeps a live child's session readable and then keeps it a
+      // while longer, so "wait until the live read fails" would never persist
+      // anything and every restart would drop every measurement (#166).
+      await seedRunning('s168e');
+      rememberMeasurement('s168e', 'a', { tokens: 11, elapsed_ms: 5_000 }, 1_700_000_000_000);
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        // The live read still answers this node: the sample must land anyway.
+        readDagMetrics: () => Promise.resolve({ a: { tokens: 11, elapsed_ms: 5_000 } }),
+      });
+
+      const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168e`);
+      expect(res.json()).toMatchObject({ ok: true, metrics: { a: { tokens: 11 } } });
+      const stored = await storedSample('s168e', 'a');
+      expect(stored?.elapsed_ms).toBe(5_000);
+      expect(stored?.at).toBe(1_700_000_000_000);
+    });
+
+    it('rewrites a running node only once its measured time moved', async () => {
+      await seedRunning('s168f');
+      rememberMeasurement('s168f', 'a', { tokens: 11, elapsed_ms: 5_000 }, 1_700_000_000_000);
+      const { handler } = harness({
+        cwd: '/proj',
+        dagDir: dir,
+        readDagMetrics: () => Promise.resolve({}),
+      });
+      await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168f`);
+      const first = await storedSample('s168f', 'a');
+      expect(first?.elapsed_ms).toBe(5_000);
+
+      // A second reading that has barely moved is not worth a write...
+      rememberMeasurement('s168f', 'a', { tokens: 12, elapsed_ms: 7_000 }, 1_700_000_002_000);
+      await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168f`);
+      expect(await storedSample('s168f', 'a')).toEqual(first);
+
+      // ...but one past the interval is, and it carries its own stamp.
+      rememberMeasurement('s168f', 'a', { tokens: 13, elapsed_ms: 16_000 }, 1_700_000_011_000);
+      await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168f`);
+      const moved = await storedSample('s168f', 'a');
+      expect(moved?.elapsed_ms).toBe(16_000);
+      expect(moved?.tokens).toBe(13);
+      expect(moved?.at).toBe(1_700_000_011_000);
     });
   });
 

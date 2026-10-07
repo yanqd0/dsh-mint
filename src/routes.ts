@@ -35,7 +35,7 @@ import {
 import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
-import type { DagNodeMetrics, IssuePlacement } from './records.js';
+import type { DagNodeMetrics, DagStatus, IssuePlacement } from './records.js';
 import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
 import { hasControlCharacter } from './text.js';
 import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from './types.js';
@@ -45,6 +45,14 @@ import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } fr
  * browser half, which builds the same paths for its `fetch`es (#104).
  */
 export { ROUTE_PREFIX };
+
+/**
+ * How far a running node's measured time may move before its stored sample is
+ * rewritten (#166). The document lives on `/tmp`, so this is churn control, not
+ * a size limit: a shorter interval buys nothing the live read does not already
+ * show the panel.
+ */
+const SAMPLE_WRITE_MS = 10_000;
 
 /** The panel truncates an issue body at this many UTF-8 bytes. */
 export const BODY_MAX_BYTES = 256 * 1024;
@@ -115,18 +123,6 @@ export function buildMilestoneIssuesArgv(id: number): string[] {
 /** A request these routes refuse: bad path, bad id, or a bad filter. */
 export class RouteRequestError extends Error {}
 
-/**
- * The `(session, node)` pairs whose remembered measurement this process has
- * already persisted (#168).
- *
- * The fallback below runs on every DAG poll — twice a second while a plan is on
- * screen — so without this every read of a node the host can no longer measure
- * would be another locked read-modify-write of the same file. What is being
- * remembered is that the *cache* has been flushed for that node, not that the
- * file has a sample: a node whose document was later rewritten by hand is not
- * re-persisted either, which is the intended "once per process" contract.
- */
-const flushedSamples = new Set<string>();
 
 /** Which collection a `list` route reads. */
 export type ListKind = 'issue' | 'plan' | 'milestone';
@@ -406,53 +402,42 @@ export function truncateBody(text: string | null): { body: string | null; trunca
 }
 
 /**
- * Persist the readings this process still remembers but the document does not
- * carry, at most once per `(session, node)` per process (#168/#166).
+ * Persist the readings this process remembers that the document does not carry
+ * yet (#168/#166).
  *
- * The trigger is "the document has no sample for this node, and this answer
- * could not measure it": the child is gone (the registry dropped it — this is
- * what the real host does by the time `subagent/end` fires, so the lifecycle
- * hook cannot measure either) or the composition has no projection registry,
- * and only the reading remembered while the child was alive is left. The
- * reading's own `at` is what gets stored: it is the moment the host *measured*
- * the node, not the moment this write happened to run.
+ * The real host keeps a finished child's session readable for a while — long
+ * enough that the live read keeps answering `metrics` and the panel never loses
+ * the number — so "wait until the live read fails" would mean **nothing is ever
+ * persisted**, and every restart would drop every measurement. The flush
+ * therefore runs *while the reading is still live*, throttled: a running node is
+ * re-persisted only once its measured time has moved by at least
+ * {@link SAMPLE_WRITE_MS} (the document is a few KB on `/tmp`, but the panel's
+ * re-render guard means a write is still worth spacing out). A settled node has
+ * nothing left to accumulate, so its last reading is written once.
  *
- * A node this answer *did* measure is skipped while that reading is live — the
- * cached numbers change on every poll, so persisting them would bump the
- * revision the panel re-renders on, for a reading the next answer replaces. Once
- * the live read stops, the next answer persists the last cached one. Nothing
- * here measures anything, so the route stays a reader.
- *
- * The whole step is best-effort and its caller does not depend on it: a failed
- * or skipped write costs this answer nothing but the fallback the *next* answer
- * would have shown.
+ * The reading's own `at` is what gets stored: it is the moment the host
+ * *measured* the node, not the moment this write happened to run. Nothing here
+ * measures anything, so the route stays a reader, and the whole step is
+ * best-effort — a failed write costs this answer nothing but the fallback the
+ * *next* answer would have shown.
  *
  * @param sessionId - the session whose document is being answered.
  * @param read - what this request just read from disk (the node list).
- * @param measured - node ids this answer measured live; empty when it measured none.
  * @param dir - the DAG directory override.
  */
-async function flushRememberedSample(
-  sessionId: string,
-  read: DagRead,
-  measured: ReadonlySet<string>,
-  dir: string
-): Promise<void> {
+async function flushRememberedSample(sessionId: string, read: DagRead, dir: string): Promise<void> {
   if (read.state !== 'ok') return;
   const pending: Array<{ nodeId: string; sample: DagSample }> = [];
   for (const node of read.doc.nodes) {
-    if (measured.has(node.id)) continue;
-    if (read.doc.samples?.[node.id] !== undefined) continue;
     const remembered = lastMeasurement(sessionId, node.id);
     if (remembered === undefined) continue;
     const sample = sampleOf(remembered, remembered.at ?? Date.now());
     if (sample === undefined) continue;
+    const stored = read.doc.samples?.[node.id];
+    if (stored !== undefined && !outgrewStored(stored, sample, node.status)) continue;
     pending.push({ nodeId: node.id, sample });
   }
   if (pending.length === 0) return;
-  // Marked before the write: one attempt per node per process, however that
-  // attempt ends (the file may be unreadable, or already carry a newer sample).
-  for (const { nodeId } of pending) flushedSamples.add(`${sessionId}\u0000${nodeId}`);
   try {
     await updateDag(
       sessionId,
@@ -461,7 +446,12 @@ async function flushRememberedSample(
         let doc = state.doc;
         const now = new Date().toISOString();
         for (const { nodeId, sample } of pending) {
-          doc = withSample(doc, nodeId, { ...sample, at: sample.at }, now) ?? doc;
+          // The write re-checks the same rule against the *current* document, so
+          // a racing write cannot be overwritten by a staler reading.
+          const stored = state.doc.samples?.[nodeId];
+          const node = state.doc.nodes.find((candidate) => candidate.id === nodeId);
+          if (stored !== undefined && !outgrewStored(stored, sample, node?.status ?? 'done')) continue;
+          doc = withSample(doc, nodeId, sample, now) ?? doc;
         }
         return doc === state.doc ? { skip: true } : { doc };
       },
@@ -471,6 +461,24 @@ async function flushRememberedSample(
     // Best-effort: the answer below is already the panel's, and a write of a
     // *measurement* is never worth turning a 200 into an error.
   }
+}
+
+/**
+ * Whether a fresh reading is worth replacing the stored one with.
+ *
+ * A settled node's reading is final: the stored sample is the same measurement,
+ * so it is replaced only when it is not already the same numbers. A running node
+ * moves every second, so it is re-persisted only once the measured time has
+ * advanced by {@link SAMPLE_WRITE_MS} — the file is small and on `/tmp`, but a
+ * write per poll would still be churn for a number the panel already has live.
+ */
+function outgrewStored(stored: DagSample, fresh: DagSample, status: DagStatus): boolean {
+  if (status !== 'running') {
+    return stored.tokens !== fresh.tokens || stored.elapsed_ms !== fresh.elapsed_ms;
+  }
+  const grown = fresh.elapsed_ms !== undefined && stored.elapsed_ms !== undefined && fresh.elapsed_ms - stored.elapsed_ms >= SAMPLE_WRITE_MS;
+  const tokensMoved = fresh.tokens !== undefined && fresh.tokens !== stored.tokens;
+  return grown && tokensMoved;
 }
 
 /**
@@ -506,27 +514,18 @@ export function createMintHandler(
     // the same as no metrics — and nothing is published unless something was
     // really measured, so "absent" never has to mean "zero".
     let metrics: Record<string, DagNodeMetrics> | undefined;
-    let measuredLive: Record<string, DagNodeMetrics> = {};
     if (deps.readDagMetrics !== undefined && read.state === 'ok' && read.doc.nodes.length > 0) {
       try {
-        measuredLive = await deps.readDagMetrics(sessionId);
-        if (Object.keys(measuredLive).length > 0) metrics = measuredLive;
+        const measured = await deps.readDagMetrics(sessionId);
+        if (Object.keys(measured).length > 0) metrics = measured;
       } catch {
-        measuredLive = {};
         metrics = undefined;
       }
     }
-    // A node this answer could not measure has only one source left: the reading
-    // remembered while the child was alive (#168). Flush it into the document,
-    // once per process, so the next answer's stored fallback carries it even
-    // after a restart. Keyed on "no live reading" rather than on the node's
-    // status: the child is already gone by the time the host settles it.
-    await flushRememberedSample(
-      sessionId,
-      read,
-      new Set(Object.keys(measuredLive).filter((id) => measuredLive[id] !== undefined)),
-      deps.dagDir ?? DAG_DIR
-    );
+    // The reading the host just took is also the durable one: persist it (spaced
+    // out for a running node) so the number survives a restart, however long the
+    // host happens to keep the finished child's session readable (#166).
+    await flushRememberedSample(sessionId, read, deps.dagDir ?? DAG_DIR);
     // `warnings` is declared rather than inferred: the payload it spreads into
     // is `unknown`-typed, and a lone inferred string[] would read as a mistake.
     const warnings: Record<string, unknown> =
