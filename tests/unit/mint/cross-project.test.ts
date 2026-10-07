@@ -139,7 +139,7 @@ describe('isWriteInvocation', () => {
     ['project', 'list'],
     ['project', 'show', '1'],
     ['project', 'get', '1', 'git'],
-    // #126: the read-only health check is not something to confirm.
+    // the read-only health check is not something to confirm.
     ['doctor'],
     ['doctor', '--json'],
     ['help'],
@@ -171,7 +171,7 @@ describe('isWriteInvocation', () => {
     ['frobnicate'],
     ['issue'],
     // A help token after the subcommand is an argument or a value, never a
-    // reason to downgrade the call to a read (#98).
+    // reason to downgrade the call to a read.
     ['issue', 'add', 'x', '--help'],
     ['plan', 'close', '3', '-h'],
     ['issue', 'add', '--', '--help'],
@@ -287,7 +287,7 @@ describe('project existence probe', () => {
     expect(await listProjects('/proj')).toBeUndefined();
   });
 
-  it('answers both callers with one probe, until the TTL passes (#106)', async () => {
+  it('answers both callers with one probe, until the TTL passes', async () => {
     runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"other"}]' });
     const now = vi.spyOn(Date, 'now');
     now.mockReturnValue(1_000);
@@ -302,7 +302,7 @@ describe('project existence probe', () => {
     now.mockRestore();
   });
 
-  it('scopes the memo to (cwd, entry) and forgets it on reset (#106)', async () => {
+  it('scopes the memo to (cwd, entry) and forgets it on reset', async () => {
     runMintMock.mockResolvedValue({ ok: true, text: '[{"name":"other"}]' });
     await listProjects('/proj', 'mint');
     await listProjects('/other', 'mint');
@@ -315,7 +315,7 @@ describe('project existence probe', () => {
     expect(runMintMock).toHaveBeenCalledTimes(4);
   });
 
-  it('knows which calls can change the project list (#106)', () => {
+  it('knows which calls can change the project list', () => {
     expect(mutatesProjectList(parseInvocation(['project', 'create', 'x']))).toBe(true);
     expect(mutatesProjectList(parseInvocation(['project', 'set', '1', '--git', 'x']))).toBe(true);
     expect(mutatesProjectList(parseInvocation(['project', 'list']))).toBe(false);

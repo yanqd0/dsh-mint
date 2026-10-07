@@ -55,7 +55,7 @@ describe('isGitCommit', () => {
     );
   });
 
-  it('matches a git commit run through an argv tool (#110)', () => {
+  it('matches a git commit run through an argv tool', () => {
     // The uv tool strips a leading `uv`, so `uv run git commit -m x` arrives so.
     expect(isGitCommit({ name: 'uv', arguments: { args: ['run', 'git', 'commit', '-m', 'x'] } })).toBe(
       true,
@@ -103,7 +103,7 @@ describe('commitReminderListener', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('appends the reminder for an argv commit (#110)', async () => {
+  it('appends the reminder for an argv commit', async () => {
     const exec: ToolExecutionLike = { name: 'uv', arguments: { args: ['run', 'git', 'commit', '-m', 'x'] } };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     const decision = await commitReminderListener(exec, successResult, next);
@@ -111,7 +111,7 @@ describe('commitReminderListener', () => {
     expect(decision.content?.[1]?.text).toContain('记得用 mint 工具登记');
   });
 
-  it('stays silent when the commit failed (#110)', async () => {
+  it('stays silent when the commit failed', async () => {
     const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'git commit -m "x"' } };
     const failed: ToolResultLike = {
       isError: true,
@@ -125,7 +125,7 @@ describe('commitReminderListener', () => {
     expect(decision.content).toBeUndefined();
   });
 
-  it('stays silent when the failure only shows as an exit-code marker (#110)', async () => {
+  it('stays silent when the failure only shows as an exit-code marker', async () => {
     // Live probe result: the uv tool reports `ok:false` as an ordinary tool
     // value, so the host's `isError` stays false and the marker is the only
     // evidence — a rejected commit must not look like a successful one.
@@ -159,7 +159,7 @@ describe('commitReminderListener', () => {
   });
 });
 
-describe('isFailedResult (#110)', () => {
+describe('isFailedResult', () => {
   const text = (value: string): ToolResultLike => ({
     isError: false,
     content: [{ type: 'text', text: value }],
@@ -193,7 +193,7 @@ describe('installCommitReminder', () => {
   });
 });
 
-describe('todoSyncChanged (#119)', () => {
+describe('todoSyncChanged', () => {
   const mint = (args: string[]): ToolExecutionLike => ({ name: 'mint', arguments: { args } });
 
   it('matches the mint calls that move ledger state', () => {
@@ -229,7 +229,7 @@ describe('todoSyncChanged (#119)', () => {
   });
 });
 
-describe('todoSyncReminderListener (#119)', () => {
+describe('todoSyncReminderListener', () => {
   const exec = (
     args: string[] = ['issue', 'state', 'start', '119'],
     delegationDepth?: number
@@ -247,7 +247,7 @@ describe('todoSyncReminderListener (#119)', () => {
     expect(decision.content?.[0]).toBe(successResult.content[0]);
     expect(decision.content?.[1]?.text).toBe(TODO_SYNC_REMINDER);
     expect(TODO_SYNC_REMINDER).toContain('todo_write');
-    // #159: 粒度与重置时机都写进文案，断言关键片段而非整串（文案还会改）。
+    // 粒度与重置时机都写进文案，断言关键片段而非整串（文案还会改）。
     expect(TODO_SYNC_REMINDER).toContain('一项');
     expect(TODO_SYNC_REMINDER).toContain('issue');
     expect(TODO_SYNC_REMINDER).toContain('turn/start');
@@ -265,7 +265,7 @@ describe('todoSyncReminderListener (#119)', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('stays silent for a subagent session: the panel is the root agent’s (#113)', async () => {
+  it('stays silent for a subagent session: the panel is the root agent’s', async () => {
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     await todoSyncReminderListener(exec(undefined, 1), successResult, next);
 
@@ -286,7 +286,7 @@ describe('todoSyncReminderListener (#119)', () => {
   });
 });
 
-describe('sessionRecordReminderListener (#111)', () => {
+describe('sessionRecordReminderListener', () => {
   const exitExec = (sessionId?: string): ToolExecutionLike => ({
     name: 'exit_plan_mode',
     arguments: { plan: '# plan' },
@@ -347,9 +347,9 @@ describe('sessionRecordReminderListener (#111)', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  // #116: the tool result is the delivery, so the overview's one-shot line must
+  // the tool result is the delivery, so the overview's one-shot line must
   // stay silent for this exit even though the host appends `plan/mode` only later.
-  it('marks the gap as told, so the overview line cannot repeat it (#116)', async () => {
+  it('marks the gap as told, so the overview line cannot repeat it', async () => {
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     await sessionRecordReminderListener(exitExec('sess-1'), successResult, next);
 
@@ -358,7 +358,7 @@ describe('sessionRecordReminderListener (#111)', () => {
     expect(takeRecordGapNotice('sess-1')).toBe(false);
   });
 
-  it('marks nothing it cannot attribute to a session (#116)', async () => {
+  it('marks nothing it cannot attribute to a session', async () => {
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     await sessionRecordReminderListener(exitExec(), successResult, next);
 
@@ -411,7 +411,7 @@ describe('installFailureSignal', () => {
   });
 });
 
-describe('isSleepPoll (#160)', () => {
+describe('isSleepPoll', () => {
   it('matches a sleep or a list_agents poll in a bash command line', () => {
     expect(isSleepPoll({ name: 'bash', arguments: { command: 'sleep 120' } })).toBe(true);
     expect(isSleepPoll({ name: 'tool:bash', arguments: { command: '  sleep 30 && echo done' } })).toBe(
@@ -437,7 +437,7 @@ describe('isSleepPoll (#160)', () => {
   });
 
   it('reads the command channel only on the bash tool names', () => {
-    // 与 isGitCommit 同口径：别的工具带同名字段不算 bash 命令（#160）。
+    // 与 isGitCommit 同口径：别的工具带同名字段不算 bash 命令。
     expect(isSleepPoll({ name: 'read', arguments: { command: 'sleep 30' } })).toBe(false);
     expect(isSleepPoll({ name: 'mint', arguments: { command: 'list_agents' } })).toBe(false);
   });
@@ -452,7 +452,7 @@ describe('isSleepPoll (#160)', () => {
   });
 });
 
-describe('sleepPollReminderListener (#160)', () => {
+describe('sleepPollReminderListener', () => {
   it('appends the hint after a bash sleep, keeping the original content', async () => {
     const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'sleep 120' } };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
@@ -504,7 +504,7 @@ describe('sleepPollReminderListener (#160)', () => {
   });
 });
 
-describe('readonlyDbHintListener (#60)', () => {
+describe('readonlyDbHintListener', () => {
   const readonlyResult: ToolResultLike = {
     isError: false,
     content: [

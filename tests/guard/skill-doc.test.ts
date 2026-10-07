@@ -7,7 +7,7 @@ import { MINT_TOOL_DESCRIPTION } from '../../src/mint/mint-tool.js';
 import { repoPath } from '../helpers/repo.js';
 
 /**
- * Skill layout contracts (#71).
+ * Skill layout contracts.
  *
  * The always-loaded skill payload is **SKILL.md alone**: the filesystem
  * provider reads only `<skill>/SKILL.md` and exposes the directory as
@@ -29,7 +29,7 @@ const bytes = (text: string): number => Buffer.byteLength(text, 'utf8');
 const skill = read('SKILL.md');
 
 /**
- * Reference files SKILL.md names (#138).
+ * Reference files SKILL.md names.
  *
  * The router writes paths relative to `references/` (it states that base), so a
  * name counts with or without the prefix — but only when it matches a file that
@@ -56,21 +56,21 @@ const SKILL_MARKERS: readonly string[] = [
   'running milestone',
   '不得自行置 running',
   '须走 bash',
-  // #138: reference paths are written relative to `references/` (the router
+  // reference paths are written relative to `references/` (the router
   // states that base), so the marker pins the pointer, not the prefix.
   '`labels.md`',
   '跨项目登记',
-  // #114: the default project is the session cwd, so own-project calls take no
+  // the default project is the session cwd, so own-project calls take no
   // `-p`. Pinned as a marker because trimming it re-opens the exact behaviour
   // this plan fixed.
   '本项目操作不带 `-p`',
-  // #122: parallel batches are the plan-level constraint that keeps
+  // parallel batches are the plan-level constraint that keeps
   // concurrently delegated work off the same files.
   '并行批次',
-  // #128: registration never pre-schedules; `plan plan` belongs to the start of
+  // registration never pre-schedules; `plan plan` belongs to the start of
   // work, not to filing the issue.
   '提 issue 一律 open',
-  // #140: one milestone carries at most one running plan — the second is refused
+  // one milestone carries at most one running plan — the second is refused
   // by the plan-mode exit gate, so the router has to carry the rule.
   '至多一个 running plan',
 ];
@@ -82,17 +82,17 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
   ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工点才', '只有开工点才']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
-  // #128: a filed requirement stays open; a plan is created only when work
-  // actually starts. #141: a freshly created plan (plan mode or not) also stays
-  // `open` until the start-of-work point locks it.
+  // a filed requirement stays open; a plan is created only when work actually
+  // starts. A freshly created plan (plan mode or not) also stays `open` until
+  // the start-of-work point locks it.
   ['references/flow-requirement.md', ['登记一律', '不预建 mint plan', '保持 `open`']],
-  // #112: both legal orders (build-then-run / run-then-backfill) live in
+  // both legal orders (build-then-run / run-then-backfill) live in
   // flow-impl, and the issue ordering rule left SKILL.md's body for the place
   // that already carried it (flow-session's step 4).
-  // #128: the batch lock is a start-of-work action, not an attach-time one.
-  // #119: the host todo panel is the human's progress view, so the derive/sync
+  // the batch lock is a start-of-work action, not an attach-time one.
+  // the host todo panel is the human's progress view, so the derive/sync
   // discipline has to survive in flow-impl.
-  // #136: the binding is one-way and the start-of-work point has two shapes
+  // the binding is one-way and the start-of-work point has two shapes
   // (plan-mode exit / before the first edit outside plan mode).
   [
     'references/flow-impl.md',
@@ -107,32 +107,70 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '单向',
       '非计划模式',
       '开工点',
-      // #140: the three-condition gate sheet lives in flow-impl (the criterion,
+      // the three-condition gate sheet lives in flow-impl (the criterion,
       // the milestone bucket, and the convergence paths for a refusal).
       '至多一个 running plan',
-      // #141: locking `planned` at the exit point needs this session to actually
+      // locking `planned` at the exit point needs this session to actually
       // start the work; registration-only sessions leave everything `open`.
       '确实要开工',
     ],
   ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],
-  // plan #30: the DAG discipline split into its two halves. `plan-dag` owns the
+  // The DAG discipline split into its two halves. `plan-dag` owns the
   // pre-approval research loop (total-split-total, user decisions only at the
   // "totals", injection discipline); `dag-exec` owns the post-approval panorama
   // (layering by the five axes, who runs what, append-no-cycle rework).
-  ['references/plan-dag.md', ['总—分—总', 'ask_user_question', '派子代理', '注入前置纪律']],
-  ['references/dag-exec.md', ['给子代理', '留 main', '五轴', '无环']],
-  // #137: the container derivation table now mirrors mint's `derive.rs` — `open`
+  // Delegation goes **two levels** deep: a first-level dev subagent may hire its
+  // own read-only test subagent, and the second level hires nobody (host
+  // `subagent.maxDepth`). Trimming this re-opens depth guessing for every plan.
+  [
+    'references/plan-dag.md',
+    ['总—分—总', 'ask_user_question', '派子代理', '注入前置纪律', '委派允许两级'],
+  ],
+  // `dag-exec` owns the graph's *shape*: an edge is a semantic dependency only.
+  // Execution order (same-file serialisation, one node at a time, batch order)
+  // belongs to the batch table — encoded as edges it degenerates the graph into
+  // a line that later readers misread as "everything blocks everything".
+  // Rework is a reopen, not a new node: a failed test re-runs its own test node.
+  [
+    'references/dag-exec.md',
+    ['给子代理', '留 main', '五轴', '无环', '执行序不进边', 'reopen 同一个 test 节点重跑'],
+  ],
+  // the container derivation table now mirrors mint's `derive.rs` — `open`
   // children derive an `open` plan (not `running`), which is the fact the plan
-  // gate and #135's deadlock analysis both rest on.
+  // gate and the deadlock analysis in the same reference both rest on.
   ['references/state-machine.md', ['全 `open` 的 plan 派生 `open`', 'partial', 'derive.rs']],
-  // #122: the parallel-execution contract (batch table, subagent dispatch, no
-  // sleeps, state commit) lives in its own reference.
-  ['references/parallel-exec.md', ['并行批次', 'subagent', '不 sleep', 'state commit']],
-  // #81: cross-project registration carries its source, and the tool gate is
-  // one confirmation per session and target project — not per call.
-  // #91: the target project is confirmed first, kind is problem/requirement, the
-  // title may stay free of the source, and the report avoids prescribing a fix.
+  // the parallel-execution contract (batch table, subagent dispatch, no
+  // sleeps, state commit) lives in its own reference. It also owns the dev/test
+  // node pair — one edge only, `test 依赖 dev`; the sanctioned exception for a
+  // plan whose subject *is* the isolation mechanism; and the one channel a
+  // subagent may use for a user decision (write it into the final reply —
+  // `ask_user_question` is refused for a delegated caller).
+  [
+    'references/parallel-exec.md',
+    [
+      '并行批次',
+      'subagent',
+      '不 sleep',
+      'state commit',
+      'dev/test 节点对',
+      'test 依赖 dev',
+      '被改特性本身就是隔离机制',
+      '遇用户决策写进最终回复',
+      '不要调用 `ask_user_question`',
+    ],
+  ],
+  // A dev/test pair shares **one** tree: `create`/`merge`/`remove` all name the
+  // dev node, and both nodes may be `running` at once (the dev subagent
+  // dispatches its own test child). A second tree would break the pairing.
+  ['references/worktree-exec.md', ['dev/test 节点对只建一棵树', '两节点可同时 `running`']],
+  // cross-project registration carries its source, and the tool gate is
+  // one confirmation per session and target project — not per call. A subagent
+  // has no approval channel at all, so a decision it hits travels back in its
+  // final reply and the root agent merges the round's decisions into one
+  // question before writing anything. The target project is confirmed first,
+  // kind is problem/requirement, the title may stay free of the source, and the
+  // report avoids prescribing a fix.
   [
     'references/cross-project.md',
     [
@@ -148,11 +186,12 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ],
 ];
 
-describe('skill layout (#71)', () => {
+describe('skill layout', () => {
   it('keeps the always-loaded body inside the router budget', () => {
-    // 6965 B before the split; 3987 B before the #138 refactor. The ceiling was
-    // re-pinned to 3200 B with that refactor (non-mainline sections moved into
-    // references), so the always-loaded body pays for gates + routing only.
+    // 6965 B before the split; 3987 B before the reference-split refactor. The
+    // ceiling was re-pinned to 3200 B with that refactor (non-mainline sections
+    // moved into references), so the always-loaded body pays for gates +
+    // routing only.
     expect(bytes(skill)).toBeLessThanOrEqual(3200);
   });
 
@@ -193,13 +232,13 @@ describe('skill layout (#71)', () => {
     }
   });
 
-  it('documents the kebab link value the CLI accepts (#73)', () => {
+  it('documents the kebab link value the CLI accepts', () => {
     const commands = read('references/commands.md');
     expect(commands).toContain('"blocked-by"');
     expect(commands).not.toContain('"blocked_by"');
   });
 
-  it('documents the mint 0.8 surface the workflows rely on (#74)', () => {
+  it('documents the mint 0.8 surface the workflows rely on', () => {
     const commands = read('references/commands.md');
     const tokens = [
       '--force-new',
@@ -215,11 +254,11 @@ describe('skill layout (#71)', () => {
     }
   });
 
-  // #104/#117: the CLI refuses any write that would add a running milestone, and
+  // the CLI refuses any write that would add a running milestone, and
   // `milestone set --status running --force` is its only escape hatch. The skill
   // has to carry both the read (`current`) and the escape hatch, or a session
   // reasons its way into a rejected command.
-  it('documents the single-running guard the workflows rely on (#104/#117)', () => {
+  it('documents the single-running guard the workflows rely on', () => {
     const commands = read('references/commands.md');
     const conditions = read('references/flow-conditions.md');
     for (const token of ['"milestone","current"', '"--status","running","--force"']) {

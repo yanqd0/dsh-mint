@@ -127,7 +127,7 @@ describe('createApi', () => {
     expect(calls[0]?.url).toBe('/app/dsh-mint/meta?session=s1');
 
     // 面板自己的刷新也只是「重读字典」：路由每次都答同样三次读，没有额外参数
-    //（#90 已退掉 placement 记忆化与它的 `refresh=1`）。
+    //（placement 记忆化与它的 `refresh=1` 已退掉）。
     await api.meta(undefined);
     expect(calls[1]?.url).toBe('/app/dsh-mint/meta?session=s1');
   });

@@ -28,7 +28,7 @@ function tempDir(): string {
   return mkdtempSync(join(tmpdir(), 'dsh-mint-skill-'));
 }
 
-/** A skill file with the shipped frontmatter, so a copy is identifiable (#153). */
+/** A skill file with the shipped frontmatter, so a copy is identifiable. */
 function skillFile(body: string): string {
   return `---\nname: mint\ndescription: test\n---\n\n${body}\n`;
 }
@@ -86,7 +86,7 @@ describe('frontmatterName', () => {
   });
 });
 
-describe('looksLikeOurSkill (#153)', () => {
+describe('looksLikeOurSkill', () => {
   it('recognises a marked copy', () => {
     const target = join(tempDir(), 'mint');
     seed(target, { 'SKILL.md': 'anything' });
@@ -144,7 +144,7 @@ describe('installSkill', () => {
     expect(existsSync(join(target, 'stale.md'))).toBe(false);
   });
 
-  it('repairs a copy interrupted before its SKILL.md landed (#153)', () => {
+  it('repairs a copy interrupted before its SKILL.md landed', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });
@@ -176,7 +176,7 @@ describe('installSkill', () => {
     expect(existsSync(join(target, 'sentinel.txt'))).toBe(true);
   });
 
-  it('re-syncs when a reference changed but SKILL.md is identical (#72)', () => {
+  it('re-syncs when a reference changed but SKILL.md is identical', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(join(source, 'references'), { recursive: true });
@@ -192,7 +192,7 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'references', 'a.md'), 'utf8')).toBe('new');
   });
 
-  it('re-syncs when the copy is missing a reference (#72)', () => {
+  it('re-syncs when the copy is missing a reference', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(join(source, 'references'), { recursive: true });
@@ -208,7 +208,7 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'references', 'b.md'), 'utf8')).toBe('body');
   });
 
-  it('replaces a pre-marker copy of this skill (#153)', () => {
+  it('replaces a pre-marker copy of this skill', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });
@@ -224,7 +224,7 @@ describe('installSkill', () => {
     expect(looksLikeOurSkill(target)).toBe(true);
   });
 
-  it('leaves a foreign directory alone (#153)', () => {
+  it('leaves a foreign directory alone', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });
@@ -243,7 +243,7 @@ describe('installSkill', () => {
     expect(logs.some((m) => m.includes('not this plugin'))).toBe(true);
   });
 
-  it('takes a foreign directory over only with force (#153)', () => {
+  it('takes a foreign directory over only with force', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });
@@ -277,7 +277,7 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'SKILL.md'), 'utf8')).toBe('dev');
   });
 
-  it('reports a dangling symlink instead of clobbering it (#153)', () => {
+  it('reports a dangling symlink instead of clobbering it', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });
@@ -294,7 +294,7 @@ describe('installSkill', () => {
     expect(logs.some((m) => m.includes('dangling symlink'))).toBe(true);
   });
 
-  it('force replaces a symlink with a fresh copy (#153)', () => {
+  it('force replaces a symlink with a fresh copy', () => {
     const root = tempDir();
     const source = join(root, 'src');
     mkdirSync(source, { recursive: true });

@@ -9,7 +9,7 @@ import {
 } from '../../../src/mint/own-project.js';
 
 /**
- * The own-project memo (#114): which project a session's directory resolves to.
+ * The own-project memo: which project a session's directory resolves to.
  *
  * The memo is what turns "`-p` was passed" into "`-p` names *this* project" for
  * the cross-project gate and the `mint` tool, so the two failure directions are

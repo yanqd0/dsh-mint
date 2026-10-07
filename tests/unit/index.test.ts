@@ -27,7 +27,7 @@ describe('dsh-mint plugin', () => {
     expect(inject).toEqual(['tools']);
   });
 
-  it('parses a missing mount-line config into the defaults (#53)', () => {
+  it('parses a missing mount-line config into the defaults', () => {
     const defaults = {
       debug: false,
       autoApprove: false,
@@ -56,7 +56,7 @@ describe('dsh-mint plugin', () => {
     expect(empty.value).toEqual(defaults);
   });
 
-  it('registers the agent lifecycle listeners (#113)', () => {
+  it('registers the agent lifecycle listeners', () => {
     const events: string[] = [];
     const ctx: DshContext = {
       on: (event) => {
@@ -68,14 +68,14 @@ describe('dsh-mint plugin', () => {
     // `agent/created` is the host's event; the older name stays as a fallback.
     expect(events).toContain('agent/created');
     expect(events).toContain('agent/session-start');
-    // #116: a non-tool plan-mode exit is read off the session log.
+    // a non-tool plan-mode exit is read off the session log.
     expect(events).toContain('session/event');
-    // plan 31: the two subagent events pair a delegated run with its DAG node.
+    // the two subagent events pair a delegated run with its DAG node.
     expect(events).toContain('subagent/start');
     expect(events).toContain('subagent/end');
   });
 
-  it('syncs the bundled skill on load unless autoInstallSkill is false (#28)', () => {
+  it('syncs the bundled skill on load unless autoInstallSkill is false', () => {
     const ctx: DshContext = {
       on: () => () => {},
     };
@@ -86,7 +86,7 @@ describe('dsh-mint plugin', () => {
     expect(installSkillMock).toHaveBeenCalledTimes(1);
   });
 
-  it('registers the approval gate seams (B-v2, #25)', () => {
+  it('registers the approval gate seams (B-v2)', () => {
     const events: string[] = [];
     const ctx: DshContext = {
       on: (event) => {
@@ -100,7 +100,7 @@ describe('dsh-mint plugin', () => {
     expect(events).toContain('tools/post-execute');
   });
 
-  it('registers the mint overview on the agent ctx at agent creation (#113)', () => {
+  it('registers the mint overview on the agent ctx at agent creation', () => {
     const listeners: Record<string, EventListener> = {};
     const ctx: DshContext = {
       on: (event, listener) => {
@@ -145,7 +145,7 @@ describe('dsh-mint plugin', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('registers the plan DAG tool and the standalone worktree tool next to mint (plan #31)', () => {
+  it('registers the plan DAG tool and the standalone worktree tool next to mint', () => {
     const names: string[] = [];
     const ctx: DshContext = {
       on: () => () => {},
@@ -161,7 +161,7 @@ describe('dsh-mint plugin', () => {
     expect(names).toEqual(['mint', 'mint_plan_dag', 'worktree']);
   });
 
-  it('pairs a subagent run with a node of its parent DAG (plan #31)', async () => {
+  it('pairs a subagent run with a node of its parent DAG', async () => {
     const listeners: Record<string, EventListener> = {};
     const ctx: DshContext = {
       on: (event, listener) => {

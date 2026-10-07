@@ -6,7 +6,7 @@ import { ROUTE_NAMES, ROUTE_PREFIX, routePath } from '../../../src/shared/route-
 /**
  * The route space has two readers — the host's prefix handler and the browser
  * half's `fetch`es — so the only thing worth asserting is that both derive from
- * one declaration (#104).
+ * one declaration.
  */
 describe('route paths', () => {
   it('builds every route under the prefix, with no trailing slash', () => {
@@ -21,7 +21,7 @@ describe('route paths', () => {
     expect('/dsh-mint-other'.startsWith(`${ROUTE_PREFIX}/`)).toBe(false);
   });
 
-  it('keeps the browser half on exactly the host routes (#104)', () => {
+  it('keeps the browser half on exactly the host routes', () => {
     expect(Object.values(ROUTES)).toEqual(ROUTE_NAMES.map((name) => routePath(name)));
   });
 });

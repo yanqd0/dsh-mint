@@ -16,7 +16,7 @@ const ITEM = {
   updated_at: '2026-09-01 00:00:00',
 };
 
-// #90：mint 0.9.0-alpha.1 起 `list --json` 的每行带 `milestone_id` /
+// mint 0.9.0-alpha.1 起 `list --json` 的每行带 `milestone_id` /
 // `milestone_direct`，但已发布的 `mint-faa`（0.8.1）不返回——所以字段缺失必须放行
 // （老 CLI 不是形状漂移），字段存在但类型漂移才判 false。
 describe('issue milestone fields in list --json', () => {
@@ -43,7 +43,7 @@ describe('issue milestone fields in list --json', () => {
 
 describe('issue detail still requires the milestone', () => {
   // `show --json` has always answered `milestone_id`; only the list read's copy of
-  // it is the optional new field, so the detail guard stays strict (#90).
+  // it is the optional new field, so the detail guard stays strict.
   it('refuses a detail read without milestone_id', () => {
     expect(isIssueItem({ ...ITEM, body: null })).toBe(true);
     expect(isIssueDetail({ ...ITEM, body: null })).toBe(false);

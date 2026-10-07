@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { REPO_ROOT } from '../helpers/repo.js';
 
 /**
- * Bilingual README contract (#152).
+ * Bilingual README contract.
  *
  * `README.md` and `README.zh.md` are a mandatory pair (see AGENTS.md): same
  * structure, same section order, each linking to the other. The README is the
@@ -85,7 +85,7 @@ function linkTargets(markdown: string): string[] {
   return found;
 }
 
-describe('README bilingual pair (#152)', () => {
+describe('README bilingual pair', () => {
   it('links the two languages to each other', () => {
     expect(EN).toContain('(README.zh.md)');
     expect(ZH).toContain('(README.md)');

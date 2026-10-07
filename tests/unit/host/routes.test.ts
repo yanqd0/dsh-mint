@@ -63,13 +63,13 @@ function harness(options: {
   /** Per-argv result; takes precedence over the single {@link options.result}. */
   byArgv?: (argv: readonly string[]) => unknown;
   entry?: string;
-  /** Clock seam for the DAG answer's `sampled_at` (#162). */
+  /** Clock seam for the DAG answer's `sampled_at`. */
   now?: () => number;
-  /** DAG directory override: the plan DAG route is file-keyed (plan #31). */
+  /** DAG directory override: the plan DAG route is file-keyed. */
   dagDir?: string;
   /** Mount-line `openDagTab`, published in the DAG envelope. */
   openDagTab?: boolean;
-  /** Per-node live metrics seam for the DAG route (#162). */
+  /** Per-node live metrics seam for the DAG route. */
   readDagMetrics?: MintRouteDeps['readDagMetrics'];
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
@@ -343,7 +343,7 @@ describe('route argv builders', () => {
 
   it('truncates a body on a byte boundary', () => {
     expect(truncateBody('短')).toEqual({ body: '短', truncated: false });
-    // mint's own "no body" answer passes through untouched (#94/#95).
+    // mint's own "no body" answer passes through untouched.
     expect(truncateBody(null)).toEqual({ body: null, truncated: false });
     const long = 'a'.repeat(BODY_MAX_BYTES + 1);
     expect(truncateBody(long)).toEqual({ body: 'a'.repeat(BODY_MAX_BYTES), truncated: true });
@@ -547,7 +547,7 @@ describe('mint routes', () => {
     expect(res.json()).toMatchObject({ ok: true, items: [{ id: 2 }], page_size: 10, total: 1 });
   });
 
-  it('keeps records mint answers with null fields (#94/#95/#96)', async () => {
+  it('keeps records mint answers with null fields', async () => {
     // `plan create` without --milestone leaves version null; a container or
     // issue created without --body answers body null. Those are declared
     // answers, not shape drift: requiring a string dropped whole records and
@@ -591,7 +591,7 @@ describe('mint routes', () => {
     expect(meta.json().warnings).toBeUndefined();
   });
 
-  it('keeps a label mint has no color for (#108)', async () => {
+  it('keeps a label mint has no color for', async () => {
     // mint types the color column as nullable; the label must stay in the
     // dictionary so its name keeps resolving, and the panel tints it neutrally.
     const label = { ...LABEL_ITEM, id: 20, name: 'imported', color: null };
@@ -629,7 +629,7 @@ describe('mint routes', () => {
     expect(res.json()).toMatchObject({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
   });
 
-  it('serves the panel dictionaries without scanning issue placement (#90)', async () => {
+  it('serves the panel dictionaries without scanning issue placement', async () => {
     const run = harness({
       cwd: '/proj',
       byArgv: (argv) => {
@@ -646,7 +646,7 @@ describe('mint routes', () => {
       milestones: [MILESTONE_ITEM, MILESTONE_ITEM_4],
       labels: [LABEL_ITEM],
     });
-    // 归属如今随每个 `list --json` issue 到达（#90），所以 meta 恰好就是三次字典
+    // 归属如今随每个 `list --json` issue 到达，所以 meta 恰好就是三次字典
     // 读：既没有 `list --milestone` 扇出，响应里也没有 `placement` 键。
     expect(run.runs.map((entry) => entry.argv)).toEqual(
       expect.arrayContaining([
@@ -735,7 +735,7 @@ describe('mint routes', () => {
   });
 });
 
-describe('the plan DAG route (plan #31)', () => {
+describe('the plan DAG route', () => {
   let dir: string;
 
   beforeEach(() => {
@@ -829,8 +829,8 @@ describe('the plan DAG route (plan #31)', () => {
   }
 
   // The nodes the panel draws are the document's own objects: a field the tool
-  // wrote (#173) reaches the browser without the route reshaping it.
-  it('carries a node worktree through the envelope (#173)', async () => {
+  // wrote reaches the browser without the route reshaping it.
+  it('carries a node worktree through the envelope', async () => {
     const worktree = {
       path: join(dir, '.git', 'dsh-mint', 'worktrees', 'aaaaaaaa', 'a'),
       branch: 'mint/173-dag-worktree',
@@ -852,9 +852,10 @@ describe('the plan DAG route (plan #31)', () => {
     expect(payload).not.toHaveProperty('warnings');
   });
 
-  // The tolerant direction: a document written before #173 carries no such field,
-  // and that absence is not shape drift — no warning, no invented default.
-  it('answers an old document without a worktree and without drift (#173)', async () => {
+  // The tolerant direction: a document written before the worktree field existed
+  // carries no such field, and that absence is not shape drift — no warning, no
+  // invented default.
+  it('answers an old document without a worktree and without drift', async () => {
     writeRawDoc('s1', rawNode());
     const { handler } = harness({ cwd: '/proj', dagDir: dir });
     const payload = (await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`)).json();
@@ -864,7 +865,7 @@ describe('the plan DAG route (plan #31)', () => {
     expect(Object.keys(payload).sort()).toEqual(['autoOpen', 'dag', 'file', 'ok', 'revision']);
   });
 
-  it('publishes host-measured node metrics with the sample clock (#162)', async () => {
+  it('publishes host-measured node metrics with the sample clock', async () => {
     await seed('s1', '宿主面 DAG');
     const asked: string[] = [];
     const { handler } = harness({
@@ -889,7 +890,7 @@ describe('the plan DAG route (plan #31)', () => {
     expect(asked).toEqual(['s1']);
   });
 
-  it('omits metrics and sampled_at unless the host really measured something (#162)', async () => {
+  it('omits metrics and sampled_at unless the host really measured something', async () => {
     await seed('s1', '宿主面 DAG');
     // The keys the envelope has when it carries no metrics: absent, never
     // `{}` + 0, so an old panel and a lean host keep the same shape.
@@ -916,7 +917,7 @@ describe('the plan DAG route (plan #31)', () => {
     expect(emptyPayload).not.toHaveProperty('sampled_at');
   });
 
-  it('keeps answering the graph when the metrics read throws (#162)', async () => {
+  it('keeps answering the graph when the metrics read throws', async () => {
     await seed('s1', '宿主面 DAG');
     const { handler } = harness({
       cwd: '/proj',
@@ -931,7 +932,7 @@ describe('the plan DAG route (plan #31)', () => {
     expect(payload).not.toHaveProperty('sampled_at');
   });
 
-  it('does not read metrics for a session with nothing to measure (#162)', async () => {
+  it('does not read metrics for a session with nothing to measure', async () => {
     const spy = vi.fn(() => Promise.resolve({ a: { tokens: 1 } }));
     const { handler } = harness({ cwd: '/proj', dagDir: dir, readDagMetrics: spy });
     // A missing document answers `dag: null` and asks the host nothing.
@@ -963,10 +964,10 @@ describe('the plan DAG route (plan #31)', () => {
     expect(runs).toEqual([]);
   });
 
-  // #168: a node whose child the host can no longer measure still has the
+  // a node whose child the host can no longer measure still has the
   // reading the lifecycle remembered, and the route is what flushes it into the
   // document — once, so a polling panel does not rewrite the same file forever.
-  describe('the remembered-sample fallback (#168)', () => {
+  describe('the remembered-sample fallback', () => {
     /** The sample the document carries for `node`, as it was persisted. */
     async function storedSample(
       session: string,
@@ -1083,7 +1084,7 @@ describe('the plan DAG route (plan #31)', () => {
     it('persists a running node while the host can still measure it', async () => {
       // The real host keeps a live child's session readable and then keeps it a
       // while longer, so "wait until the live read fails" would never persist
-      // anything and every restart would drop every measurement (#166).
+      // anything and every restart would drop every measurement.
       await seedRunning('s168e');
       rememberMeasurement('s168e', 'a', { tokens: 11, elapsed_ms: 5_000 }, 1_700_000_000_000);
       const { handler } = harness({

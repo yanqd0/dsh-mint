@@ -68,7 +68,7 @@ describe('isOwnProjectMintWrite', () => {
     ).toBe(false);
   });
 
-  it('counts -p <本项目> as this session’s own record (#114)', () => {
+  it('counts -p <本项目> as this session’s own record', () => {
     noteOwnProject('/proj', undefined, 'dsh-mint');
 
     expect(
@@ -80,7 +80,7 @@ describe('isOwnProjectMintWrite', () => {
     ).toBe(false);
   });
 
-  it('treats -p <本项目> as foreign while the own project is unknown (#114)', () => {
+  it('treats -p <本项目> as foreign while the own project is unknown', () => {
     expect(
       isOwnProjectMintWrite(mintExec(['-p', 'dsh-mint', 'issue', 'state', 'start', '42']), success)
     ).toBe(false);
@@ -127,7 +127,7 @@ describe('session ledger', () => {
     expect(takeRecordGapNotice('sess-1')).toBe(false);
   });
 
-  it('keeps the observed plan-mode state bounded, exclusive and resettable (#142)', () => {
+  it('keeps the observed plan-mode state bounded, exclusive and resettable', () => {
     expect(planModeKnownState('sess-1')).toBeUndefined();
     notePlanModeState(undefined, true);
     expect(planModeKnownState(undefined)).toBeUndefined();
@@ -148,9 +148,9 @@ describe('session ledger', () => {
     expect(planModeKnownState(`s-${MAX_SESSIONS + 4}`)).toBeUndefined();
   });
 
-  // #116: the plan-mode exit is a session event, and the notice behind it is
+  // the plan-mode exit is a session event, and the notice behind it is
   // one-shot per session and closed by any own-project mint write.
-  it('hands out the record-gap notice once, only after a plan-mode exit (#116)', () => {
+  it('hands out the record-gap notice once, only after a plan-mode exit', () => {
     expect(takeRecordGapNotice('sess-1')).toBe(false);
 
     notePlanModeExit('sess-1');
@@ -163,7 +163,7 @@ describe('session ledger', () => {
     expect(takeRecordGapNotice(undefined)).toBe(false);
   });
 
-  it('keeps the notice silent for a session that recorded its work (#116)', () => {
+  it('keeps the notice silent for a session that recorded its work', () => {
     notePlanModeExit('sess-1');
     recordMintWrite('sess-1');
 
@@ -229,7 +229,7 @@ describe('installSessionLedger', () => {
     expect(hasMintWrite('sess-9')).toBe(false);
   });
 
-  it('reads a plan-mode exit off the session log (#116)', () => {
+  it('reads a plan-mode exit off the session log', () => {
     const { ctx, emitEvent } = makeCtx();
     installSessionLedger(ctx);
 
@@ -238,7 +238,7 @@ describe('installSessionLedger', () => {
     expect(takeRecordGapNotice('sess-7')).toBe(true);
   });
 
-  it('ignores every other session event, and entering plan mode (#116)', () => {
+  it('ignores every other session event, and entering plan mode', () => {
     const { ctx, emitEvent } = makeCtx();
     installSessionLedger(ctx);
 
@@ -250,14 +250,14 @@ describe('installSessionLedger', () => {
     expect(takeRecordGapNotice('sess-7')).toBe(false);
   });
 
-  it('records both plan-mode directions off the session log (#142)', () => {
+  it('records both plan-mode directions off the session log', () => {
     const { ctx, emitEvent } = makeCtx();
     installSessionLedger(ctx);
 
     expect(planModeKnownState('sess-7')).toBeUndefined();
     emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: true } });
     expect(planModeKnownState('sess-7')).toBe(true);
-    // Entering plan mode is still not a *record gap* (#116), only a state (#142).
+    // Entering plan mode is still not a *record gap*, only a state.
     expect(takeRecordGapNotice('sess-7')).toBe(false);
 
     emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: false } });
@@ -269,7 +269,7 @@ describe('installSessionLedger', () => {
     expect(planModeKnownState('sess-8')).toBeUndefined();
   });
 
-  it('treats an unreadable event as no evidence (#116)', () => {
+  it('treats an unreadable event as no evidence', () => {
     const { ctx, emitEvent } = makeCtx();
     installSessionLedger(ctx);
     const frozen = Object.defineProperty({}, 'type', {

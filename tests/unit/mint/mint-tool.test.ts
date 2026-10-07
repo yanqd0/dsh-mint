@@ -42,9 +42,9 @@ describe('validateMintArgs', () => {
     }
   });
 
-  // #126: the injected health line points the model at `doctor`, so the pointer
+  // the injected health line points the model at `doctor`, so the pointer
   // has to survive the tool's own allowlist.
-  it('accepts the read-only doctor health check (#126)', () => {
+  it('accepts the read-only doctor health check', () => {
     expect(validateMintArgs(['doctor'])).toBeUndefined();
     expect(validateMintArgs(['doctor', '--json'])).toBeUndefined();
   });
@@ -68,7 +68,7 @@ describe('validateMintArgs', () => {
     expect(validateMintArgs(['frobnicate'])).toContain('不支持的 mint 子命令');
   });
 
-  it('accepts pure-output root flags: --help-llm and -V (#57)', () => {
+  it('accepts pure-output root flags: --help-llm and -V', () => {
     for (const root of ALLOWED_ROOT_FLAGS) {
       expect(validateMintArgs([root])).toBeUndefined();
     }
@@ -80,7 +80,7 @@ describe('validateMintArgs', () => {
     expect(validateMintArgs(['--frobnicate'])).toContain('不支持的 mint 顶层参数');
   });
 
-  it('accepts a cross-project target before the subcommand (#55)', () => {
+  it('accepts a cross-project target before the subcommand', () => {
     const accepted: readonly string[][] = [
       ['-p', 'dsh-dev-dsh', 'list'],
       ['--project', 'dsh-dev-dsh', 'list'],
@@ -94,7 +94,7 @@ describe('validateMintArgs', () => {
     }
   });
 
-  it('rejects a mispositioned, duplicated or malformed project flag (#55)', () => {
+  it('rejects a mispositioned, duplicated or malformed project flag', () => {
     expect(validateMintArgs(['list', '--project', 'other'])).toContain('必须放在子命令之前');
     expect(validateMintArgs(['-p', 'a', '-p', 'b', 'list'])).toContain('重复');
     expect(validateMintArgs(['-p'])).toContain('缺少项目名');
@@ -131,7 +131,7 @@ describe('executeMintTool', () => {
     expect(outcome).toEqual({ ok: true, exitCode: 0, stdout: 'ID\tSTATUS\n1\topen\n' });
   });
 
-  it('passes advisory stderr through on success — mint hints (#56)', async () => {
+  it('passes advisory stderr through on success — mint hints', async () => {
     const hint =
       'mint: hint: found unmerged data from machine(s): mach-1; run `mint sync pull` to view the full picture';
     runMintMock.mockResolvedValue({
@@ -148,7 +148,7 @@ describe('executeMintTool', () => {
     });
   });
 
-  it('carries the stdout paging footer verbatim (#78)', async () => {
+  it('carries the stdout paging footer verbatim', async () => {
     runMintMock.mockResolvedValue({
       ok: true,
       text: 'ID\tSTATUS\n1\topen\n# Page 1/1 (5 per page, 1 total)\n',
@@ -163,7 +163,7 @@ describe('executeMintTool', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['list'], { signal: controller.signal });
   });
 
-  it('propagates the timeout flag from a killed process (#45)', async () => {
+  it('propagates the timeout flag from a killed process', async () => {
     runMintMock.mockResolvedValueOnce({ ok: false, timedOut: true, error: 'exit timeout' });
     const outcome = await executeMintTool('/proj', ['list']);
     expect(outcome).toMatchObject({ ok: false, timedOut: true, stderr: 'exit timeout' });
@@ -176,7 +176,7 @@ describe('executeMintTool', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('resolves a cross-project target before running mint (#80)', async () => {
+  it('resolves a cross-project target before running mint', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-dev-dsh"}]' });
     const outcome = await executeMintTool('/proj', ['-p', 'dsh-dev-dsh', 'list']);
     expect(outcome.ok).toBe(true);
@@ -184,7 +184,7 @@ describe('executeMintTool', () => {
     expect(runMintMock).toHaveBeenNthCalledWith(2, '/proj', ['-p', 'dsh-dev-dsh', 'list'], {});
   });
 
-  it('refuses an unknown project without running mint (#80)', async () => {
+  it('refuses an unknown project without running mint', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
     const outcome = await executeMintTool('/proj', ['-p', 'typo', 'list']);
     expect(outcome.ok).toBe(false);
@@ -193,7 +193,7 @@ describe('executeMintTool', () => {
     expect(runMintMock).toHaveBeenCalledTimes(1);
   });
 
-  it('fails closed when the project list cannot be read (#80)', async () => {
+  it('fails closed when the project list cannot be read', async () => {
     runMintMock.mockResolvedValueOnce({ ok: false, exitCode: 1, error: 'boom' });
     const outcome = await executeMintTool('/proj', ['-p', 'other', 'list']);
     expect(outcome.ok).toBe(false);
@@ -244,7 +244,7 @@ describe('renderMintOutcome', () => {
     );
   });
 
-  it('adds a version-skew hint for unknown subcommands/arguments (#58)', () => {
+  it('adds a version-skew hint for unknown subcommands/arguments', () => {
     const clap = renderMintOutcome({
       ok: false,
       exitCode: 2,
@@ -266,7 +266,7 @@ describe('renderMintOutcome', () => {
     ).not.toContain('版本偏斜');
   });
 
-  it('explains a killed process and points at the cold download (#45)', () => {
+  it('explains a killed process and points at the cold download', () => {
     const timeout = renderMintOutcome({
       ok: false,
       exitCode: 1,
@@ -307,7 +307,7 @@ describe('installMintTool', () => {
     expect(definition?.parameters).toMatchObject({ required: ['args'] });
   });
 
-  it('declares every key the outcome can carry, so the host schema check passes (#100)', async () => {
+  it('declares every key the outcome can carry, so the host schema check passes', async () => {
     // The host validates `execute`'s return value against `output.schema` at
     // runtime, and `additionalProperties: false` makes an undeclared key fatal:
     // an undeclared `timedOut` replaced the timeout hint with
@@ -345,7 +345,7 @@ describe('installMintTool', () => {
     expect(value).toEqual({ ok: false, exitCode: 1, stderr: 'exit timeout', timedOut: true });
   });
 
-  it('forgets the memoized project list after project create (#106)', async () => {
+  it('forgets the memoized project list after project create', async () => {
     runMintMock.mockImplementation((_cwd, argv) =>
       Promise.resolve(
         argv[0] === 'project' && argv[1] === 'list'
@@ -365,11 +365,11 @@ describe('installMintTool', () => {
     // `project create` in between must have dropped it.
     expect(probes).toHaveLength(2);
     // The same call can re-point the cwd at another project, so the own-project
-    // memo is dropped with it (#114).
+    // memo is dropped with it.
     expect(ownProjectOf('/proj', undefined)).toBeUndefined();
   });
 
-  it('attaches a correction hint when -p names the session’s own project (#114)', async () => {
+  it('attaches a correction hint when -p names the session’s own project', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
     runMintMock.mockResolvedValueOnce({ ok: true, text: 'started' });
     noteOwnProject('/proj', undefined, 'dsh-mint');
@@ -389,7 +389,7 @@ describe('installMintTool', () => {
     expect(renderMintOutcome(outcome)).toContain('started\n[mint] 提示：');
   });
 
-  it('leaves a genuine cross-project call without a hint (#114)', async () => {
+  it('leaves a genuine cross-project call without a hint', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"},{"name":"other"}]' });
     runMintMock.mockResolvedValueOnce({ ok: true, text: 'ok' });
     noteOwnProject('/proj', undefined, 'dsh-mint');
@@ -400,7 +400,7 @@ describe('installMintTool', () => {
     expect(renderMintOutcome(outcome)).toBe('ok');
   });
 
-  it('adds no hint while the own project is unknown (#114)', async () => {
+  it('adds no hint while the own project is unknown', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
     runMintMock.mockResolvedValueOnce({ ok: true, text: 'ok' });
 
@@ -450,7 +450,7 @@ describe('installMintTool', () => {
 });
 
 describe('tool description', () => {
-  it('documents the mechanism, and leaves the tool-first policy to the guidance (#62)', () => {
+  it('documents the mechanism, and leaves the tool-first policy to the guidance', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('零授权');
     expect(MINT_TOOL_DESCRIPTION).toContain('--help');
     expect(MINT_TOOL_DESCRIPTION).toContain('--help-llm');
@@ -460,14 +460,14 @@ describe('tool description', () => {
     expect(MINT_TOOL_DESCRIPTION).not.toContain('不经 bash');
   });
 
-  it('documents cross-project targets and the survived refusal list (#55)', () => {
+  it('documents cross-project targets and the survived refusal list', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('跨项目');
     expect(MINT_TOOL_DESCRIPTION).toContain('置于子命令前');
     expect(MINT_TOOL_DESCRIPTION).toContain('不可用：delete/import/sync/export/tui、--db');
     expect(MINT_TOOL_DESCRIPTION).not.toContain('--db/--project');
   });
 
-  it('states the default project rule instead of a bare -p example (#114)', () => {
+  it('states the default project rule instead of a bare -p example', () => {
     // Every request must carry: the default is the session cwd, so own-project
     // calls take no `-p`. The old co-equal `["-p","<项目>","list"]` example is
     // what made sessions prefix their own project.

@@ -23,7 +23,7 @@ import type {
 } from '../../../src/shared/types.js';
 
 /**
- * The empty-DAG reminder (#169).
+ * The empty-DAG reminder.
  *
  * The condition is a pair — "this session is in plan mode" **and** "its DAG is
  * missing or empty" — so each half gets a negative case, plus the two ambient
@@ -35,7 +35,7 @@ import type {
 let dagDir: string;
 let exec: ToolExecutionLike;
 
-/** A session in plan mode, as the ledger observed it (the #142 fallback route). */
+/** A session in plan mode, as the ledger observed it (the observed-event fallback route). */
 function planModeExec(sessionId = 'sess-1'): ToolExecutionLike {
   notePlanModeState(sessionId, true);
   return {
@@ -47,7 +47,7 @@ function planModeExec(sessionId = 'sess-1'): ToolExecutionLike {
 
 /**
  * A root-style context. Plan mode is reported through `sessionProjections`,
- * which is the only plan-state source a root-layer plugin can reach (#142).
+ * which is the only plan-state source a root-layer plugin can reach.
  */
 function makeCtx(projections?: unknown): DshContext {
   return {
@@ -119,7 +119,7 @@ afterEach(() => {
   rmSync(dagDir, { recursive: true, force: true });
 });
 
-describe('dagPlanReminderListener (#169)', () => {
+describe('dagPlanReminderListener', () => {
   it('reminds once in plan mode with no DAG at all', async () => {
     const decision = await call(exec, makeResult(), next);
 
@@ -130,7 +130,7 @@ describe('dagPlanReminderListener (#169)', () => {
   });
 
   it('stays quiet while the same gap is still the same gap', async () => {
-    // One nudge per gap (#171): a second call in the same state must not repeat it.
+    // One nudge per gap: a second call in the same state must not repeat it.
     const first = await call(exec, makeResult(), next);
     expect(first.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
 
@@ -156,7 +156,7 @@ describe('dagPlanReminderListener (#169)', () => {
     expect(spy).toHaveBeenCalled();
   });
 
-  it('nudges both gaps: missing first, then empty once the document exists (#171)', async () => {
+  it('nudges both gaps: missing first, then empty once the document exists', async () => {
     const missing = await call(exec, makeResult(), next);
     expect(missing.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
 
@@ -214,7 +214,7 @@ describe('dagPlanReminderListener (#169)', () => {
     expect(decision).toEqual({ kind: 'accept' });
   });
 
-  it('stays quiet for a subagent session (#113)', async () => {
+  it('stays quiet for a subagent session', async () => {
     const child: ToolExecutionLike = {
       name: 'bash',
       arguments: { command: 'ls' },
@@ -229,7 +229,7 @@ describe('dagPlanReminderListener (#169)', () => {
   });
 
   it('stays quiet when the tool call failed', async () => {
-    // A non-zero exit is a *completed* call whose text carries the marker (#110).
+    // A non-zero exit is a *completed* call whose text carries the marker.
     const failed: ToolResultLike = {
       isError: false,
       content: [{ type: 'text', text: 'boom\n[exit code: 1]' }],
@@ -314,7 +314,7 @@ describe('dagPlanReminderListener (#169)', () => {
   });
 });
 
-describe('installDagPlanReminder (#169)', () => {
+describe('installDagPlanReminder', () => {
   it('registers a tools/post-execute listener that reads the DAG directory', async () => {
     const listeners: Record<string, unknown> = {};
     const ctx: DshContext = {

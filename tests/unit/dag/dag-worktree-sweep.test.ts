@@ -16,7 +16,7 @@ import type { DagNodeView } from '../../../src/shared/records.js';
 import type { DshContext, PostToolDecisionLike, ToolExecutionLike, ToolResultLike } from '../../../src/shared/types.js';
 
 /**
- * The plan-close worktree sweep (#175).
+ * The plan-close worktree sweep.
  *
  * The DAG document is read through the real store from a temp directory, so the
  * path validation and the document shape are real; the trigger is the one thing
@@ -89,7 +89,7 @@ afterEach(() => {
   rmSync(dagDir, { recursive: true, force: true });
 });
 
-describe('outstandingWorktrees (#175)', () => {
+describe('outstandingWorktrees', () => {
   const node = (id: string, state: 'active' | 'merged' | 'conflict' | 'removed'): DagNodeView =>
     ({
       id,
@@ -136,7 +136,7 @@ describe('outstandingWorktrees (#175)', () => {
   });
 });
 
-describe('worktreeSweepListener (#175)', () => {
+describe('worktreeSweepListener', () => {
   it('appends the leftover list after a successful plan close', async () => {
     await seed('sess-1', 'merged');
 
@@ -201,7 +201,7 @@ describe('worktreeSweepListener (#175)', () => {
   });
 });
 
-describe('installWorktreeSweep (#175)', () => {
+describe('installWorktreeSweep', () => {
   it('registers a tools/post-execute listener that reads the DAG directory', async () => {
     await seed('sess-1', 'active');
     const listeners: Record<string, unknown> = {};

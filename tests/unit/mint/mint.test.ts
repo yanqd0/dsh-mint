@@ -68,7 +68,7 @@ function manualChild(): FakeChild {
 }
 
 describe('resolveDependencyEntry', () => {
-  it('probes the plugin package root before any bare-specifier lookup (#66)', () => {
+  it('probes the plugin package root before any bare-specifier lookup', () => {
     expect(
       resolveDependencyEntry({
         packageRoot: '/pkg',
@@ -80,7 +80,7 @@ describe('resolveDependencyEntry', () => {
     ).toBe(MINT_FAA_PROBE);
   });
 
-  it('falls back to require.resolve when the probe misses (#66)', () => {
+  it('falls back to require.resolve when the probe misses', () => {
     expect(
       resolveDependencyEntry({
         packageRoot: '/pkg',
@@ -102,7 +102,7 @@ describe('resolveMintEntry', () => {
     expect(entry).toMatch(/run-mint\.js$/);
   });
 
-  it('attaches the actionable hint when nothing resolves (#66)', () => {
+  it('attaches the actionable hint when nothing resolves', () => {
     expect(() =>
       resolveMintEntry({
         packageRoot: '/pkg',
@@ -128,11 +128,11 @@ describe('describeMintEntry', () => {
     ).toMatch(/^mint-faa@\d/);
   });
 
-  it('labels a bare command as a PATH lookup (#67)', () => {
+  it('labels a bare command as a PATH lookup', () => {
     expect(describeMintEntry('mint')).toBe('PATH:mint');
   });
 
-  it('follows a symlinked launcher to the build it points at (#58/#67)', () => {
+  it('follows a symlinked launcher to the build it points at', () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-mint-entry-'));
     try {
       const target = join(dir, 'target', 'release', 'mint');
@@ -146,7 +146,7 @@ describe('describeMintEntry', () => {
     }
   });
 
-  it('keeps the last segments of a local build path — debug vs release (#58)', () => {
+  it('keeps the last segments of a local build path — debug vs release', () => {
     expect(describeMintEntry('/repo/target/debug/mint')).toBe('…/target/debug/mint');
     expect(describeMintEntry('/repo/target/release/mint')).toBe('…/target/release/mint');
   });
@@ -183,7 +183,7 @@ describe('mint entry override', () => {
     expect(resolveMintEntry()).toMatch(/run-mint\.js$/);
   });
 
-  it('lets a config sentinel force the dependency chain over an env path (#67)', () => {
+  it('lets a config sentinel force the dependency chain over an env path', () => {
     process.env.MINT_ENTRY = '/opt/mint/run-mint.js';
     expect(
       resolveMintEntry({
@@ -194,7 +194,7 @@ describe('mint entry override', () => {
     ).toBe(MINT_FAA_PROBE);
   });
 
-  it('lets an env sentinel force the dependency chain too (#67)', () => {
+  it('lets an env sentinel force the dependency chain too', () => {
     process.env.MINT_ENTRY = MINT_ENTRY_DEPENDENCY;
     expect(
       resolveMintEntry({
@@ -204,19 +204,19 @@ describe('mint entry override', () => {
     ).toBe(MINT_FAA_PROBE);
   });
 
-  it('lets a blank config entry fall through to the environment (#67)', () => {
+  it('lets a blank config entry fall through to the environment', () => {
     process.env.MINT_ENTRY = '/opt/mint/run-mint.js';
     expect(resolveMintEntry({ entry: '   ' })).toBe('/opt/mint/run-mint.js');
   });
 
-  it('expands a leading ~ in either knob (#67)', () => {
+  it('expands a leading ~ in either knob', () => {
     expect(expandMintEntry('~/bin/mint')).toBe(join(homedir(), 'bin', 'mint'));
     expect(expandMintEntry('/opt/mint')).toBe('/opt/mint');
     process.env.MINT_ENTRY = '  ~/bin/mint  ';
     expect(resolveMintEntry()).toBe(join(homedir(), 'bin', 'mint'));
   });
 
-  it('spawns a bare name directly so PATH resolves it (#67)', () => {
+  it('spawns a bare name directly so PATH resolves it', () => {
     expect(mintCommand('mint')).toEqual({ command: 'mint', prefix: [] });
   });
 
@@ -239,7 +239,7 @@ describe('runMint', () => {
     delete process.env.MINT_ENTRY;
   });
 
-  it('spawns node with the mint entry, args, cwd and cold-start timeout (#45)', async () => {
+  it('spawns node with the mint entry, args, cwd and cold-start timeout', async () => {
     fakeChild({ stdout: '{"items":[]}' });
     const result = await runMint('/proj', ['list', '--json']);
 
@@ -252,7 +252,7 @@ describe('runMint', () => {
     expect(options).toMatchObject({ cwd: '/proj', timeout: MINT_COLD_TIMEOUT_MS });
   });
 
-  it('drops back to the normal budget once a run succeeded (#45)', async () => {
+  it('drops back to the normal budget once a run succeeded', async () => {
     fakeChild({ stdout: 'ok' });
     await runMint('/proj', ['list']);
     fakeChild({ stdout: 'ok' });
@@ -264,7 +264,7 @@ describe('runMint', () => {
     expect(second).toMatchObject({ timeout: MINT_TIMEOUT_MS });
   });
 
-  it('keeps the cold budget when the first run failed (#45)', async () => {
+  it('keeps the cold budget when the first run failed', async () => {
     fakeChild({ exitCode: 2, stderr: 'download failed' });
     await runMint('/proj', ['list']);
     fakeChild({ stdout: 'ok' });
@@ -274,7 +274,7 @@ describe('runMint', () => {
     expect(second).toMatchObject({ timeout: MINT_COLD_TIMEOUT_MS });
   });
 
-  it('serializes concurrent first runs so they cannot race the installer (#45)', async () => {
+  it('serializes concurrent first runs so they cannot race the installer', async () => {
     // Both children stay open on purpose: the second run may not spawn until the
     // first — the one that owns the cold slot — has settled.
     const held = manualChild();
@@ -298,7 +298,7 @@ describe('runMint', () => {
     expect(queuedOpts).toMatchObject({ timeout: MINT_TIMEOUT_MS });
   });
 
-  it('flags a killed process whose limit elapsed as timedOut (#45)', async () => {
+  it('flags a killed process whose limit elapsed as timedOut', async () => {
     const held = manualChild();
 
     const pending = runMint('/proj', ['list'], { timeoutMs: 5 });
@@ -341,7 +341,7 @@ describe('runMint', () => {
     expect(result.exitCode).toBe(2);
   });
 
-  it('keeps advisory stderr on success — mint writes hints there (#56)', async () => {
+  it('keeps advisory stderr on success — mint writes hints there', async () => {
     fakeChild({
       stdout: 'ID\tSTATUS\n1\topen\n# Page 1/1 (5 per page, 1 total)\n',
       stderr:
@@ -362,7 +362,7 @@ describe('runMint', () => {
     expect(result.error).toBe('ENOENT');
   });
 
-  it('reports the actionable hint when the dependency entry cannot resolve (#66)', async () => {
+  it('reports the actionable hint when the dependency entry cannot resolve', async () => {
     const result = await runMint('/proj', ['-V'], {
       entry: MINT_ENTRY_DEPENDENCY,
       packageRoot: '/pkg',
