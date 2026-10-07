@@ -116,6 +116,12 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
     ],
   ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],
+  // plan #30: the DAG discipline split into its two halves. `plan-dag` owns the
+  // pre-approval research loop (total-split-total, user decisions only at the
+  // "totals", injection discipline); `dag-exec` owns the post-approval panorama
+  // (layering by the five axes, who runs what, append-no-cycle rework).
+  ['references/plan-dag.md', ['总—分—总', 'ask_user_question', '派子代理', '注入前置纪律']],
+  ['references/dag-exec.md', ['给子代理', '留 main', '五轴', '无环']],
   // #137: the container derivation table now mirrors mint's `derive.rs` — `open`
   // children derive an `open` plan (not `running`), which is the fact the plan
   // gate and #135's deadlock analysis both rest on.

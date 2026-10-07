@@ -22,6 +22,7 @@ description: >-
 | 登记：bug / 需求 / 遗留 / 审查发现 | `flow-bug.md`、`flow-requirement.md`、`flow-todo.md`、`flow-review.md` |
 | 规划：版本 / 计划 / 拆解 / 分支决策 | `flow-planning.md`、`flow-conditions.md` |
 | 写码实施：门禁 / 并行批次 / 状态机 | `flow-impl.md`、`parallel-exec.md`、`state-machine.md` |
+| 调研 / 执行两阶段的 DAG 与分派 | `plan-dag.md`、`dag-exec.md` |
 | 接管 / 收口 / 多机同步 | `flow-session.md`、`flow-sweep.md`、`flow-sync.md` |
 | 命令 / 正文取值 / 模板 / body / label / 约束红线 | `commands.md`、`template-guide.md`、`body-editing.md`、`labels.md`、`constraints.md` |
 | 跨项目登记 / 本宿主集成 | `cross-project.md`、`host-dsh.md` |
@@ -32,7 +33,8 @@ description: >-
   且同一 milestone **至多一个 running plan**（>1 即被拒并点名）；建 plan 不要求计划模式。
   存量 plan 整体接管仍先进计划模式，禁止 auto 跑完。
 - **并行批次**：plan 必带批次表（同批文件不相交）；见 `parallel-exec.md`。
-- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create`（挂 milestone）+ 拆 issue；**提 issue 一律 open；`plan plan` 在开工点（含计划模式退出口）执行**。
+- **记录必须有，顺序可换**（无 plan 不写码）：属已有 plan → `plan attach`；否则 `plan create` + 拆 issue；
+  **提 issue 一律 open；`plan plan` 在开工点（含计划模式退出口）执行**。
 - **改码前门禁**：先 `args: ["issue","state","start","<id>"]`（→ dev）；open 直接改码 = 违反。
 - **commit 后立即**：`args: ["issue","state","commit","<id>","--sha","<前7位>"]`
   （sha 用 `git rev-parse --short=7 HEAD`）；统一测试与 `plan close` 见 `flow-impl.md`。
