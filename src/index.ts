@@ -3,6 +3,8 @@ import { z } from 'zod';
 import { installApprovalGate } from './approval-gate.js';
 import { installOverviewChannel } from './context.js';
 import { installCrossProjectGate } from './cross-project-gate.js';
+import { installDagLifecycle } from './dag-lifecycle.js';
+import { installDagTool } from './dag-tool.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
 import { installPlanBinding } from './planbind.js';
@@ -50,6 +52,13 @@ export const Config = z.object({
    * mint to dogfood an unreleased version.
    */
   mintEntry: z.string().optional(),
+  /**
+   * Auto-open the plan DAG tab (plan #31). The browser half probes
+   * `GET /dsh-mint/dag` every 5s and opens the tab whenever this session has a
+   * DAG and the tab is not already open (the page type is unique per session, so
+   * a repeat never stacks one); false = leave the tab to the add control.
+   */
+  openDagTab: z.boolean().default(true),
 });
 
 export type Config = z.infer<typeof Config>;
@@ -70,6 +79,9 @@ export type Config = z.infer<typeof Config>;
  * - #28: skill auto-install — content-syncs the bundled skill on load
  * - #10: client-face routes — read-only `ctx.webServer` JSON endpoints the
  *   right-sidebar panel fetches (`src/routes.ts`)
+ * - plan 31/#148: plan DAG — `mint_plan_dag` (`src/dag-tool.ts`), the
+ *   subagent ↔ node lifecycle pairing (`src/dag-lifecycle.ts`) and the
+ *   read-only `/dsh-mint/dag` route the `plan-dag` tab polls
  * - `mintEntry` — run a locally built mint instead of the published dependency
  */
 export function apply(ctx: DshContext, config: Config): void {
@@ -90,7 +102,11 @@ export function apply(ctx: DshContext, config: Config): void {
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
   installMintTool(ctx, mintEntry);
+  // plan 31: the DAG tool and its subagent pairing are registered on the root
+  // ctx, so subagents inherit the tool and the listeners see every child run.
+  installDagTool(ctx);
+  installDagLifecycle(ctx);
   installApprovalGate(ctx, config);
   installCrossProjectGate(ctx, mintEntry);
-  installMintRoutes(ctx, mintEntry);
+  installMintRoutes(ctx, mintEntry, { openDagTab: config.openDagTab });
 }

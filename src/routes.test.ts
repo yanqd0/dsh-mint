@@ -1,8 +1,13 @@
 import { EventEmitter } from 'node:events';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
+import { applyDagWrite, emptyDag } from './dag.js';
+import { dagFilePath, updateDag } from './dag-store.js';
 import {
   BODY_MAX_BYTES,
   META_LABELS_ARGV,
@@ -62,6 +67,10 @@ function harness(options: {
   entry?: string;
   /** Clock seam for the placement TTL (#105). */
   now?: () => number;
+  /** DAG directory override: the plan DAG route is file-keyed (plan #31). */
+  dagDir?: string;
+  /** Mount-line `openDagTab`, published in the DAG envelope. */
+  openDagTab?: boolean;
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   runs: RecordedRun[];
@@ -78,6 +87,8 @@ function harness(options: {
     },
     ...(options.entry === undefined ? {} : { entry: options.entry }),
     ...(options.now === undefined ? {} : { now: options.now }),
+    ...(options.dagDir === undefined ? {} : { dagDir: options.dagDir }),
+    ...(options.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
   };
   return { handler: createMintHandler(deps), runs };
 }
@@ -797,6 +808,134 @@ describe('mint routes', () => {
     };
     await invoke(createMintHandler(deps), `${ROUTE_PREFIX}/milestones?session=s1`);
     expect(seen).toEqual(['~/bin/mint']);
+  });
+});
+
+describe('the plan DAG route (plan #31)', () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dsh-mint-dag-route-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Seed one session's document through the real store, not a stub. */
+  async function seed(session: string, title: string): Promise<void> {
+    const initialized = await updateDag(
+      session,
+      () => ({ doc: emptyDag(session, title, '2026-01-01T00:00:00.000Z') }),
+      dir
+    );
+    expect(initialized.ok).toBe(true);
+    const added = await updateDag(
+      session,
+      (state) => {
+        if (state.state !== 'ok') throw new Error('seed: missing document');
+        return applyDagWrite(
+          {
+            action: 'add',
+            nodes: [{ id: 'a', label: '总①', title: '第一轮', phase: 'exec', depends_on: [] }],
+            edges: [],
+          },
+          state.doc,
+          session,
+          '2026-01-01T00:00:00.000Z'
+        );
+      },
+      dir
+    );
+    expect(added.ok).toBe(true);
+  }
+
+  it('answers a session without a DAG with 200 and dag:null', async () => {
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({
+      ok: true,
+      dag: null,
+      revision: 0,
+      file: dagFilePath('s1', dir),
+      autoOpen: true,
+    });
+  });
+
+  it('serves the stored document with its revision', async () => {
+    await seed('s1', '宿主面 DAG');
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({
+      ok: true,
+      revision: 2,
+      autoOpen: true,
+      dag: {
+        title: '宿主面 DAG',
+        nodes: [{ id: 'a', label: '总①', title: '第一轮', phase: 'exec', status: 'pending' }],
+        edges: [],
+      },
+    });
+  });
+
+  it('is file-keyed: it answers without a live session and spawns no CLI', async () => {
+    const { handler, runs } = harness({ cwd: undefined, dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toMatchObject({ ok: true, dag: null });
+    expect(runs).toEqual([]);
+  });
+
+  it('names an unreadable file and keeps answering 200', async () => {
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(dagFilePath('s1', dir), '{ nope', 'utf8');
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      dag: null,
+      revision: 0,
+      file: dagFilePath('s1', dir),
+    });
+    expect(payload.warnings as string[]).toEqual([expect.stringContaining('unreadable dag')]);
+  });
+
+  it('ignores a document owned by another session', async () => {
+    // The route must not serve someone else's graph just because the path it
+    // computed happens to exist.
+    await seed('s2', '别人的 DAG');
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.json()).toMatchObject({ ok: true, dag: null });
+  });
+
+  it('refuses a session id that could not be a path segment', async () => {
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    for (const session of ['', '../../etc/passwd', 'a/b', 'x'.repeat(65)]) {
+      const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=${encodeURIComponent(session)}`);
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ ok: false });
+    }
+    // The missing parameter is the empty id, which is equally invalid.
+    const missing = await invoke(handler, `${ROUTE_PREFIX}/dag`);
+    expect(missing.statusCode).toBe(400);
+  });
+
+  it('publishes the mount-line openDagTab switch', async () => {
+    const off = harness({ cwd: '/proj', dagDir: dir, openDagTab: false });
+    const res = await invoke(off.handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.json()).toMatchObject({ ok: true, autoOpen: false });
+  });
+
+  it('refuses a non-GET like every other route', async () => {
+    const { handler } = harness({ cwd: '/proj', dagDir: dir });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`, 'POST');
+    expect(res.statusCode).toBe(405);
+    expect(res.headers['allow']).toBe('GET');
   });
 });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from './context.js';
+import { DAG_TOOL_DESCRIPTION } from './dag-tool.js';
 import { MINT_ENTRY_WARNING } from './mint.js';
 import { MINT_TOOL_DESCRIPTION } from './mint-tool.js';
 
@@ -127,6 +128,19 @@ describe('per-request injection budget (#61)', () => {
 
   it('keeps the tool description under 550 bytes', () => {
     expect(bytes(MINT_TOOL_DESCRIPTION)).toBeLessThanOrEqual(550);
+  });
+
+  // plan 31: the DAG tool's description is the second per-request tool budget.
+  // It is larger than `mint`'s because it carries a whole small DSL (four
+  // actions, the node fields, the edge direction), so it gets its own ceiling —
+  // and it must stay a description, not a manual: the full spec is
+  // `notes/plan-dag.md` §2.
+  it('keeps the plan DAG tool description under 700 bytes (plan #31)', () => {
+    expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
+    expect(DAG_TOOL_DESCRIPTION).toContain('init');
+    expect(DAG_TOOL_DESCRIPTION).toContain('to 依赖 from');
+    expect(DAG_TOOL_DESCRIPTION).toContain('label ≤6 字');
+    expect(DAG_TOOL_DESCRIPTION).toContain('mint_plan_dag({action:"add"');
   });
 
   it('states the paging footer contract mint 0.8 writes (#78)', () => {

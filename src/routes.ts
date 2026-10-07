@@ -16,6 +16,9 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
+import { isValidDagSession } from './dag.js';
+import { DAG_DIR, readDag } from './dag-store.js';
+import type { DagRead } from './dag-store.js';
 import {
   isContainerDetail,
   isIssueDetail,
@@ -134,6 +137,10 @@ export interface MintRouteDeps {
   run?: MintRunner;
   /** Clock seam for the placement TTL (#105); defaults to `Date.now`. */
   now?: () => number;
+  /** DAG directory override (plan #31); defaults to {@link DAG_DIR}. */
+  dagDir?: string;
+  /** Mount-line `openDagTab`, published in the DAG envelope; defaults to true. */
+  openDagTab?: boolean;
 }
 
 /**
@@ -393,6 +400,38 @@ export function createMintHandler(
   const now = deps.now ?? Date.now;
 
   /**
+   * Answer the plan DAG route (plan #31).
+   *
+   * This route is **file-keyed, not project-keyed**: the DAG lives next to the
+   * session id, no mint CLI runs, and the browser half polls it while its tab is
+   * visible. So it is answered before the live-session lookup — a session whose
+   * project cannot be resolved still has a graph to draw, and a panel that
+   * outlives its session degrades to the empty state instead of a 400.
+   */
+  const sendDag = async (res: ServerResponse, params: URLSearchParams): Promise<void> => {
+    const sessionId = params.get('session') ?? '';
+    // Validated before it can become a path segment; a bad id is a caller bug.
+    if (!isValidDagSession(sessionId)) {
+      throw new RouteRequestError('session must be a 1-64 char [A-Za-z0-9_-] id');
+    }
+    const read: DagRead = await readDag(sessionId, deps.dagDir ?? DAG_DIR);
+    // `warnings` is declared rather than inferred: the payload it spreads into
+    // is `unknown`-typed, and a lone inferred string[] would read as a mistake.
+    const warnings: Record<string, unknown> =
+      read.state === 'unreadable' ? { warnings: [`unreadable dag: ${read.error}`] } : {};
+    sendJson(res, 200, {
+      ok: true,
+      // A missing file and an unreadable one both answer `dag: null`: "this
+      // session has no DAG yet" is a normal state, not a 404 (§4.2/§1.5).
+      dag: read.state === 'ok' ? read.doc : null,
+      revision: read.state === 'ok' ? read.doc.revision : 0,
+      file: read.file,
+      autoOpen: deps.openDagTab ?? true,
+      ...warnings,
+    });
+  };
+
+  /**
    * The issue→milestone map, per project, for {@link PLACEMENT_TTL_MS} (#105).
    *
    * Scoped to the handler (i.e. the plugin's lifetime) rather than to a request:
@@ -604,6 +643,10 @@ export function createMintHandler(
     res.on('close', onClose);
 
     try {
+      if (name === 'dag') {
+        await sendDag(res, params);
+        return;
+      }
       if (isRouteName(name)) {
         const sessionId = params.get('session') ?? '';
         const cwd = deps.getCwd(sessionId);
@@ -687,8 +730,14 @@ export function createMintHandler(
  *
  * @param ctx - the plugin's root context.
  * @param entry - `mintEntry` from the mount line, forwarded to every run.
+ * @param options - mount-line client knobs: the DAG tab's auto-open default and
+ *   the DAG directory override (plan #31; tests point the latter at a temp dir).
  */
-export function installMintRoutes(ctx: DshContext, entry?: string): void {
+export function installMintRoutes(
+  ctx: DshContext,
+  entry?: string,
+  options?: { openDagTab?: boolean; dagDir?: string }
+): void {
   ctx.inject?.(['webServer'], (scoped) => {
     const webServer: WebServerLike | undefined = scoped.webServer;
     if (webServer === undefined) return;
@@ -701,6 +750,8 @@ export function installMintRoutes(ctx: DshContext, entry?: string): void {
         return agents?.get(sessionId)?.session.header.cwd;
       },
       ...(entry === undefined ? {} : { entry }),
+      ...(options?.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
+      ...(options?.dagDir === undefined ? {} : { dagDir: options.dagDir }),
     });
     const register = (): (() => void) =>
       webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler });

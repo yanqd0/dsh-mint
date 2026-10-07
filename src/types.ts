@@ -30,6 +30,12 @@ export interface ToolExecutionLike {
          * the root agent's session, so the reminder skips delegated ones.
          */
         delegationDepth?: number;
+        /**
+         * The session that delegated this one, absent at the top. The plan DAG
+         * (plan #31) walks it upward so a subagent writes the graph its main
+         * session's panel draws.
+         */
+        parentSession?: string;
       };
     };
   };
@@ -114,8 +120,38 @@ export interface AgentLike {
        * the injection channel uses it to skip subagents (#113).
        */
       delegationDepth?: number;
+      /**
+       * The session that delegated this one, absent at the top — the edge the
+       * plan DAG's root-session walk follows (plan #31).
+       */
+      parentSession?: string;
     };
   };
+}
+
+/**
+ * The host's `subagent/start` payload (plan #31).
+ *
+ * `id` is the child **session** id (what a DAG node's `agent` records); `runId`
+ * identifies the run itself and is what pairs `start` with `end`.
+ */
+export interface SubagentRunInfoLike {
+  runId: string;
+  id: string;
+  provider?: string;
+  local?: boolean;
+}
+
+/**
+ * The host's `subagent/end` payload: the start payload plus how the run ended.
+ *
+ * `stopReason` is the host's own wording (`error`, `cancelled`, …) and
+ * `lastAssistantMessage` the child's final message — together they are the only
+ * outcome available when a subagent died before reporting one (plan #31 §3).
+ */
+export interface SubagentRunEndInfoLike extends SubagentRunInfoLike {
+  stopReason?: string;
+  lastAssistantMessage?: readonly unknown[];
 }
 
 /** Subset of the host's `ApprovalRequest` (approval/request waterfall). */
@@ -167,6 +203,8 @@ export type EventListener =
       next: () => Promise<PostToolDecisionLike>
     ) => Promise<PostToolDecisionLike>)
   | ((exec: ToolExecutionLike, result: ToolResultLike) => void)
+  | ((info: SubagentRunInfoLike) => void)
+  | ((info: SubagentRunEndInfoLike) => void)
   | ((
       req: ApprovalRequestLike,
       next: () => Promise<ApprovalOutcomeLike>
@@ -199,9 +237,15 @@ export interface DshContext {
   webServer?: WebServerLike;
 }
 
-/** The slice of a live Agent the client-face routes need: where its project lives. */
+/**
+ * The slice of a live Agent the client-face routes and the plan DAG need.
+ *
+ * `session.header.cwd` is where the agent's project lives; `id`/`parentSession`
+ * are the delegation chain the DAG's root-session walk reads (plan #31).
+ */
 export interface AgentCwdLike {
-  session: { header: { cwd?: string } };
+  id?: string;
+  session: { header: { cwd?: string; parentSession?: string } };
 }
 
 /** Subset of the host's `ctx.agents` service. */
