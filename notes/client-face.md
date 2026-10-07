@@ -128,11 +128,17 @@ AbortController**（`RequestScope`），
 > 「DAG 不可读 + 路径」而不是空白。`autoOpen` 是宿主把挂载行 `openDagTab` 回传给浏览器半边的地方
 > （客户端只有这一次机会知道开关，见下）。
 
+> **落盘样本（plan #35）**：实测值会**写进 DAG 文档**的 `samples`（`subagent/end` 与 `mint_plan_dag`
+> 的 `set → done` 各落一次，路由对「仍 running 但已测不到 agent」的节点兜底补一次）。信封里
+> **有 `at` 的条目 = 落盘样本**（钟是 `at`）、**没有 `at` = 本轮实测**（钟是 `sampled_at`）；因此子代理
+> 结束后仍然有实测 token/时长可显示，只是不再增长（客户端不跑秒，详情卡用 `dag.measuredAt` 标出采样时刻）。
+> 实现与边界见 [plan-dag.md](plan-dag.md) §1.4.1/§4.7。
+
 > **实时指标（plan #34）**：宿主为**每个有 `agent` 的节点**读子会话的会话投影——`tokenUsage`
 > （四桶之和）与 `subagentTiming`（`settledMs + max(0, end - active.since)`，与 dsh 子代理 UI 同式），
 > 路径是 `ctx.get('agents').get(childId).session` + `ctx.get('sessionProjections').stateOf(session, key)`
 > （**两个服务都在每次请求时解引用**，与 `getCwd` 同风格；都属可选服务）。**只在实测到东西时**才发
-> `metrics: {<node id>: {tokens?, elapsed_ms?}}` 与 `sampled_at`（宿主 epoch ms，同一答案共用一个采样钟）；
+> `metrics: {<node id>: {tokens?, elapsed_ms?, at?}}` 与 `sampled_at`（宿主 epoch ms，同一答案共用一个采样钟）；
 > 没服务、会话消失、文件缺失/不可读、投影形状漂移 → 两个字段都不出现（**不是 `{}`、不是 0**）。浏览器侧
 > 用 `sampled_at` 当锚做 1 s 走秒，故宿主与浏览器时钟无需同源。实现与降级口径见
 > [plan-dag.md](plan-dag.md) §4.7。

@@ -34,8 +34,8 @@ plan always has a mint plan behind it.
 - **Plan DAG panel** — a second sidebar tab, beside the mint panel, draws the
   execution graph the agent records through the `mint_plan_dag` tool: pending,
   running (pulsing) and settled nodes, each showing the token count and elapsed
-  time the host measures from the child session itself, with the full title and
-  the conclusion text on hover. It opens itself as soon as a DAG exists for the
+  time the host measures from the child session itself (kept as a dated sample
+  once the child is gone), with the full title and the conclusion text on hover. It opens itself as soon as a DAG exists for the
   session, and a running node's time ticks while it is on screen.
 - **Reminders** — after a `git commit` the agent is reminded to register it, and
   after a mint state change to sync the host todo panel.

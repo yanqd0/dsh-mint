@@ -56,6 +56,19 @@
 | `note` | 否 | 子代理回给 main 的结论原文；tooltip 显示，可滚动 |
 | `updated_at` | 是 | 该节点最后一次变更时间 |
 
+### 1.4.1 文档级 `samples`（宿主实测样本，plan #35 / #167）
+
+节点里的 `tokens` 是**子代理自报**；宿主实测值另存一层，避免两种语义混在一起：
+
+```json
+{ "samples": { "<node id>": { "tokens": 28067, "elapsed_ms": 3231, "at": 1786000000000 } } }
+```
+
+- `at` = 该样本的采样时刻（宿主 epoch ms）；`tokens`/`elapsed_ms` 与线上 `DagNodeMetrics` **同语义**。
+- **校验是「整份严格、单条宽松」**：`samples` 不是对象 → 整份文档不可读；某条自身的字段非法（`at` 缺失/负数/小数、已出现的数字字段非法）→ **只丢该条**，图照常渲染；条目里一个数字都没有也丢。无 `samples` 的旧文档解析后**不产生该键**（round-trip 不变）。
+- **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 #168。
+- **为什么落盘**：子代理结束、`ctx.agents.get(id)` 不再返回 session 之后，实测值否则会整份消失（#166 的真机实测）。
+
 ### 1.5 缺失与损坏的容错
 
 - **文件缺失 = 「本会话暂无 DAG」的正常状态，不是错误**：读取方不报错、不刷错误日志。
@@ -180,17 +193,22 @@
 - 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
   key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
   `dag-lifecycle.ts` 读 `header.parentSession` 是同一条路径。
-- **宿主侧**：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`），
-  由 `/dsh-mint/dag` 调用；**只发实测过的字段**——缺失就是缺失，绝不写 0 猜测。
-- **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?}}` 与 `sampled_at`（宿主 epoch ms）**只在
-  非空时出现**；无 `agents`/`sessionProjections`、会话已消失、文件缺失/不可读、投影形状漂移 → 一个字段都不出现。
-- **客户端降级**：`nodeMetricsMap` 只保留「文档里还有该节点 + 字段是非负安全整数」的项；
-  `running` 且拿不到时长 → 时间位显示 `?`；`done` 且两者都没有 → `-`；`pending` → 整行不渲染。
-- **走秒口径**：`elapsed_ms + max(0, browserNow - sampled_at)`——两个时钟不必同源，锚在采样时刻上
-  抵消偏差；宿主没给 `sampled_at` 就只画采样值（见 §4.6）。
-- **已知边界（真机实测，见 #166）**：实测值只在子会话还在 `ctx.agents` 注册表时取得到；子代理一结束，
-  该节点就只剩自报 `tokens`、没有时长。真机复核口径：节点 `running` 时
-  `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的 `metrics`（见 §7.5）。
+- **宿主侧**：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `mergeMetrics` /
+  `measureDagNodes`；`readDagMetrics` 是它的薄封装），由 `/dsh-mint/dag` 调用；**只发实测过的字段**——
+  缺失就是缺失，绝不写 0 猜测。
+- **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?, at?}}` 与 `sampled_at`（宿主 epoch ms）
+  **只在非空时出现**；无 `agents`/`sessionProjections`、会话已消失、文件缺失/不可读、投影形状漂移 → 一个字段都不出现。
+  条目**没有 `at` = 本轮实测**（钟是 `sampled_at`）；**有 `at` = 文档里的落盘样本**（#167/#168，钟是 `at`）。
+- **回落顺序（#168）**：`measureDagNodes` 先实测、实测缺失再用 `samples`；因此**子代理结束后仍能看到实测值**
+  （`elapsed_ms` + `at`），只是不再增长。落盘时机：`subagent/end`（settle 之前）、`mint_plan_dag` 的 `set → done`、
+  以及路由对「仍 running 但已测不到 agent」节点的兜底补写（每 session+node 每进程一次）。
+- **客户端降级**：`nodeMetricsMap` 只保留「文档里还有该节点 + 字段是非负安全整数 + `at`（若有）合法」的项；
+  `running` 且**完全没有**读数 → 时间位 `?`；`done` 且两者都没有 → `-`；`pending` → 整行不渲染。
+- **走秒口径**：只对**本轮实测**的 `running` 节点跑秒（`elapsed_ms + max(0, browserNow - sampled_at)`，
+  两个时钟不必同源）；**落盘样本不跑秒**，直接画宿主那次测量的数字，详情卡用 `dag.measuredAt` 标注采样时刻
+  （`实测于 <本地时间>`）——宁缺勿假：不把陈旧样本当活的在涨，也不把它藏起来。
+- **真机复核口径**：节点 `running` 时 `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的实时 `metrics`；
+  子代理结束之后再 curl，同一节点应出现**带 `at`** 的 `metrics`，DAG 文件里出现 `samples`（见 §7.6）。
 
 ### 4.8 自动打开
 
@@ -203,7 +221,8 @@
 
 - 沿用 locale 命名空间 `mint`，新键统一 `dag.` 前缀；ZH/EN 双字典，沿用 `src/client/copy.ts` 纪律。
 - plan #34 新增：`dag.liveTokens`（实测 token 行，占位 `{tokens}`）、`dag.seconds`（时长单位，ZH `秒` / EN `s`）；
-  键名在 `src/client/dag-model.ts` 的 `DAG_COPY_KEYS` 里只写一次（`copy.test.ts` 的"无死 key"判据读源码文本）。
+  plan #35 新增 `dag.measuredAt`（落盘样本的采样时刻，占位 `{at}`）；键名在 `src/client/dag-model.ts` 的
+  `DAG_COPY_KEYS` 里只写一次（`copy.test.ts` 的"无死 key"判据读源码文本）。
 
 ## 5. 落点与测试文件清单
 
@@ -352,3 +371,25 @@
   目前**只覆盖 `running` 期间**；缓存/落盘的取舍见 #166。
 - **仍留给人眼确认**：紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、`?` 与 `-` 的出现时机，
  以及 tab 自动打开（agent 无 DOM 可自证）。
+
+### 7.6 plan #35：样本落盘与调研阶段 DAG 化
+
+> issue 拆分：#167 文档 `samples` + 度量/合并（接口冻结）、#168 落盘钩子与陈旧样本口径、
+> #169 skill 纪律 + 空 DAG 软提醒。触发：真机实测发现「子代理结束后实测值整份消失」（#166），
+> 以及本轮计划模式的调研阶段**全程没有 DAG**（#165）。
+
+- 落点：`src/dag.ts`（`DagSample` / `samples` 校验 / `sampleOf`）、`src/dag-metrics.ts`
+  （`mergeMetrics` / `measureDagNodes` / `rememberMeasurement` / `lastMeasurement` / `clearMeasurements`）、
+  `src/dag-lifecycle.ts`（`subagent/end` 落盘，导出 `readAgentMetrics` / `withSample`）、
+  `src/dag-tool.ts`（`set → done` 落盘）、`src/routes.ts`（兜底补写 + `flushedSamples` 记账）、
+  `src/client/{dag-model,DagBody,copy}`（`at` 校验、落盘样本不跑秒、`dag.measuredAt` 标注）、
+  `src/plan-mode.ts`（从 `planbind.ts` 抽出的 `planModeState`）、`src/dag-plan-reminder.ts`（空 DAG 软提醒，
+  由 `installDagPlanReminder` 在 `src/index.ts` 挂载）、`skill/references/{plan-dag,flow-planning}.md`。
+- 口径（本轮拍板）：实测值**落盘进文档**（不是只在内存缓存）；调研阶段**一律 DAG 化**（不再按「有无并行价值」取舍）。
+- 已实测（本机）：`pnpm lint` / `pnpm check-types` 0 error；`pnpm test` **36 文件 / 786 用例全绿**；
+  `src/dag.ts` / `src/dag-metrics.ts` 行覆盖 100%。
+- **待复核（需重启 harness）**：`subagent/end` 落盘在真机是否写出 `samples`（`end` 当下
+  `agents.get` 是否仍有 session 未实测；若没有，兜底路径会在面板轮询时补一次）；以及面板上
+  「实测于 <时间>」标注、落盘样本不跑秒的观感。
+- skill 侧实测：`grep -n "进计划模式\|空图\|0 节点" skill/references/plan-dag.md` 命中新触发语与新增 §3.1；
+  `skill/SKILL.md` 未改（路由行与新纪律不冲突，`src/skill-doc.test.ts` 仍 23 passed）。
