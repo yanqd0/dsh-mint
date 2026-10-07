@@ -17,7 +17,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { OWNER_MARKER } from '../../../src/skill/install-skill.js';
 import { linkSkill, runSkillCli, skillStatus, statusLine, uninstallSkill } from '../../../src/skill/skill-cli.js';
 
-/** Every scratch root this file creates, removed again in `afterAll` (#54). */
+/** Every scratch root this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];
 
 function tempDir(): string {
@@ -71,7 +71,7 @@ function run(f: Fixture, argv: string[]): Run {
   return { code, out, err };
 }
 
-describe('runSkillCli install modes (#154)', () => {
+describe('runSkillCli install modes', () => {
   it('installs the copy form on a bare invocation and always exits 0', () => {
     const f = fixture();
 
@@ -130,7 +130,7 @@ describe('runSkillCli install modes (#154)', () => {
   });
 });
 
-describe('runSkillCli removal mode (#154)', () => {
+describe('runSkillCli removal mode', () => {
   it('removes our copy and stays a success when nothing is left', () => {
     const f = fixture();
     run(f, []);
@@ -183,7 +183,7 @@ describe('runSkillCli removal mode (#154)', () => {
   });
 });
 
-describe('skillStatus (#154)', () => {
+describe('skillStatus', () => {
   it('reports absence, stale copies and foreign paths', () => {
     const f = fixture();
     expect(skillStatus({ dshHome: f.dshHome, source: f.source }).form).toBe('absent');
@@ -218,7 +218,7 @@ describe('skillStatus (#154)', () => {
   });
 });
 
-describe('linkSkill (#154)', () => {
+describe('linkSkill', () => {
   it('is idempotent and never follows an existing link', () => {
     const f = fixture();
 
@@ -255,7 +255,7 @@ describe('linkSkill (#154)', () => {
   });
 });
 
-describe('uninstallSkill (#154)', () => {
+describe('uninstallSkill', () => {
   it('is a no-op when nothing is installed', () => {
     const f = fixture();
     expect(uninstallSkill({ dshHome: f.dshHome }).reason).toBe('absent');

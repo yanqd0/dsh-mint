@@ -35,7 +35,7 @@ function makeExec(name: string, cwd?: string, sessionId?: string): ToolExecution
 const next = () => Promise.resolve({ kind: 'allow' as const });
 
 /**
- * A root-style context (#142). `planMode` is passed through `sessionProjections`
+ * A root-style context. `planMode` is passed through `sessionProjections`
  * because that is the only plan-state source a root-layer plugin can reach: the
  * plan-mode service sits in an isolated cordis group.
  */
@@ -66,7 +66,7 @@ describe('planBindListener', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
   });
 
-  it('allows exit_plan_mode when a running plan exists (#59)', async () => {
+  it('allows exit_plan_mode when a running plan exists', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: '{"items":[{"id":5,"status":"running","issue_count":2,"title":"x"}]}',
@@ -79,12 +79,12 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('reads the whole plan table, so an older running plan still counts (#93)', async () => {
-    // Pre-#93 the gate took mint's default page of five (newest id first), so a
+  it('reads the whole plan table, so an older running plan still counts', async () => {
+    // The gate used to take mint's default page of five (newest id first), so a
     // running plan older than the five newest read as "no plan at all". The argv
     // is the fix; this six-plan answer is what that argv exists for. The five
     // open rows carry `issue_count: 0`, so the running one is the only record
-    // that can satisfy the gate here (#135).
+    // that can satisfy the gate here.
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: JSON.stringify({
@@ -107,7 +107,7 @@ describe('planBindListener', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
   });
 
-  it('denies two running plans in the same milestone (#140)', async () => {
+  it('denies two running plans in the same milestone', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: JSON.stringify({
@@ -132,7 +132,7 @@ describe('planBindListener', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('allows two running plans in different milestones (sanctioned parallel versions, #140)', async () => {
+  it('allows two running plans in different milestones (sanctioned parallel versions)', async () => {
     // Only `milestone set --status running --force` puts two versions in flight;
     // that is the user's call, so the plan gate must not fight it.
     runMintMock.mockResolvedValueOnce({
@@ -152,7 +152,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('denies two milestone-less running plans (they share the "none" bucket, #140)', async () => {
+  it('denies two milestone-less running plans (they share the "none" bucket)', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: JSON.stringify({
@@ -167,7 +167,7 @@ describe('planBindListener', () => {
     expect(decision.kind).toBe('deny');
   });
 
-  it('still denies a visible collision while another row is unreadable (#140)', async () => {
+  it('still denies a visible collision while another row is unreadable', async () => {
     // Fail-open must not swallow a collision the gate has already proven.
     runMintMock.mockResolvedValueOnce({
       ok: true,
@@ -184,7 +184,7 @@ describe('planBindListener', () => {
     expect(decision.kind).toBe('deny');
   });
 
-  it('fails open when a row is unreadable and no collision is visible (#140)', async () => {
+  it('fails open when a row is unreadable and no collision is visible', async () => {
     // One unreadable row means the *count* is untrustworthy: stay out of the way.
     runMintMock.mockResolvedValueOnce({
       ok: true,
@@ -202,8 +202,8 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('allows an open plan that already has an issue attached (#135)', async () => {
-    // The #128 shape: every child is still `open`, so mint derives the plan as
+  it('allows an open plan that already has an issue attached', async () => {
+    // Every child is still `open`, so mint derives the plan as
     // `open` — the deadlock this case exists for.
     runMintMock.mockResolvedValueOnce({
       ok: true,
@@ -217,7 +217,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('allows an open plan whose issue count is unreadable (fail-open, #135)', async () => {
+  it('allows an open plan whose issue count is unreadable (fail-open)', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: '{"items":[{"id":5,"status":"open","title":"x"}]}',
@@ -230,7 +230,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('denies an open, issue-less plan instead of passing the gate (#59, #132)', async () => {
+  it('denies an open, issue-less plan instead of passing the gate', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: '{"items":[{"id":5,"status":"open","issue_count":0,"title":"x"}]}',
@@ -241,7 +241,7 @@ describe('planBindListener', () => {
 
     expect(decision.kind).toBe('deny');
     expect(decision.reason).toContain('mint({args:["plan","attach"');
-    // #132: `plan plan` is the start-of-work step (#128), never a gate condition.
+    // `plan plan` is the start-of-work step, never a gate condition.
     expect(decision.reason).toContain('when the work starts');
     expect(decision.reason).not.toContain('before exiting plan mode');
     expect(spy).not.toHaveBeenCalled();
@@ -288,7 +288,7 @@ describe('planBindListener', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('denies a session outside plan mode, and reads no mint for it (#142)', async () => {
+  it('denies a session outside plan mode, and reads no mint for it', async () => {
     const projections = projectionsReporting({ active: false });
     const exec = makeExec('exit_plan_mode', '/proj', 'sess-1');
     const spy = vi.fn(next);
@@ -303,7 +303,7 @@ describe('planBindListener', () => {
     expect(projections.stateOf).toHaveBeenCalledWith(exec.agent?.session, 'plan');
   });
 
-  it('reads plan state only after the tool name matches (#142)', async () => {
+  it('reads plan state only after the tool name matches', async () => {
     const projections = projectionsReporting({ active: false });
     const exec = makeExec('bash', '/proj', 'sess-1');
     const decision = await planBindListener(exec, vi.fn(next), undefined, makeCtx(projections));
@@ -313,7 +313,7 @@ describe('planBindListener', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('keeps the mint gate while plan mode is active (#142)', async () => {
+  it('keeps the mint gate while plan mode is active', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
       text: '{"items":[{"id":5,"status":"running","issue_count":1,"milestone_id":4}]}',
@@ -327,7 +327,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('falls back to the observed session event when the projection is unreachable (#142)', async () => {
+  it('falls back to the observed session event when the projection is unreachable', async () => {
     // The plan-mode service is isolated from this layer, so a host whose
     // projection key or registry drifts still gets a truthful answer whenever
     // this process saw the session toggle plan mode off.
@@ -351,7 +351,7 @@ describe('planBindListener', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
-  it('keeps the mint gate when the ledger observed plan mode on, or knows nothing (#142)', async () => {
+  it('keeps the mint gate when the ledger observed plan mode on, or knows nothing', async () => {
     for (const sessionId of ['sess-on', 'sess-unknown']) {
       notePlanModeState('sess-on', true);
       runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
@@ -364,7 +364,7 @@ describe('planBindListener', () => {
     }
   });
 
-  it('trusts the projection over the ledger (#142)', async () => {
+  it('trusts the projection over the ledger', async () => {
     notePlanModeState('sess-1', false);
     runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
     // The projection says active ⇒ the gate runs; the stale ledger must not deny.
@@ -389,7 +389,7 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('falls through to next() when the mint run throws (fail-open, #16)', async () => {
+  it('falls through to next() when the mint run throws (fail-open)', async () => {
     runMintMock.mockRejectedValueOnce(new Error('spawn exploded'));
     const exec = makeExec('exit_plan_mode', '/proj');
     const spy = vi.fn(next);
@@ -426,7 +426,7 @@ describe('installPlanBinding', () => {
   });
 });
 
-describe('isDecomposedPlan (#135)', () => {
+describe('isDecomposedPlan', () => {
   it('accepts a running plan whatever the count says', () => {
     expect(isDecomposedPlan({ status: 'running', issue_count: 2 })).toBe(true);
     // `running` is derived from an active child, so an odd count must not flip it.
@@ -434,7 +434,7 @@ describe('isDecomposedPlan (#135)', () => {
     expect(isDecomposedPlan({ status: 'running' })).toBe(true);
   });
 
-  it('accepts an open plan only once it has an issue attached (#59 stays closed)', () => {
+  it('accepts an open plan only once it has an issue attached', () => {
     expect(isDecomposedPlan({ status: 'open', issue_count: 1 })).toBe(true);
     expect(isDecomposedPlan({ status: 'open', issue_count: 0 })).toBe(false);
     expect(isDecomposedPlan({ status: 'open' })).toBe(true);
@@ -449,7 +449,7 @@ describe('isDecomposedPlan (#135)', () => {
   });
 });
 
-describe('multiRunningCluster (#140)', () => {
+describe('multiRunningCluster', () => {
   it('ignores single running plans and non-running rows', () => {
     expect(multiRunningCluster([])).toEqual([]);
     expect(multiRunningCluster([{ id: 1, status: 'running', milestone_id: 4 }])).toEqual([]);

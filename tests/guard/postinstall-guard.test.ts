@@ -7,7 +7,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 const GUARD = join(process.cwd(), 'scripts', 'install-skill-postinstall.mjs');
 
-/** Every scratch directory this file creates, removed again in `afterAll` (#54). */
+/** Every scratch directory this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];
 
 function tempDir(): string {
@@ -28,7 +28,7 @@ function run(script: string, env: NodeJS.ProcessEnv = {}): { status: number; std
   return { status: result.status ?? 1, stderr: result.stderr ?? '' };
 }
 
-describe('install-skill-postinstall.mjs guard (#34)', () => {
+describe('install-skill-postinstall.mjs guard', () => {
   it('skips silently when dist/install-skill.js does not exist', () => {
     const root = tempDir();
     mkdirSync(join(root, 'scripts'), { recursive: true });

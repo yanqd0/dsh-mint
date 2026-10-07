@@ -16,7 +16,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 const SCRIPT = join(process.cwd(), 'scripts', 'install-dsh.sh');
 
-/** Every scratch root this file creates, removed again in `afterAll` (#54). */
+/** Every scratch root this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];
 
 function tempDir(): string {
@@ -69,10 +69,10 @@ function run(l: Layout, args: string[]): { status: number; argv: string; stderr:
 
 /**
  * `scripts/install-dsh.sh` is a thin wrapper over `dist/install-skill.js`: the
- * modes and the ownership guards must not be duplicated in shell (#154), and
+ * modes and the ownership guards must not be duplicated in shell, and
  * the historical default — the dev symlink — has to survive the delegation.
  */
-describe('scripts/install-dsh.sh (#154)', () => {
+describe('scripts/install-dsh.sh', () => {
   it('delegates the dev symlink form when no mode is given', () => {
     const l = layout();
     expect(run(l, [])).toMatchObject({ status: 0, argv: '--link' });

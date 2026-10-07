@@ -26,7 +26,7 @@ vi.mock('../../../src/mint/mint.js', () => ({
 const runMintMock = vi.mocked(runMint);
 
 /**
- * A real `mint doctor --json` payload (#126): captured from the dsh-mint ledger
+ * A real `mint doctor --json` payload: captured from the dsh-mint ledger
  * with `--days 1`, where one stale plan fired. Only `warnings`/`counts` are read
  * by the overview; the rest is what the CLI actually sends.
  */
@@ -120,7 +120,7 @@ describe('fetchOverview', () => {
     expect(runMintMock).toHaveBeenNthCalledWith(3, '/proj', ['-V']);
   });
 
-  it('reads the resolved project name off the issue rows (#114)', async () => {
+  it('reads the resolved project name off the issue rows', async () => {
     runMintMock
       .mockResolvedValueOnce({
         ok: true,
@@ -144,7 +144,7 @@ describe('fetchOverview', () => {
     expect((await fetchOverview('/proj')).project).toBe('dsh-mint');
   });
 
-  it('leaves the project unknown when no row names one (#114)', async () => {
+  it('leaves the project unknown when no row names one', async () => {
     runMintMock
       .mockResolvedValueOnce({
         ok: true,
@@ -158,7 +158,7 @@ describe('fetchOverview', () => {
     expect((await fetchOverview('/proj')).project).toBeUndefined();
   });
 
-  it('flags an unrecognized list shape instead of reporting an empty backlog (#65)', async () => {
+  it('flags an unrecognized list shape instead of reporting an empty backlog', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ data: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -170,7 +170,7 @@ describe('fetchOverview', () => {
     expect(overview.warnings?.[0]).toContain('no "items" array');
   });
 
-  it('drops items missing required fields and counts them (#65)', async () => {
+  it('drops items missing required fields and counts them', async () => {
     runMintMock
       .mockResolvedValueOnce({
         ok: true,
@@ -200,7 +200,7 @@ describe('fetchOverview', () => {
     expect(overview.warnings).toBeUndefined();
   });
 
-  it('keeps a milestone whose version is null, without a shape warning (#107)', async () => {
+  it('keeps a milestone whose version is null, without a shape warning', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({
@@ -218,7 +218,7 @@ describe('fetchOverview', () => {
     expect(overview.warnings).toBeUndefined();
   });
 
-  it('keeps the overview when the -V probe fails (#58)', async () => {
+  it('keeps the overview when the -V probe fails', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -234,7 +234,7 @@ describe('fetchOverview', () => {
     await expect(fetchOverview('/proj')).rejects.toThrow('mint: db not found');
   });
 
-  it('asks doctor for a CLI that has it, and keeps the verdict (#126)', async () => {
+  it('asks doctor for a CLI that has it, and keeps the verdict', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -258,7 +258,7 @@ describe('fetchOverview', () => {
     expect(runMintMock).toHaveBeenNthCalledWith(4, '/proj', ['doctor', '--json']);
   });
 
-  it('does not spend a spawn on doctor for an older CLI (#126)', async () => {
+  it('does not spend a spawn on doctor for an older CLI', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -270,7 +270,7 @@ describe('fetchOverview', () => {
     expect(runMintMock).toHaveBeenCalledTimes(3);
   });
 
-  it('ignores a doctor run that did not answer (#126)', async () => {
+  it('ignores a doctor run that did not answer', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -287,7 +287,7 @@ describe('fetchOverview', () => {
     expect(overview.warnings).toBeUndefined();
   });
 
-  it('reports a doctor shape skew instead of hiding it (#126)', async () => {
+  it('reports a doctor shape skew instead of hiding it', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -301,7 +301,7 @@ describe('fetchOverview', () => {
     expect(overview.warnings?.[0]).toContain('missing required fields');
   });
 
-  it('skips doctor when the version probe failed (#126)', async () => {
+  it('skips doctor when the version probe failed', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -314,7 +314,7 @@ describe('fetchOverview', () => {
   });
 });
 
-describe('supportsDoctor (#126)', () => {
+describe('supportsDoctor', () => {
   it('accepts the 0.9 line and later, prerelease suffix included', () => {
     expect(supportsDoctor('0.9.0')).toBe(true);
     expect(supportsDoctor('0.9.0-alpha.1')).toBe(true);
@@ -348,7 +348,7 @@ describe('renderOverview', () => {
     expect(text).toContain('#3');
     expect(text).toContain('[requirement]');
     expect(text).toContain('(P1, dev)');
-    // labels are deliberately not injected (#61) — they cost the most per line
+    // labels are deliberately not injected — they cost the most per line
     // and are one `mint list`/`show` call away
     expect(text).not.toContain('[host]');
     expect(text).toContain('milestone 0.1.0 (id 1) running');
@@ -356,7 +356,7 @@ describe('renderOverview', () => {
     expect(text).toContain('plan create --milestone 1');
   });
 
-  it('caps the issue list at five and states the real total (#61)', () => {
+  it('caps the issue list at five and states the real total', () => {
     const issues = Array.from({ length: 9 }, (_, index) => ({
       id: index + 1,
       title: `issue ${index + 1}`,
@@ -393,7 +393,7 @@ describe('renderOverview', () => {
     expect(latestVersion(milestones)).toBe('0.1.0');
   });
 
-  it('keeps a version-less milestone and skips it when ranking (#107)', () => {
+  it('keeps a version-less milestone and skips it when ranking', () => {
     // mint's `version` column is nullable, so `null` is a declared answer: the
     // milestone must stay in the overview, and the semver hint must fall back to
     // the versions that do exist.
@@ -409,7 +409,7 @@ describe('renderOverview', () => {
     expect(text).toContain('mint({args:["milestone","attach","1","<id>"]})');
   });
 
-  it('drops the latest-version parenthetical when no milestone has a version (#107)', () => {
+  it('drops the latest-version parenthetical when no milestone has a version', () => {
     const text = renderOverview({
       issues: [],
       milestones: [{ id: 1, title: 'a', version: null, status: 'open' }],
@@ -418,7 +418,7 @@ describe('renderOverview', () => {
     expect(text).not.toContain('(latest )');
   });
 
-  it('warns on 2+ running milestones with the CLI guard, not a manual reopen (#104/#118)', () => {
+  it('warns on 2+ running milestones with the CLI guard, not a manual reopen', () => {
     const text = renderOverview({
       issues: [],
       milestones: [
@@ -429,7 +429,7 @@ describe('renderOverview', () => {
     expect(text).toContain('WARNING: 2 running milestones');
     expect(text).toContain('ask the user');
     expect(text).toContain('--force');
-    // the pre-#104 advice (reopen the later one by hand) is what the CLI now
+    // the old advice (reopen the later one by hand) is what the CLI now
     // rejects / makes moot, so it must not come back
     expect(text).not.toContain('keep exactly one');
     expect(text).not.toContain('"--status","open"');
@@ -439,7 +439,7 @@ describe('renderOverview', () => {
     expect(renderOverview({ issues: [], milestones: [] })).toBe('');
   });
 
-  it('renders one doctor line when the health check has warnings (#126)', () => {
+  it('renders one doctor line when the health check has warnings', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -450,7 +450,7 @@ describe('renderOverview', () => {
     expect(text).toContain('mint({args:["doctor","--json"]})');
   });
 
-  it('keeps an unknown doctor check visible, after the known ones (#126)', () => {
+  it('keeps an unknown doctor check visible, after the known ones', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -459,7 +459,7 @@ describe('renderOverview', () => {
     expect(text).toContain('[Mint] doctor: 1 health warning (new-check:1)');
   });
 
-  it('adds no doctor line for a clean ledger (#126)', () => {
+  it('adds no doctor line for a clean ledger', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -469,7 +469,7 @@ describe('renderOverview', () => {
     expect(text).toBe('[Mint] dsh-mint');
   });
 
-  it('renders shape-skew warnings (#65)', () => {
+  it('renders shape-skew warnings', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -482,7 +482,7 @@ describe('renderOverview', () => {
     ]);
   });
 
-  it('renders the running mint version and entry label first (#58)', () => {
+  it('renders the running mint version and entry label first', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -492,12 +492,12 @@ describe('renderOverview', () => {
     expect(text.split('\n')[0]).toBe('[Mint] mint 0.8.0-alpha.1 via …/target/debug/mint');
   });
 
-  it('omits the entry label when the probe could not name it (#58)', () => {
+  it('omits the entry label when the probe could not name it', () => {
     const text = renderOverview({ issues: [], milestones: [], cliVersion: '0.8.0-alpha.1' });
     expect(text).toBe('[Mint] mint 0.8.0-alpha.1');
   });
 
-  it('names the resolved project ahead of the version (#114)', () => {
+  it('names the resolved project ahead of the version', () => {
     const text = renderOverview({
       issues: [],
       milestones: [],
@@ -507,7 +507,7 @@ describe('renderOverview', () => {
     expect(text.split('\n')[0]).toBe('[Mint] dsh-mint · mint 0.8.0-alpha.1');
   });
 
-  it('still names the project when the -V probe failed (#114)', () => {
+  it('still names the project when the -V probe failed', () => {
     const text = renderOverview({ issues: [], milestones: [], project: 'dsh-mint' });
     expect(text).toBe('[Mint] dsh-mint');
   });
@@ -556,10 +556,10 @@ describe('registerMintContext', () => {
     expect(runMintMock).toHaveBeenCalledTimes(3);
   });
 
-  // #116: a non-tool exit from plan mode has no tool result to enrich, so the
+  // a non-tool exit from plan mode has no tool result to enrich, so the
   // signal rides on the overview — once per session, and only while the session
   // still has nothing recorded.
-  it('adds the record-gap line once after a plan-mode exit without records (#116)', async () => {
+  it('adds the record-gap line once after a plan-mode exit without records', async () => {
     runMintMock
       .mockResolvedValueOnce({
         ok: true,
@@ -590,7 +590,7 @@ describe('registerMintContext', () => {
     expect(provider()).toBe(overview);
   });
 
-  it('keeps the record-gap line out when the session recorded work (#116)', async () => {
+  it('keeps the record-gap line out when the session recorded work', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -606,7 +606,7 @@ describe('registerMintContext', () => {
     expect(provider()).not.toContain(RECORD_GAP_LINE);
   });
 
-  it('keeps the record-gap line out for a session it cannot name (#116)', async () => {
+  it('keeps the record-gap line out for a session it cannot name', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -621,7 +621,7 @@ describe('registerMintContext', () => {
     expect(provider()).not.toContain(RECORD_GAP_LINE);
   });
 
-  it('remembers the project the overview resolved, keyed by directory (#114)', async () => {
+  it('remembers the project the overview resolved, keyed by directory', async () => {
     runMintMock
       .mockResolvedValueOnce({
         ok: true,
@@ -663,7 +663,7 @@ describe('registerMintContext', () => {
     expect(provider()).toBe('');
   });
 
-  it('surfaces an unresolvable entry instead of reading as an empty project (#66)', async () => {
+  it('surfaces an unresolvable entry instead of reading as an empty project', async () => {
     vi.mocked(resolveMintEntry).mockImplementationOnce(() => {
       throw new Error('mint-faa missing');
     });
@@ -705,7 +705,7 @@ describe('registerMintContext', () => {
 
     const guidance = sections[0];
     expect(guidance?.order).toBe(110);
-    // the tool-first policy lives here and only here (#62)
+    // the tool-first policy lives here and only here
     expect(guidance?.text).toContain('一律走宿主 mint 工具');
     expect(guidance?.text).toContain('不经 bash');
     expect(guidance?.text).not.toContain('danger-full-access');
@@ -726,7 +726,7 @@ describe('registerMintContext', () => {
   });
 });
 
-describe('installOverviewChannel (#113)', () => {
+describe('installOverviewChannel', () => {
   type Payload = { agent?: unknown };
 
   function makeRootCtx(): {

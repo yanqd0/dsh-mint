@@ -315,7 +315,7 @@ describe('executeWorktreeTool', () => {
     expect(stored?.worktree?.state).toBe('active');
     expect(stored?.worktree?.path).toContain(join(repo, '.git', 'dsh-mint', 'worktrees'));
     expect(stored?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
-    // #189：建树时所在的分支被记进文档，merge 时由工具层回传给 git 层做校验。
+    // 建树时所在的分支被记进文档，merge 时由工具层回传给 git 层做校验。
     expect(stored?.worktree?.target).toBe('main');
   });
 
@@ -335,7 +335,7 @@ describe('executeWorktreeTool', () => {
     const tree = (await node())?.worktree?.path;
     expect(tree).toBeDefined();
     if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
+    commit(tree, 'feature.txt', 'work\n', 'work');
 
     const merged = await runWorktree({ action: 'merge', node: 'a1' });
     expect(merged.ok).toBe(true);
@@ -350,7 +350,7 @@ describe('executeWorktreeTool', () => {
     ).toContain('work');
   });
 
-  it('refuses a merge when the repo moved off the branch the tree was cut from (#189)', async () => {
+  it('refuses a merge when the repo moved off the branch the tree was cut from', async () => {
     // 贯穿工具层的验收：create 记下 target=main，会话切到 feature 后 merge 必须被拒，
     // 且拒绝理由同时点名两个分支；切回 main 后同一调用成功。
     await seedGraph();
@@ -369,7 +369,7 @@ describe('executeWorktreeTool', () => {
     expect(merged.summary).toContain('[worktree] merge a1 → merged');
   });
 
-  it('keeps the DAG readable after a merge conflict (#177)', async () => {
+  it('keeps the DAG readable after a merge conflict', async () => {
     await seedGraph();
     const created = await runWorktree({ action: 'create', node: 'a1' });
     expect(created.ok).toBe(true);
@@ -383,7 +383,7 @@ describe('executeWorktreeTool', () => {
     expect(conflicted.ok).toBe(false);
     expect(conflicted.summary).toContain('merge 冲突');
 
-    // 缺陷回归钉：#177 之前这里落盘 `base: ''`，`checkWorktree` 要求非空，
+    // 缺陷回归钉：修复前这里落盘 `base: ''`，`checkWorktree` 要求非空，
     // 于是整份 DAG 下次读取变成 unreadable。
     const read = await readDag(SESSION, dir);
     expect(read.state).toBe('ok');
@@ -400,7 +400,7 @@ describe('executeWorktreeTool', () => {
     expect(created.ok).toBe(true);
     const tree = (await node())?.worktree?.path;
     if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
+    commit(tree, 'feature.txt', 'work\n', 'work');
 
     const refused = await runWorktree({ action: 'remove', node: 'a1' });
     expect(refused.ok).toBe(false);
@@ -412,7 +412,7 @@ describe('executeWorktreeTool', () => {
     expect((await node())?.worktree?.state).toBe('removed');
   });
 
-  it('lists the worktrees of the repository, not of the session (#172)', async () => {
+  it('lists the worktrees of the repository, not of the session', async () => {
     // `list` 不读 DAG：没有图的会话（甚至没有会话）也能问仓库里有什么树。
     const empty = await executeWorktreeTool(
       { sessionId: undefined, dagDir: dir, repo, git: runGit },
@@ -428,7 +428,7 @@ describe('executeWorktreeTool', () => {
     // 才算 unmerged，这正是「还有活没合回来」的那个状态。
     const tree = (await node())?.worktree?.path;
     if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
+    commit(tree, 'feature.txt', 'work\n', 'work');
 
     const listed = await executeWorktreeTool(
       { sessionId: undefined, dagDir: dir, repo, git: runGit },
@@ -465,7 +465,7 @@ describe('executeWorktreeTool', () => {
     expect(created.ok).toBe(true);
     const tree = (await node())?.worktree?.path;
     if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
+    commit(tree, 'feature.txt', 'work\n', 'work');
     expect((await runWorktree({ action: 'merge', node: 'a1' })).ok).toBe(true);
 
     const listed = await runWorktree({ action: 'list' });

@@ -7,14 +7,14 @@ import { MINT_ENTRY_WARNING } from '../../src/mint/mint.js';
 import { MINT_TOOL_DESCRIPTION } from '../../src/mint/mint-tool.js';
 
 /**
- * Every-request budget (#61).
+ * Every-request budget.
  *
  * The `[Mint]` overview, the tool-first guidance and the tool description are
  * re-sent on every request. They are the plugin's whole fixed cost, so they are
  * held to explicit byte ceilings: a real-shaped sample (a full page of issues +
- * a running milestone + the #58 identity line) must stay within budget.
+ * a running milestone + the entry identity line) must stay within budget.
  *
- * These ceilings are not estimates — they are the #61 acceptance criteria. When
+ * These ceilings are not estimates — they are this guard's acceptance criteria. When
  * a legitimate change needs more room, raise the ceiling deliberately and say
  * why in the commit message.
  */
@@ -102,22 +102,24 @@ function sampleOverview(): string {
   });
 }
 
-describe('per-request injection budget (#61)', () => {
+describe('per-request injection budget', () => {
   it('renders at most TOP_ISSUES issue lines and states the real total', () => {
     const text = sampleOverview();
     const issueLines = text.split('\n').filter((line) => line.startsWith('- #'));
     expect(issueLines).toHaveLength(5);
     expect(text).toContain('top 5 of 8');
-    // the top five by (priority, id), not mint's own order
+    // the top five by (priority, id), not mint's own order. The ids are fixture
+    // data, so the leak check names the cut item by its title instead of a
+    // `#<id>` token: what matters is that the line past the cap never arrives.
     expect(issueLines[0]).toContain('#9');
-    expect(issueLines.join('\n')).not.toContain('#45');
+    expect(issueLines.join('\n')).not.toContain('冷安装');
   });
 
   it('keeps the overview under 700 bytes', () => {
     expect(bytes(sampleOverview())).toBeLessThanOrEqual(700);
   });
 
-  it('names the resolved project, so own-project calls need no -p (#114)', () => {
+  it('names the resolved project, so own-project calls need no -p', () => {
     expect(sampleOverview().split('\n')[0]).toBe(
       '[Mint] dsh-mint · mint 0.8.0-alpha.1 via mint-faa@0.8.0'
     );
@@ -131,13 +133,13 @@ describe('per-request injection budget (#61)', () => {
     expect(bytes(MINT_TOOL_DESCRIPTION)).toBeLessThanOrEqual(550);
   });
 
-  // plan 31: the DAG tool's description is the second per-request tool budget.
+  // the DAG tool's description is the second per-request tool budget.
   // It is larger than `mint`'s because it carries a whole small DSL (the document
   // actions, the node fields, the edge direction). The worktree line moved out to
   // the standalone `worktree` tool, so this ceiling came back down to the measured
   // value +20 B — and it must stay a description, not a manual: the full spec is
   // `notes/plan-dag.md` §2 and the exact parameters live in the tool's own schema.
-  it('keeps the plan DAG tool description under 700 bytes (plan #31)', () => {
+  it('keeps the plan DAG tool description under 700 bytes', () => {
     expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
     expect(DAG_TOOL_DESCRIPTION).toContain('init');
     expect(DAG_TOOL_DESCRIPTION).toContain('to 依赖 from');
@@ -156,12 +158,12 @@ describe('per-request injection budget (#61)', () => {
     }
   });
 
-  it('states the paging footer contract mint 0.8 writes (#78)', () => {
+  it('states the paging footer contract mint 0.8 writes', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('# Page');
     expect(MINT_TOOL_DESCRIPTION).not.toContain('--- Page');
   });
 
-  it('keeps the entry-failure warning small — it only shows when mint is broken (#66)', () => {
+  it('keeps the entry-failure warning small — it only shows when mint is broken', () => {
     expect(bytes(`[Mint] WARNING: ${MINT_ENTRY_WARNING}`)).toBeLessThanOrEqual(200);
   });
 
@@ -187,7 +189,7 @@ describe('per-request injection budget (#61)', () => {
     expect(text).toContain('do not set it yourself');
   });
 
-  // #104/#118: the 2+ running branch is abnormal, so it may be longer than the
+  // the 2+ running branch is abnormal, so it may be longer than the
   // one-running line — but it is still re-sent every request and must carry the
   // CLI's own answer (`--force`, ask the user) instead of manual repair advice.
   it('keeps the 2+ running warning within budget and aligned with the guard', () => {
@@ -203,9 +205,9 @@ describe('per-request injection budget (#61)', () => {
     expect(bytes(warning)).toBeLessThanOrEqual(320);
   });
 
-  // #126: the doctor line is only paid for when the ledger has warnings, so it
+  // the doctor line is only paid for when the ledger has warnings, so it
   // is held to its own small ceiling rather than the clean-ledger sample's.
-  it('keeps the doctor line within budget (#126)', () => {
+  it('keeps the doctor line within budget', () => {
     const text = renderOverview({
       issues: [],
       milestones: [{ id: 1, title: 'a', version: '0.1.0', status: 'running' }],
@@ -216,10 +218,10 @@ describe('per-request injection budget (#61)', () => {
     expect(bytes(line)).toBeLessThanOrEqual(160);
   });
 
-  // #116: the record-gap line is a condition line too — rendered at most once per
+  // the record-gap line is a condition line too — rendered at most once per
   // session, and only while that session has nothing recorded — so it is held to
   // its own ceiling instead of the clean sample's.
-  it('keeps the record-gap line within budget (#116)', () => {
+  it('keeps the record-gap line within budget', () => {
     expect(RECORD_GAP_LINE.startsWith('[Mint] ')).toBe(true);
     expect(bytes(RECORD_GAP_LINE)).toBeLessThanOrEqual(300);
   });

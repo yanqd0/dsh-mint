@@ -104,9 +104,9 @@ describe('parseDagAction', () => {
 
   it('allows init without a title and bounds the one it takes', () => {
     expect(parseDagAction({ action: 'init' })).toEqual({ action: 'init', title: '' });
-    expect(parseDagAction({ action: 'init', title: '第 31 号计划' })).toEqual({
+    expect(parseDagAction({ action: 'init', title: '演示计划' })).toEqual({
       action: 'init',
-      title: '第 31 号计划',
+      title: '演示计划',
     });
     expect(errorOf(parseDagAction({ action: 'init', title: 7 }))).toContain('title');
     expect(errorOf(parseDagAction({ action: 'init', title: 'x'.repeat(201) }))).toContain('title');
@@ -210,12 +210,12 @@ describe('parseDagAction', () => {
 describe('applyDagWrite', () => {
   it('init replaces whatever was there with a fresh document', () => {
     const previous = doc({ nodes: [node()], revision: 9 });
-    const result = applyDagWrite({ action: 'init', title: 'plan 31' }, previous, SESSION, NOW);
-    expect(result).toEqual({ doc: emptyDag(SESSION, 'plan 31', NOW) });
-    expect(emptyDag(SESSION, 'plan 31', NOW)).toMatchObject({
+    const result = applyDagWrite({ action: 'init', title: '演示计划' }, previous, SESSION, NOW);
+    expect(result).toEqual({ doc: emptyDag(SESSION, '演示计划', NOW) });
+    expect(emptyDag(SESSION, '演示计划', NOW)).toMatchObject({
       version: 1,
       session: SESSION,
-      title: 'plan 31',
+      title: '演示计划',
       revision: 1,
       created_at: NOW,
       nodes: [],
@@ -475,7 +475,7 @@ describe('parseDagDoc', () => {
     }
   });
 
-  // --- worktree.target（#189）---
+  // --- worktree.target ---
 
   it('refuses an empty worktree.target instead of keeping a blank branch name', () => {
     // 空串会在面板上渲染成空白分支名；「缺字段」才代表旧记录（可读）。

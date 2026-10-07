@@ -31,7 +31,7 @@ function dir(): string {
 async function write(where: string, action: unknown, session = SESSION): Promise<DagDoc> {
   const parsed = parseDagAction(action);
   if ('error' in parsed) throw new Error(parsed.error);
-  // #172: `wt`/`merge` change the filesystem, not the document, so a stored-write
+  // `wt`/`merge` change the filesystem, not the document, so a stored-write
   // test may only drive the three document actions.
   if (parsed.action !== 'init' && parsed.action !== 'add' && parsed.action !== 'set') {
     throw new Error(`${parsed.action} is not a document write`);
@@ -75,7 +75,7 @@ describe('readDag', () => {
 
   it('round-trips a written document', async () => {
     const where = dir();
-    const written = await write(where, { action: 'init', title: 'plan 31' });
+    const written = await write(where, { action: 'init', title: '演示计划' });
     const read = await readDag(SESSION, where);
     expect(read.state).toBe('ok');
     if (read.state !== 'ok') throw new Error('expected a document');

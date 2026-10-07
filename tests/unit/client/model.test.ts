@@ -104,7 +104,7 @@ describe('issue lines', () => {
     expect(hasBody('## 范围')).toBe(true);
     expect(hasBody('')).toBe(false);
     expect(hasBody('   \n\t ')).toBe(false);
-    // mint's declared "no body" answer (#94/#95).
+    // mint's declared "no body" answer.
     expect(hasBody(null)).toBe(false);
     expect(hasBody(undefined)).toBe(false);
   });
@@ -132,7 +132,7 @@ describe('links', () => {
   });
 
   it('describes a recognized link and keeps an unknown relation verbatim', () => {
-    // The real `show --json` shape: `other_id` + `other_title`, no id/uid (#97).
+    // The real `show --json` shape: `other_id` + `other_title`, no id/uid.
     expect(
       describeLink({
         rel: 'blocks',
@@ -180,7 +180,7 @@ describe('containers and pagination', () => {
     });
   });
 
-  it('omits a version mint does not have instead of printing null (#96)', () => {
+  it('omits a version mint does not have instead of printing null', () => {
     expect(
       containerRow(
         { id: 9, title: '无里程碑的 plan', status: 'open', version: null, issue_count: 0 },
@@ -311,7 +311,7 @@ const META: MintMetaPayload = {
 };
 
 describe('issue placement', () => {
-  // #90：当前 `list --json` 的行自带「有效 milestone」和「是否直挂」，所以先信行
+  // 当前 `list --json` 的行自带「有效 milestone」和「是否直挂」，所以先信行
   // 自己，任何字典表都排在其后。
   it('takes the milestone and the direct flag off the row itself', () => {
     const direct = { ...ISSUE, milestone_id: 4, milestone_direct: true } satisfies IssueItem;
@@ -444,7 +444,7 @@ describe('issue placement', () => {
 });
 
 describe('open container targets', () => {
-  // Regression for #82: plan and milestone ids are different namespaces, so a
+  // Regression guard: plan and milestone ids are different namespaces, so a
   // plan opened in one tab must not be read as the milestone with that id.
   it('answers only for the tab whose kind opened the target', () => {
     expect(activeContainer({ kind: 'plan', id: 13 }, 'plan')).toEqual({ kind: 'plan', id: 13 });

@@ -25,7 +25,7 @@ import type {
 } from '../../../src/shared/types.js';
 
 /**
- * The `mint_plan_dag` surface (plan #31).
+ * The `mint_plan_dag` surface.
  *
  * Every case runs against a **temporary directory**: the shipped default is
  * `/tmp/mint/dag`, and a test that wrote there would delete a real session's
@@ -121,7 +121,7 @@ describe('installDagTool', () => {
     const execute = registered[0]?.execute;
 
     // The child's own session is not the owner: the write lands on the root's
-    // file, which is the graph the main session's panel draws (plan #31 §3).
+    // file, which is the graph the main session's panel draws.
     const added = (await execute?.({ action: 'init', title: '计划' }, {
       name: TOOL_NAME,
       arguments: {},
@@ -210,7 +210,7 @@ describe('executeDagTool', () => {
 
     const get = await run(SESSION, { action: 'get' });
     expect(get.ok).toBe(true);
-    // One or two lines, never the graph itself (#61).
+    // One or two lines, never the graph itself.
     expect(get.summary.split('\n').length).toBeLessThanOrEqual(2);
     expect(get.summary).toContain('节点 2，边 0：pending 1 / running 1 / done 0');
     expect(get.summary).toContain('总①(a)');
@@ -221,10 +221,10 @@ describe('executeDagTool', () => {
     expect(outcome).toEqual({ ok: true, summary: '[plan-dag] 本会话暂无 DAG' });
   });
 
-  // #168: `set status="done"` is often the last moment the child session is
+  // `set status="done"` is often the last moment the child session is
   // still alive, so the tool takes the node's final measurement right there —
   // after its own write, so the answer can never be delayed by a measurement.
-  describe('persists a sample when a node settles (#168)', () => {
+  describe('persists a sample when a node settles', () => {
     const CHILD = 'child-168';
 
     // The measurement cache is process-wide by design; these cases share one
@@ -606,7 +606,7 @@ describe('executeDagTool', () => {
 });
 
 /**
- * The subagent ↔ node pairing (plan #31 §3).
+ * The subagent ↔ node pairing.
  *
  * The pair is the host's second opinion about a node: the model claims a node is
  * running, the host knows whether the child it delegated actually started and

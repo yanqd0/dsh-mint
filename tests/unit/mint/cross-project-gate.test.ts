@@ -95,7 +95,7 @@ describe('installCrossProjectGate', () => {
     expect(dispose).toBeTypeOf('function');
   });
 
-  it('probes the project list once for one gate + tool pair (#106)', async () => {
+  it('probes the project list once for one gate + tool pair', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     runMintMock.mockImplementation((_cwd, argv) =>
@@ -141,7 +141,7 @@ describe('installCrossProjectGate', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['project', 'list', '--json'], {});
   });
 
-  it('treats a root-flag-only cross-project call as a read, not a write (#99)', async () => {
+  it('treats a root-flag-only cross-project call as a read, not a write', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     const next = allowNext();
@@ -150,7 +150,7 @@ describe('installCrossProjectGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('still asks when --help is a positional value, not a root flag (#98)', async () => {
+  it('still asks when --help is a positional value, not a root flag', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     const next = allowNext();
@@ -181,7 +181,7 @@ describe('installCrossProjectGate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('does not ask when -p names the session’s own project (#114)', async () => {
+  it('does not ask when -p names the session’s own project', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     noteOwnProject('/proj', undefined, 'dsh-mint');
@@ -196,7 +196,7 @@ describe('installCrossProjectGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('covers the bash channel for -p <本项目> (#114)', async () => {
+  it('covers the bash channel for -p <本项目>', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     noteOwnProject('/proj', undefined, 'dsh-mint');
@@ -208,7 +208,7 @@ describe('installCrossProjectGate', () => {
     expect(next).toHaveBeenCalled();
   });
 
-  it('still asks for -p <本项目> while the own project is unknown (#114)', async () => {
+  it('still asks for -p <本项目> while the own project is unknown', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     const next = allowNext();
@@ -222,7 +222,7 @@ describe('installCrossProjectGate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('still asks for another project once the own name is known (#114)', async () => {
+  it('still asks for another project once the own name is known', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     noteOwnProject('/proj', undefined, 'dsh-mint');

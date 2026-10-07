@@ -81,7 +81,7 @@ describe('dagTone', () => {
 });
 
 describe('layoutDag', () => {
-  // The box carries the label and, under it, the measured metric line (#163).
+  // The box carries the label and, under it, the measured metric line.
   it('is tall enough for a label and a metrics line', () => {
     expect(DAG_NODE_H).toBe(44);
   });
@@ -254,7 +254,7 @@ describe('dagStatusTone', () => {
   });
 });
 
-// #173: the worktree state is a fact about the branch, drawn on its own axis —
+// the worktree state is a fact about the branch, drawn on its own axis —
 // the node's own status stays what its own pills say.
 describe('dagWorktreeTone', () => {
   it('marks an unmerged worktree as work still out there', () => {
@@ -352,7 +352,7 @@ describe('nodeMetricsMap', () => {
     expect(nodeMetricsMap({ dag: null })).toEqual({});
   });
 
-  // `at` is what tells a *stored* sample from a live reading (#168), so the
+  // `at` is what tells a *stored* sample from a live reading, so the
   // panel may not draw one it cannot date: absent stays absent (live), and a
   // present one has to be a real epoch stamp.
   it('keeps a usable `at` and leaves an absent one absent', () => {
@@ -469,9 +469,9 @@ describe('liveElapsedMs', () => {
 });
 
 describe('DAG_COPY_KEYS', () => {
-  // `DagBody` (#164) is the caller; these literals are also what tells the copy
+  // `DagBody` is the caller; these literals are also what tells the copy
   // guard that the dictionary's new keys have a use in the panel. `measuredAt`
-  // joined them with the stored-sample display (#168).
+  // joined them with the stored-sample display.
   it('names the live-metrics copy keys once', () => {
     expect(DAG_COPY_KEYS).toEqual({
       liveTokens: 'dag.liveTokens',
@@ -509,7 +509,7 @@ describe('DAG live-metrics contract', () => {
     expect(source).toContain('DAG_NODE_METRICS');
   });
 
-  // #168: a stored sample is dated, and the card is where a reader can see when
+  // a stored sample is dated, and the card is where a reader can see when
   // it was taken — as a local clock string, because the copy only supplies the
   // label around it.
   it('dates a stored sample in the card', () => {
@@ -519,7 +519,7 @@ describe('DAG live-metrics contract', () => {
   });
 });
 
-// #173: the card is a `.tsx` no Node test can render, so the wiring that shows a
+// the card is a `.tsx` no Node test can render, so the wiring that shows a
 // node's worktree is guarded by reading its source. The branch and the state both
 // come from the envelope — the panel never touches git.
 describe('DAG worktree contract', () => {

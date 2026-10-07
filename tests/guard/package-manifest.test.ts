@@ -52,7 +52,7 @@ describe('package manifest', () => {
 
   // The skill lives outside the profile, so removing the package leaves it
   // behind (dsh has no plugin uninstall hook). The guarded removal has to be
-  // runnable *while* the package is still installed, hence this entry (#154).
+  // runnable *while* the package is still installed, hence this entry.
   it('ships the guarded skill tool, so a leftover skill can be removed', () => {
     expect(manifest.files).toContain('scripts/install-dsh.sh');
   });
@@ -105,7 +105,7 @@ describe('package manifest', () => {
    * `<pkg>/locale/en.json` **through the Node resolver**, and a package that
    * declares `exports` without those subpaths fails both with
    * `ERR_PACKAGE_PATH_NOT_EXPORTED` — which the reader swallows silently, so the
-   * page shows the bare package name and no description at all (issue #127).
+   * page shows the bare package name and no description at all.
    *
    * The checks below resolve the very same subpaths by self-reference, which is
    * the same resolver rule, without needing an installed harness.
