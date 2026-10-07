@@ -150,6 +150,59 @@ function multiRunningReason(cluster: readonly PlanListItem[]): string {
 }
 
 /**
+ * The slice of the host's `ctx.planMode` this gate consumes (#142).
+ *
+ * `@deepseek-ai/dsh-plan-mode` owns the logged plan state and exposes
+ * `get(agent) → {active, pending?}`, folding the session log — so it survives
+ * resume/fork and it is the *same* predicate the host's `exit_plan_mode.execute`
+ * uses to refuse the call.
+ */
+interface PlanModeStateLike {
+  active?: unknown;
+  pending?: unknown;
+}
+
+interface PlanModeLike {
+  get(agent: unknown): PlanModeStateLike;
+}
+
+/**
+ * The session's host plan state, or `undefined` when it cannot be read (#142).
+ *
+ * Looked up per call rather than declared in `inject`: a composition without
+ * plan mode (or a lean test context) must keep working, and `inject` would hold
+ * the whole `apply` back. A missing service, a throwing `get` (no agent, no plan
+ * projection) and an unreadable answer are all "no evidence" — the caller then
+ * falls through to the mint gate exactly as before.
+ */
+function planModeState(
+  ctx: DshContext | undefined,
+  exec: ToolExecutionLike
+): PlanModeStateLike | undefined {
+  try {
+    const service = ctx?.get?.('planMode') as PlanModeLike | undefined;
+    if (service === undefined || typeof service.get !== 'function') return undefined;
+    return service.get(exec.agent);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Denial used when the session is not in plan mode at all (#142).
+ *
+ * The host keeps `exit_plan_mode` registered while plan mode is inactive and
+ * throws `exit_plan_mode is only available in plan mode` from `execute` — after
+ * the gate already paid for a mint read. The host's own predicate is the
+ * authority here, so an inactive session gets this actionable answer instead:
+ * there is nothing to exit, and the workflow continues without plan mode.
+ */
+const NOT_IN_PLAN_MODE_DENY_REASON =
+  'This session is not in plan mode — there is nothing to exit, and no mint plan has to be registered for it. ' +
+  'Continue with the normal workflow: mint({args:["plan","plan","<plan id>"]}) at the start of work, ' +
+  'then issue state start per issue. To plan first, ask the user to switch the session into plan mode.';
+
+/**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
  * decomposed mint plan ({@link isDecomposedPlan}), and while one milestone
  * already carries more than one running plan ({@link multiRunningCluster}, #140),
@@ -163,10 +216,20 @@ function multiRunningReason(cluster: readonly PlanListItem[]): string {
 export async function planBindListener(
   exec: ToolExecutionLike,
   next: () => Promise<PreToolDecisionLike>,
-  entry?: string
+  entry?: string,
+  ctx?: DshContext
 ): Promise<PreToolDecisionLike> {
   if (exec.name !== EXIT_PLAN_MODE) {
     return next();
+  }
+  // #142: the exit tool stays registered while plan mode is inactive. Refuse the
+  // call here — with the actionable reason — instead of spawning mint for a
+  // decision the host is about to reject anyway. A pending selection (the host
+  // has not committed it yet) is *not* evidence of an inactive session, so it
+  // falls through to the mint gate and keeps the pre-#142 behaviour.
+  const mode = planModeState(ctx, exec);
+  if (mode !== undefined && mode.active === false && mode.pending !== true) {
+    return { kind: 'deny', reason: NOT_IN_PLAN_MODE_DENY_REASON };
   }
   try {
     const cwd = exec.agent?.session?.header?.cwd ?? process.cwd();
@@ -209,6 +272,6 @@ export function installPlanBinding(ctx: DshContext, entry?: string): () => void 
   return ctx.on(
     'tools/pre-execute',
     (exec: ToolExecutionLike, next: () => Promise<PreToolDecisionLike>) =>
-      planBindListener(exec, next, entry)
+      planBindListener(exec, next, entry, ctx)
   );
 }

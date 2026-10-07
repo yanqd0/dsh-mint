@@ -26,6 +26,14 @@ function makeExec(name: string, cwd?: string): ToolExecutionLike {
 
 const next = () => Promise.resolve({ kind: 'allow' as const });
 
+/** A root-style context whose only service is the host's plan-mode controller (#142). */
+function makeCtx(planMode: unknown): DshContext {
+  return {
+    on: () => () => {},
+    get: (name: string) => (name === 'planMode' ? planMode : undefined),
+  };
+}
+
 describe('planBindListener', () => {
   it('denies exit_plan_mode when no active mint plan', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
@@ -259,6 +267,80 @@ describe('planBindListener', () => {
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
     expect(runMintMock).not.toHaveBeenCalled();
+  });
+
+  it('denies a session that is not in plan mode, and reads no mint for it (#142)', async () => {
+    const get = vi.fn(() => ({ active: false, pending: false }));
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy, undefined, makeCtx({ get }));
+
+    expect(decision.kind).toBe('deny');
+    expect(decision.reason).toContain('not in plan mode');
+    // The host would reject this call anyway: the gate must not pay for a spawn.
+    expect(runMintMock).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+    expect(get).toHaveBeenCalledWith(exec.agent);
+  });
+
+  it('checks the tool name before any plan-mode service access (#142)', async () => {
+    const get = vi.fn(() => ({ active: false }));
+    const exec = makeExec('bash', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy, undefined, makeCtx({ get }));
+
+    expect(decision).toEqual({ kind: 'allow' });
+    expect(get).not.toHaveBeenCalled();
+    expect(runMintMock).not.toHaveBeenCalled();
+  });
+
+  it('keeps the mint gate when a plan-mode selection is still pending (#142)', async () => {
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const ctx = makeCtx({ get: () => ({ active: false, pending: true }) });
+    const decision = await planBindListener(exec, vi.fn(next), undefined, ctx);
+
+    // `pending` means the host has not committed the selection yet: no evidence
+    // of an inactive session, so the pre-#142 behaviour stands.
+    expect(decision.kind).toBe('deny');
+    expect(decision.reason).toContain('mint({args:["plan","create"');
+    expect(runMintMock).toHaveBeenCalled();
+  });
+
+  it('keeps the mint gate while plan mode is active (#142)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: '{"items":[{"id":5,"status":"running","issue_count":1,"milestone_id":4}]}',
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const ctx = makeCtx({ get: () => ({ active: true }) });
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy, undefined, ctx);
+
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('falls back to the mint gate when the plan-mode service is absent or throws (#142)', async () => {
+    // `PlanModeController.get` is synchronous and answers from the logged
+    // projection; a lean context (no service) and a throw are the two ways the
+    // answer goes missing.
+    for (const planMode of [
+      undefined,
+      {
+        get: () => {
+          throw new Error('no plan projection');
+        },
+      },
+    ]) {
+      runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
+      const exec = makeExec('exit_plan_mode', '/proj');
+      const decision = await planBindListener(exec, vi.fn(next), undefined, makeCtx(planMode));
+
+      expect(decision.kind).toBe('deny');
+      expect(decision.reason).toContain('mint({args:["plan","create"');
+      expect(runMintMock).toHaveBeenCalled();
+    }
   });
 
   it('falls through to next() on mint failure', async () => {
