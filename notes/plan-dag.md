@@ -199,9 +199,11 @@
 - **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?, at?}}` 与 `sampled_at`（宿主 epoch ms）
   **只在非空时出现**；无 `agents`/`sessionProjections`、会话已消失、文件缺失/不可读、投影形状漂移 → 一个字段都不出现。
   条目**没有 `at` = 本轮实测**（钟是 `sampled_at`）；**有 `at` = 文档里的落盘样本**（#167/#168，钟是 `at`）。
-- **回落顺序（#168）**：`measureDagNodes` 先实测、实测缺失再用 `samples`；因此**子代理结束后仍能看到实测值**
-  （`elapsed_ms` + `at`），只是不再增长。落盘时机：`subagent/end`（settle 之前）、`mint_plan_dag` 的 `set → done`、
-  以及路由对「仍 running 但已测不到 agent」节点的兜底补写（每 session+node 每进程一次）。
+- **回落顺序（#168/#166 修正版）**：`measureDagNodes` 先实测（并**顺手记进进程内缓存**）、实测缺失再用
+  **文档样本**、文档也没有才用**缓存里最后一次读数**；因此子代理结束后仍能看到实测值（带 `at`），只是不再增长。
+  落盘时机：`mint_plan_dag` 的 `set → done`，以及路由的兜底补写（「文档没有该节点样本 + 本轮量不到它」即写，
+  每 session+node 每进程一次，`at` 用**测量时刻**）。**`subagent/end` 测不到**（真机实测：注册表先放掉子会话），
+  所以它只负责 settle，不再是可靠落盘点。
 - **客户端降级**：`nodeMetricsMap` 只保留「文档里还有该节点 + 字段是非负安全整数 + `at`（若有）合法」的项；
   `running` 且**完全没有**读数 → 时间位 `?`；`done` 且两者都没有 → `-`；`pending` → 整行不渲染。
 - **走秒口径**：只对**本轮实测**的 `running` 节点跑秒（`elapsed_ms + max(0, browserNow - sampled_at)`，
@@ -388,8 +390,16 @@
 - 口径（本轮拍板）：实测值**落盘进文档**（不是只在内存缓存）；调研阶段**一律 DAG 化**（不再按「有无并行价值」取舍）。
 - 已实测（本机）：`pnpm lint` / `pnpm check-types` 0 error；`pnpm test` **36 文件 / 786 用例全绿**；
   `src/dag.ts` / `src/dag-metrics.ts` 行覆盖 100%。
-- **待复核（需重启 harness）**：`subagent/end` 落盘在真机是否写出 `samples`（`end` 当下
-  `agents.get` 是否仍有 session 未实测；若没有，兜底路径会在面板轮询时补一次）；以及面板上
-  「实测于 <时间>」标注、落盘样本不跑秒的观感。
+- **产物级端到端实测（构建后的 `dist/index.js`，假 ctx）**，也是本 plan 最关键的一条：
+  - 子会话还活着时：信封给出实时 `metrics`（不带 `at`）；
+  - **触发 `subagent/end`：真机与探针都显示 `agents.get(childId)` 已经取不到 agent**（注册表先于
+    `end` 事件释放），所以「结束时测一次」这条路**永远拿不到数**——原先 #168 的落盘钩子因此不生效；
+  - 修正后的路径成立：**每次实时读数都记进进程内缓存**，之后无论节点怎么终结，路由都会把缓存里的读数
+    （连同**测量时刻** `at`，不是写入时刻）补写进文档 → 子会话消失后的下一次答案返回
+    `{"n1":{"tokens":3700,"elapsed_ms":…,"at":…}}`（探针实测），且 `samples` 落盘。
+  - 兜底写入的触发条件因此从「节点仍 `running`」改为「**文档没有该节点的样本、且本轮量不到它**」——
+    与节点状态解耦，因为宿主的 settle 会把节点先置成 `done`。
+- **仍待真机复核（需重启 harness）**：本会话的 DAG 文件在重启后应出现 `samples` 段；面板上
+  「实测于 <时间>」标注与「落盘样本不跑秒」的观感。
 - skill 侧实测：`grep -n "进计划模式\|空图\|0 节点" skill/references/plan-dag.md` 命中新触发语与新增 §3.1；
   `skill/SKILL.md` 未改（路由行与新纪律不冲突，`src/skill-doc.test.ts` 仍 23 passed）。

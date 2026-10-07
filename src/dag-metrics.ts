@@ -164,6 +164,7 @@ export type DagMetricsInput = MeasureDagNodesInput;
 export function mergeMetrics(input: {
   live: Record<string, DagNodeMetrics>;
   stored: Record<string, DagSample> | undefined;
+  remembered?: Record<string, DagNodeMetrics>;
   nodes: readonly DagNodeView[];
 }): Record<string, DagNodeMetrics> {
   const merged: Record<string, DagNodeMetrics> = {};
@@ -176,9 +177,18 @@ export function mergeMetrics(input: {
       continue;
     }
     const stored = input.stored?.[node.id];
-    if (stored === undefined) continue;
-    const sample = sampleOf(stored, stored.at);
-    if (sample !== undefined) merged[node.id] = sample;
+    if (stored !== undefined) {
+      const sample = sampleOf(stored, stored.at);
+      if (sample !== undefined) merged[node.id] = sample;
+      // A stored sample is authoritative for the node: the memory may hold a
+      // later reading, but the document is the record the host committed.
+      continue;
+    }
+    // Not in the document yet (nothing has persisted it): the host's last live
+    // reading still answers, dated by when it was taken, so a panel shows the
+    // real number while the persist step catches up.
+    const remembered = input.remembered?.[node.id];
+    if (remembered !== undefined) merged[node.id] = { ...remembered };
   }
   return merged;
 }
@@ -218,10 +228,25 @@ export async function measureDagNodes(
         status: node.status,
         sampledMs: input.sampledMs,
       });
-      if (Object.keys(found).length > 0) live[node.id] = found;
+      if (Object.keys(found).length > 0) {
+        live[node.id] = found;
+        // Remember it here rather than at the caller: this is the one place that
+        // sees a live reading, and the memory is what keeps the number alive
+        // once the child is gone (the `subagent/end` hook cannot measure — the
+        // registry already dropped the child by then).
+        rememberMeasurement(input.sessionId, node.id, found, input.sampledMs);
+      }
     }
   }
-  return { metrics: mergeMetrics({ live, stored: doc.samples, nodes: doc.nodes }), doc };
+  return {
+    metrics: mergeMetrics({
+      live,
+      stored: doc.samples,
+      remembered: rememberedMetrics(input.sessionId),
+      nodes: doc.nodes,
+    }),
+    doc,
+  };
 }
 
 /**
@@ -267,29 +292,38 @@ const measurements = new Map<string, Map<string, DagNodeMetrics>>();
  * @param sessionId - the owning (root) session id.
  * @param nodeId - the node the measurement belongs to.
  * @param metrics - what the host just measured; an empty or malformed reading is ignored.
+ * @param at - when that reading was taken (epoch ms); defaults to now. It travels
+ *   with the numbers because a sample persisted later must carry the moment it
+ *   was *measured*, not the moment it happened to be written.
  */
 export function rememberMeasurement(
   sessionId: string,
   nodeId: string,
-  metrics: DagNodeMetrics
+  metrics: DagNodeMetrics,
+  at: number = Date.now()
 ): void {
-  // `0` is a throwaway stamp: only a *stored* sample carries `at`, so the value
-  // is only used to run the shared validation over the two numbers.
-  const kept = sampleOf(metrics, 0);
+  const kept = sampleOf(metrics, at);
   if (kept === undefined) return;
-  const entry: DagNodeMetrics = {};
-  if (kept.tokens !== undefined) entry.tokens = kept.tokens;
-  if (kept.elapsed_ms !== undefined) entry.elapsed_ms = kept.elapsed_ms;
   const entries = measurements.get(sessionId) ?? new Map<string, DagNodeMetrics>();
   measurements.set(sessionId, entries);
   // Deleting first makes the re-inserted pair the newest of the session.
   entries.delete(nodeId);
+  const entry: DagNodeMetrics = { at: kept.at };
+  if (kept.tokens !== undefined) entry.tokens = kept.tokens;
+  if (kept.elapsed_ms !== undefined) entry.elapsed_ms = kept.elapsed_ms;
   entries.set(nodeId, entry);
   while (entries.size > MEASUREMENT_MAX) {
     const oldest = entries.keys().next().value;
     if (oldest === undefined) break;
     entries.delete(oldest);
   }
+}
+
+/** Every remembered reading of one session, as {@link mergeMetrics} takes them. */
+function rememberedMetrics(sessionId: string): Record<string, DagNodeMetrics> {
+  const entries = measurements.get(sessionId);
+  if (entries === undefined) return {};
+  return Object.fromEntries([...entries].map(([nodeId, metrics]) => [nodeId, { ...metrics }]));
 }
 
 /**
@@ -300,8 +334,8 @@ export function rememberMeasurement(
  */
 export function lastMeasurement(sessionId: string, nodeId: string): DagNodeMetrics | undefined {
   const found = measurements.get(sessionId)?.get(nodeId);
-  // A copy: the caller is about to stamp a sample with its own `at`, and must
-  // not be able to rewrite the live reading that produced it.
+  // A copy: the caller is about to merge this reading into a document, and must
+  // not be able to rewrite the cached one through the copy it was handed.
   return found === undefined ? undefined : { ...found };
 }
 

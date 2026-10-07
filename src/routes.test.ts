@@ -1018,8 +1018,8 @@ describe('the plan DAG route (plan #31)', () => {
 
     it('writes the remembered reading once, then leaves the file alone', async () => {
       await seedRunning('s168a');
-      rememberMeasurement('s168a', 'a', { tokens: 42, elapsed_ms: 900 });
-      const before = Date.now();
+      const measuredAt = 1_700_000_000_000;
+      rememberMeasurement('s168a', 'a', { tokens: 42, elapsed_ms: 900 }, measuredAt);
       const { handler } = harness({
         cwd: '/proj',
         dagDir: dir,
@@ -1032,7 +1032,9 @@ describe('the plan DAG route (plan #31)', () => {
       expect(first.json()).not.toHaveProperty('metrics');
       const stored = await storedSample('s168a', 'a');
       expect(stored?.tokens).toBe(42);
-      expect(stored?.at).toBeGreaterThanOrEqual(before);
+      // The stored stamp is when the host *measured* the node, not when this
+      // request happened to write it.
+      expect(stored?.at).toBe(measuredAt);
 
       // A second poll has nothing left to flush: the sample on disk is byte for
       // byte the one the first request wrote.
@@ -1054,10 +1056,10 @@ describe('the plan DAG route (plan #31)', () => {
       expect(await storedSample('s168b', 'a')).toBeUndefined();
     });
 
-    it('leaves a settled node out of the fallback', async () => {
-      // A `done` node is not running any more: whatever the cache remembers
-      // belongs to a run that already ended, and the settlement's own record is
-      // the better one.
+    it('persists a settled node the host can no longer measure', async () => {
+      // The host settles a node as soon as its child ends — and by then the
+      // child is already out of the registry, so this cached reading is the last
+      // one there will ever be. It must land in the document.
       await seed('s168c', '样本 DAG');
       const settled = await updateDag(
         's168c',
@@ -1073,14 +1075,16 @@ describe('the plan DAG route (plan #31)', () => {
         dir
       );
       expect(settled.ok).toBe(true);
-      rememberMeasurement('s168c', 'a', { tokens: 7 });
+      rememberMeasurement('s168c', 'a', { tokens: 7 }, 1_700_000_000_500);
       const { handler } = harness({
         cwd: '/proj',
         dagDir: dir,
         readDagMetrics: () => Promise.resolve({}),
       });
       await invoke(handler, `${ROUTE_PREFIX}/dag?session=s168c`);
-      expect(await storedSample('s168c', 'a')).toBeUndefined();
+      const stored = await storedSample('s168c', 'a');
+      expect(stored?.tokens).toBe(7);
+      expect(stored?.at).toBe(1_700_000_000_500);
     });
 
     it('still answers when the fallback write cannot land', async () => {

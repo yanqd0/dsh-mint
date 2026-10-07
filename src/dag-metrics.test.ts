@@ -286,6 +286,10 @@ describe('reading DAG metrics', () => {
 
   afterEach(() => {
     rmSync(dir, { recursive: true, force: true });
+    // The measurement cache is module-level, so one case's remembered reading
+    // would otherwise answer a later case's route read (the merge falls back to
+    // it, by design).
+    clearMeasurements();
   });
 
   interface NodeSpec {
@@ -519,8 +523,10 @@ describe('the measurement cache', () => {
   });
 
   it('remembers a measurement and answers it back per session and node', () => {
-    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2 });
-    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2 });
+    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2 }, 500);
+    // The stamp travels with the numbers: a sample persisted later must carry
+    // when it was *measured*, not when it was written.
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2, at: 500 });
     expect(lastMeasurement(SESSION, 'b')).toBeUndefined();
     expect(lastMeasurement('session-2', 'a')).toBeUndefined();
   });
@@ -533,10 +539,11 @@ describe('the measurement cache', () => {
   });
 
   it('keeps exactly what a stored sample would accept', () => {
-    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2, at: 99 });
-    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2 });
-    rememberMeasurement(SESSION, 'b', { tokens: Number.NaN, elapsed_ms: 3 });
-    expect(lastMeasurement(SESSION, 'b')).toEqual({ elapsed_ms: 3 });
+    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2, at: 99 }, 7);
+    // `at` is the caller's stamp, never the one a mapping carried in.
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2, at: 7 });
+    rememberMeasurement(SESSION, 'b', { tokens: Number.NaN, elapsed_ms: 3 }, 8);
+    expect(lastMeasurement(SESSION, 'b')).toEqual({ elapsed_ms: 3, at: 8 });
   });
 
   it('evicts the oldest entry once a session holds the 200 most recent', () => {
@@ -544,8 +551,8 @@ describe('the measurement cache', () => {
       rememberMeasurement(SESSION, `n${String(index)}`, { tokens: index });
     }
     expect(lastMeasurement(SESSION, 'n0')).toBeUndefined();
-    expect(lastMeasurement(SESSION, 'n1')).toEqual({ tokens: 1 });
-    expect(lastMeasurement(SESSION, 'n200')).toEqual({ tokens: 200 });
+    expect(lastMeasurement(SESSION, 'n1')?.tokens).toBe(1);
+    expect(lastMeasurement(SESSION, 'n200')?.tokens).toBe(200);
   });
 
   it('re-remembering a node makes it the newest instead of a second entry', () => {
@@ -554,7 +561,7 @@ describe('the measurement cache', () => {
     }
     rememberMeasurement(SESSION, 'n0', { tokens: 2 });
     rememberMeasurement(SESSION, 'n201', { tokens: 1 });
-    expect(lastMeasurement(SESSION, 'n0')).toEqual({ tokens: 2 });
+    expect(lastMeasurement(SESSION, 'n0')?.tokens).toBe(2);
     expect(lastMeasurement(SESSION, 'n1')).toBeUndefined();
   });
 
@@ -563,16 +570,17 @@ describe('the measurement cache', () => {
     rememberMeasurement('session-2', 'a', { tokens: 1 });
     clearMeasurements(SESSION);
     expect(lastMeasurement(SESSION, 'a')).toBeUndefined();
-    expect(lastMeasurement('session-2', 'a')).toEqual({ tokens: 1 });
+    expect(lastMeasurement('session-2', 'a')?.tokens).toBe(1);
     clearMeasurements();
     expect(lastMeasurement('session-2', 'a')).toBeUndefined();
   });
 
   it('answers a copy, so a caller cannot stamp the remembered live reading', () => {
-    rememberMeasurement(SESSION, 'a', { tokens: 1 });
+    rememberMeasurement(SESSION, 'a', { tokens: 1 }, 5);
     const found = lastMeasurement(SESSION, 'a');
     if (found === undefined) throw new Error('expected a remembered measurement');
     found.at = 123;
-    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1 });
+    found.tokens = 9;
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, at: 5 });
   });
 });

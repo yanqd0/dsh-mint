@@ -294,7 +294,10 @@ describe('executeDagTool', () => {
       expect(typeof sample?.at).toBe('number');
       // The verdict the model reported is untouched by the measurement.
       expect(read.doc.nodes[0]).toMatchObject({ status: 'done', verdict: 'pass' });
-      expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 8, elapsed_ms: 1200 });
+      // The cache keeps the reading *and* its stamp, so a later fallback write
+      // cannot date a measurement with the moment it happened to be written.
+      expect(lastMeasurement(SESSION, 'a')).toMatchObject({ tokens: 8, elapsed_ms: 1200 });
+      expect(typeof lastMeasurement(SESSION, 'a')?.at).toBe('number');
     });
 
     it('writes no sample when the node names a child the host cannot resolve', async () => {
