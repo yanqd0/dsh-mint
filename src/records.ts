@@ -210,6 +210,14 @@ export interface DagNodeView {
   updated_at: string;
 }
 
+/** One node's host-measured usage, absent when the host cannot read it (never a zero guess). */
+export interface DagNodeMetrics {
+  /** The child session's four durable token buckets, summed. */
+  tokens?: number;
+  /** Active-turn duration in milliseconds, from the host's own timing projection. */
+  elapsed_ms?: number;
+}
+
 /**
  * One plan DAG as the route publishes it.
  *
@@ -243,5 +251,9 @@ export interface MintDagPayload {
   file: string;
   /** Mount-line `openDagTab`: whether the client should auto-open the panel. */
   autoOpen: boolean;
+  /** Per-node live metrics, keyed by node id; absent when the host read nothing. */
+  metrics?: Record<string, DagNodeMetrics>;
+  /** The host clock (epoch ms) every metric in this answer was sampled at. */
+  sampled_at?: number;
   warnings?: string[];
 }

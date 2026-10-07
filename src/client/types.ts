@@ -24,6 +24,7 @@ import type { CopyTranslate, Translate } from './copy.js';
 export type {
   ContainerChild,
   ContainerDetail,
+  DagNodeMetrics,
   DagNodeView,
   DagPhase,
   DagStatus,

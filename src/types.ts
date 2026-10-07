@@ -245,7 +245,20 @@ export interface DshContext {
  */
 export interface AgentCwdLike {
   id?: string;
-  session: { header: { cwd?: string; parentSession?: string } };
+  session: {
+    header: {
+      cwd?: string;
+      parentSession?: string;
+      /** When the session was created, epoch ms. */
+      createdAt?: number;
+    };
+  };
+}
+
+/** Subset of the host's `ctx.sessionProjections` registry (dsh-session-projection). */
+export interface SessionProjectionsLike {
+  /** One unit's live host state; `undefined` when the key is not registered. */
+  stateOf(session: unknown, key: string): unknown;
 }
 
 /** Subset of the host's `ctx.agents` service. */
