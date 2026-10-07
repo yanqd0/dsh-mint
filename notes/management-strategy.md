@@ -22,7 +22,7 @@
 
 - 方向一（强制）：**进入计划模式的会话，退出前项目里必须有已拆解的 mint plan**，否则 `exit_plan_mode` 被拒。
 - 方向二（不成立）：**建 mint plan 不要求计划模式**。计划模式只是宿主的审批通道，不是建 plan 的前提。
-- 门禁判据（`src/planbind.ts` 的 `isDecomposedPlan`）：`running`（派生自活跃子项），或 `open` 且已挂
+- 门禁判据（`src/host/planbind.ts` 的 `isDecomposedPlan`）：`running`（派生自活跃子项），或 `open` 且已挂
   ≥1 个 issue；**空 plan 拒**（#59）；`issue_count` 不可读时 fail-open（不关死退出）。
   - 为什么不要求「必须 running」：全 `open` 的 plan 派生 `open`（mint `src/container/derive.rs`），
     而 #128 又要求登记一律 `open` —— 两条撞在一起会让新会话**永远出不去**（#135）。

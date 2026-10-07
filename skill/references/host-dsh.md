@@ -10,7 +10,7 @@
   报 `mint: error: SQLite error: attempt to write a readonly database`（普通输出，不是工具级 error）。
   SQLite 打开库时即使只读也要写 journal，所以这不是 mint 损坏、也不是命令写错了。收敛路径：
   改用宿主 `mint` 工具 → 确需 bash 时按常规沙箱提权审批重试 → 或落到可写目录（`--db <可写路径>`/`MINT_DB_PATH`）。
-  插件识别该串时会在结果末尾追加同一句提示（`src/reminders.ts`）。
+  插件识别该串时会在结果末尾追加同一句提示（`src/host/reminders.ts`）。
 - 工具注册在 **root ctx（global layer）**，所有 agent 继承；**子代理也继承**，但子代理 approval 被
   pin 为 `never`，**bash 路径对子代理不可用**——子代理只能用 `mint` 工具。
 - **子代理继承什么**：工作区 cwd、`AGENTS.md` 指令、通用工具、`mint` 工具与 skill catalog；但**没有 `[Mint]` 注入**
@@ -26,7 +26,7 @@
 
 ## plan 绑定门禁
 
-- 宿主 `exit_plan_mode` 的判据在 `src/planbind.ts`（`tools/pre-execute`），三条按序：
+- 宿主 `exit_plan_mode` 的判据在 `src/host/planbind.ts`（`tools/pre-execute`），三条按序：
   1. 项目**没有已拆解的 mint plan** → 拒（`running`（有活跃子项），或 `open` 且已挂 ≥1 个 issue 都算已拆解；
      **空 plan 不算**，#59/#135）。被拒时按提示先 attach 至少一个 issue（`plan plan` 是开工点动作，不是门禁条件）。
   2. **同一 milestone 内 `running` 的 plan 多于一个** → 拒并点名 id（#140）。mint 只守 milestone，这条纪律只能由本仓立；

@@ -54,12 +54,12 @@ DSH 的沙箱/授权只包裹特定工具（bash/shell/file 这类会执行外�
 
 dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 
-- `src/mint.ts runMint()`：`spawn(process.execPath, [mint-faa/run-mint.js, ...args], {cwd})`，
+- `src/mint/mint.ts runMint()`：`spawn(process.execPath, [mint-faa/run-mint.js, ...args], {cwd})`，
   在**插件自身进程**里直跑 mint CLI（源码注释 + `notes/mint-sandbox.md` #18：插件子进程不经会话文件沙箱）。
 - 已在三处复用、全部**零授权运行**：
-  - `src/context.ts`：`agent/session-start` 时 `runMint(... list --json)` 注入 `[Mint]` 概览（等价 graph-memory 注入）；
-  - `src/planbind.ts`：`tools/pre-execute` 对 `exit_plan_mode` 用 `runMint(plan list)` 做绑定门禁；
-  - `src/mint-tool.ts`：注册宿主工具 `mint`（args 透传全命令面），execute 内 `runMint`
+  - `src/host/context.ts`：`agent/session-start` 时 `runMint(... list --json)` 注入 `[Mint]` 概览（等价 graph-memory 注入）；
+  - `src/host/planbind.ts`：`tools/pre-execute` 对 `exit_plan_mode` 用 `runMint(plan list)` 做绑定门禁；
+  - `src/mint/mint-tool.ts`：注册宿主工具 `mint`（args 透传全命令面），execute 内 `runMint`
     （注释：plugin 进程不被会话沙箱约束）。
 
 **缺口一（已修复，#34）：宿主工具曾只有 `mint_query` 一个只读工具。** 其余 model 日常要跑的
@@ -76,7 +76,7 @@ dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 ### 为什么 B-v2 之后「仍有授权问题」（治标）
 - mint 所有子命令都以**读写模式**打开 db，落点在 workspace 外 → 模型 bash 跑 `mint` 必被
   `workspace-write` 沙箱拒 → 只能预置 `danger-full-access` 提权 → `approval/request`。
-- `src/approval-gate.ts`（B-v2，#25）把这段从「每次弹窗」降到「**每会话首条真人批一次 + 会话内
+- `src/mint/approval-gate.ts`（B-v2，#25）把这段从「每次弹窗」降到「**每会话首条真人批一次 + 会话内
   自动放行**」，但：
   - 每条 mint 命令仍落 `approval/asked` + `approval/decided` 审计对（只是 1–2ms 自动批）；
   - **跨新会话**首条仍要真人批准，除非 `config.autoApprove: true`；
@@ -125,7 +125,7 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 ## 5. 落地记录（方案 A 已实施，plan #7）
 
 1. ~~抽通用宿主工具 + 类型化高频工具二选一~~ → **已定案：单一 `mint` 工具、argv 透传**，
-   不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint-tool.ts`（#34）。
+   不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint/mint-tool.ts`（#34）。
 2. ~~改 skill 说明并重新 content-sync 子模块~~ → **skill 源已迁入本仓 `skill/`**（#38 取消子模块），
    并重写为 DSH 单宿主、工具优先（#35）。
 3. `notes/install-check.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」（#36）。
@@ -135,5 +135,5 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 - graph-memory 入口：`~/.dsh/profiles/web/node_modules/graph-memory/{dsh.ts,index.ts}`（dsh.ts=DSH 适配）；
   事件挂接与召回注入见 `dsh.ts` 的 `session/event`/`agent/pre-step`/`compactBeforeStep`/`insertDshRecallBeforeCurrentUser`；
   运行库 `~/.dsh/graph-memory/graph-memory.db(-wal/-shm)`。
-- dsh-mint：`src/mint.ts`（runMint）、`src/query.ts`（宿主工具范式）、`src/approval-gate.ts`（B-v2 兜底）、
+- dsh-mint：`src/mint/mint.ts`（runMint）、`src/query.ts`（宿主工具范式）、`src/mint/approval-gate.ts`（B-v2 兜底）、
   `notes/mint-sandbox.md`（#23/#24 调研与四方案，本文承接其「工具化」被搁置项）。

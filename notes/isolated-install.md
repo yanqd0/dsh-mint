@@ -37,7 +37,7 @@ PNPM_HOME=$P DSH_HOME=$D pnpm add -g ./yanqd0-dsh-mint-<ver>.tgz
    不跑是常态。因此 #28 的**插件加载时同步才是保证路径**，postinstall 只是加分。
 2. **tsup 代码分割 + `import.meta.url` 守卫失效**：逻辑被挪进共享 chunk 后，
    入口只剩 re-export，守卫比较 chunk URL 永不成立 → CLI 入口必须是**独立文件**
-   + entry 命名映射（`'install-skill': 'src/install-skill-cli.ts'`），调用放在入口
+   + entry 命名映射（`'install-skill': 'src/skill/install-skill-cli.ts'`），调用放在入口
    顶层，不要在共享模块里用 argv 守卫。
 3. **pnpm 全局 bin PATH 检查**：隔离测试必须 `PATH="$P/bin:$PATH"`，否则装不上。
 4. **postinstall 入口须有存在性守卫**：CI fresh checkout 时 `pnpm install` 先于

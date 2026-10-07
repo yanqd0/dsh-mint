@@ -2,6 +2,8 @@
 
 > notes/ 是对内中文记录目录（`docs/` 留给未来对外 i18n 文档，暂不做）。
 > **新会话先读本索引**，它指向全部权威文档；内容变化时同步更新本文件。
+>
+> 规范真源：[AGENTS.md](../AGENTS.md)（仓库导航）、[src/AGENTS.md](../src/AGENTS.md)（模块边界与 TS 口径）、[tests/AGENTS.md](../tests/AGENTS.md)（测试规范）；`notes/` 只放调研与实测记录。
 
 | 文件 | 内容 |
 | --- | --- |

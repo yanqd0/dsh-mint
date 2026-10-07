@@ -10,7 +10,7 @@
 - GUI/会话运行的 profile：`~/.dsh/profiles/web`（`dsh web`）；session cwd 即插件挂载生效范围。
 - 插件本地源：`/home/user/yanqd0/dsh-mint`（profile 里是 `link:` 指向本仓库）。
 - mint CLI：入口优先级 = 挂载行 `mintEntry` > `MINT_ENTRY` > 依赖链；依赖链**先探测插件包根**
-  的 `node_modules/mint-faa/run-mint.js`，再回落 `require.resolve`（`src/mint.ts`，不依赖 PATH）。
+  的 `node_modules/mint-faa/run-mint.js`，再回落 `require.resolve`（`src/mint/mint.ts`，不依赖 PATH）。
   为什么不能只靠 `require.resolve`：#66——DSH 下插件裸包名由 harness/profile 作用域解析，
   `link:` 安装不把被 link 包的依赖装进 profile，曾直接报 `Cannot find module 'mint-faa/run-mint.js'`。
   两条链各一条命令自检：`node dist/check-mint-entry.js --mode dependency` /
@@ -90,7 +90,7 @@ node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
 4. shape/契约自检（无需授权）：
    `cordis_inspect_query` client `Slots.listSubTree`，`root: "sidebar.right.pane.tab"` →
    occupants 应含 `@yanqd0/dsh-mint`。
-5. 只读自检：面板全部数据走 `GET /dsh-mint/*`；宿主侧 argv 白名单见 `src/routes.ts`
+5. 只读自检：面板全部数据走 `GET /dsh-mint/*`；宿主侧 argv 白名单见 `src/host/routes.ts`
    （`READ_ONLY_SUBCOMMANDS`），契约细节见 `client-face.md`。
 
 ## 4. 生效判定（自动使用，预期：工具/上下文出现）

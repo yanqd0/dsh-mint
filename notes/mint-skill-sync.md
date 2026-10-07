@@ -17,7 +17,7 @@
 5. **对照上游 skill 找流程缺口**：`~/yanqd0/mint/claude-plugin/mint-faa/skills/mint/`
    （本仓是 DSH 单宿主版，不迁移其多宿主路由，只移植与 mint 版本相关的流程）。
 6. **落地**：按 `AGENTS.md`「skill 拆分原则」——分支内容与独立主题进 `references/`，
-   SKILL.md 只加一行指针；跑 `pnpm test`（`src/skill-doc.test.ts` 守预算与孤儿指针）+ `pnpm build`。
+   SKILL.md 只加一行指针；跑 `pnpm test`（`tests/guard/skill-doc.test.ts` 守预算与孤儿指针）+ `pnpm build`。
 
 ## 只读核对手段
 
@@ -36,7 +36,7 @@
 | `issue set`/`plan set` 支持 `--body-append`/`--body-file`/`--body-section`（三选一；section 需配 body/file；标题不存在报 `section not found`） | `src/cli/body_edit.rs` |
 | `milestone set --status` 只有 done/dropped 是手动终态（派生短路），open/running 会被重算 | `src/container/sync.rs` |
 | 读命令可见 `mint: hint: found unmerged data from machine(s)` → 本地视图不完整，先 `sync pull` | `src/cli/run.rs` |
-| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效） | `src/install-skill.ts`（#72 修复） |
+| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效） | `src/skill/install-skill.ts`（#72 修复） |
 
 ## 相关 issue
 

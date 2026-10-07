@@ -1,4 +1,7 @@
 CLAUDE.md
+# 嵌套 AGENTS.md 有注入字节预算（见 src/AGENTS.md）：prettier 的表格填充会让它们膨胀
+src/AGENTS.md
+tests/AGENTS.md
 dist/
 node_modules/
 coverage/

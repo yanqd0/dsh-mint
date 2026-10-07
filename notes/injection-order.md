@@ -9,7 +9,7 @@
 - 动态概览（`[Mint] …`）由 `systemPrompt.context()` 贡献，最终成为**请求尾部的一条 user 角色消息**
   （`Current runtime context. …`），排在 system prompt 与全部历史之后。
 - 因此「动态块插到静态指引之前」在装配结果里不存在；两类内容**不共享排序空间**，
-  `src/context.ts` 里的 `CONTEXT_ORDER = 60` 与 `TOOL_GUIDANCE_ORDER = 110` 只各自在自己的注册表内排序。
+  `src/host/context.ts` 里的 `CONTEXT_ORDER = 60` 与 `TOOL_GUIDANCE_ORDER = 110` 只各自在自己的注册表内排序。
 - 动态快照只在文本变化时才产出新消息，churn 落在尾部；前面的前缀（含更早的快照）逐字节稳定。
 
 ## 2. 证据（已安装代码，非推测）
@@ -37,7 +37,7 @@
 
 ## 3. 唯一会「概览在前」的路径（也不构成问题）
 
-宿主不提供 `systemPrompt.section()` 时，`src/context.ts` 回退把工具指引也注册为 `context()`
+宿主不提供 `systemPrompt.section()` 时，`src/host/context.ts` 回退把工具指引也注册为 `context()`
 （order 61，见 `TOOL_GUIDANCE_CONTEXT_ORDER`），此时快照内部是「概览(60) → 指引(61)」。
 但该路径下两块内容**都在同一条动态快照里**，整条快照本来就是每轮变化的尾部内容，
 把 61 调到 60 之前不会带来任何缓存收益。

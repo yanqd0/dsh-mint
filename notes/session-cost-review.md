@@ -21,7 +21,7 @@
 
 ## 2. mint 的固定注入（每请求）
 
-三条由插件注入、每次请求都要重发的内容（#61 的验收预算，由 `src/injection-size.test.ts` 守）：
+三条由插件注入、每次请求都要重发的内容（#61 的验收预算，由 `tests/guard/injection-size.test.ts` 守）：
 
 | 项 | 现状 | 预算上限 |
 | --- | --- | --- |
@@ -91,7 +91,7 @@
 3. **右侧边栏 seat 语义**（`ctx.sidebarRightTabs`、`sidebar.right.pane.tab`、guide entry、
    `useTabInfo` 的标准 props）—— 来自 `dsh-client-ui-sidebar-right/README.md` 与 `tab-registry.d.ts`。
 4. **静态插件的 host↔client 通道**：为什么 Typert `remote` 不可用、`harness.handle` 只属动态包、
-   `ctx.webServer` 路由才是正解 —— 由 `api-remotes` / cordis runner README + `dshmarket/src/routes.ts` 推出。
+   `ctx.webServer` 路由才是正解 —— 由 `api-remotes` / cordis runner README + `dshmarket/src/host/routes.ts` 推出。
 5. **webServer 匹配规则**（前缀不能带尾斜杠）—— 纯源码（`dsh-host-webserver` 的 `match`），
    也是本轮唯一一个**上线后才暴露**的缺陷来源。
 

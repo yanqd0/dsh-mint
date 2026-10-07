@@ -14,7 +14,7 @@
 | 审批 | 权限在启动时固定，approval pin `never`：审批一律自动拒绝、**会话内不可提权** → 跨项目 mint 写、工作区外写都会失败 |
 
 - **`mint` 工具确实可用**（不是只有 catalog 条目）：探针实测 `mint({"args":["list","--page-size","1"]})` 返回原生 TSV。
-- **无 `[Mint]` 注入是有意为之**：出处 `src/context.ts` 的 `installOverviewChannel()`——`agent/created` 监听里遇到 `agent.session.header.delegationDepth > 0`（即 `origin: 'subagent'`）直接 return，跳过整个概览 + 指引注入（省三次 mint spawn；子代理继承 `mint` 工具已够用）。
+- **无 `[Mint]` 注入是有意为之**：出处 `src/host/context.ts` 的 `installOverviewChannel()`——`agent/created` 监听里遇到 `agent.session.header.delegationDepth > 0`（即 `origin: 'subagent'`）直接 return，跳过整个概览 + 指引注入（省三次 mint spawn；子代理继承 `mint` 工具已够用）。
 - 因此「工具清单里有 `subagent`/`workflow`」**不代表**子代理能再委派；同理 `bash` 在清单里，但需要审批的命令对子代理一律失败。
 
 ## 对派活口径的影响

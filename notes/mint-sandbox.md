@@ -13,7 +13,7 @@
    （`approveEscalation` → `ctx.approval.request` → 用户审批）。
 4. 实验实锤：`cp ~/.local/share/mint/projects/dsh-mint/mach-*.db /tmp/mint-copy.db &&
 MINT_DB_PATH=/tmp/mint-copy.db mint list` 同会话 exit 0——db 落点进入写放行区即无痛。
-5. 插件自身 `runMint()`（src/mint.ts，#18）直 spawn 不经沙箱、不受影响——痛点是
+5. 插件自身 `runMint()`（src/mint/mint.ts，#18）直 spawn 不经沙箱、不受影响——痛点是
    **模型手动 bash 跑 mint** 逐次要审批。
 
 ## 源码位置（deepseek-harness）
@@ -78,9 +78,9 @@ MINT_DB_PATH=/tmp/mint-copy.db mint list` 同会话 exit 0——db 落点进入�
 
 ## #38/#34/#39 之后的现状（2026-09）
 
-模型日常 mint 操作改走宿主工具 **`mint`**（`src/mint-tool.ts`）：execute 内经 `runMint` 在
+模型日常 mint 操作改走宿主工具 **`mint`**（`src/mint/mint-tool.ts`）：execute 内经 `runMint` 在
 **插件进程内** spawn mint CLI，不经 bash、不进会话文件沙箱 → **设计上零授权**。
-skill 与模型可见文案全部改为工具形态（`src/context.ts` 的提权话术已删除并换成工具优先指引）。
+skill 与模型可见文案全部改为工具形态（`src/host/context.ts` 的提权话术已删除并换成工具优先指引）。
 引导走本仓 `skill/`（#38 起与 mint 子模块 git 层解耦），不再依赖上游 skill。
 
 **修正旧结论「子代理被 pin 到 approval `never`，B-v2 不适用 ⇒ 子代理跑 mint 无解」**：
@@ -94,8 +94,8 @@ skill 与模型可见文案全部改为工具形态（`src/context.ts` 的提权
 
 ## 跨项目门禁与 B-v2 gate 的分工（plan #14 / #55 / #80）
 
-`-p`/`--project` 放行后，「跨项目写」有了独立的一道德性门禁（`src/cross-project-gate.ts`），
-与 B-v2 的 `src/approval-gate.ts` **并列而非合并**：
+`-p`/`--project` 放行后，「跨项目写」有了独立的一道德性门禁（`src/mint/cross-project-gate.ts`），
+与 B-v2 的 `src/mint/approval-gate.ts` **并列而非合并**：
 
 |          | approval-gate（B-v2, #25）                                | cross-project gate（#80）                       |
 | -------- | --------------------------------------------------------- | ----------------------------------------------- |
@@ -104,7 +104,7 @@ skill 与模型可见文案全部改为工具形态（`src/context.ts` 的提权
 | 记忆     | 会话级 once（首个提权批准后全放行）                       | **(会话, 目标项目)** 级 once；换项目/换会话再问 |
 | 配置     | `autoApprove` 可免首次询问                                | **不受 `autoApprove` 影响**                     |
 
-**「本项目」的定义**（#114）：目标项目 == 本会话 cwd 解析出的项目（`src/own-project.ts`，
+**「本项目」的定义**（#114）：目标项目 == 本会话 cwd 解析出的项目（`src/mint/own-project.ts`，
 名字从概览那次 `list --json` 的 `project` 字段学到，不读库、不额外 spawn）。命中即
 **不算跨项目**：不弹确认，工具结果附一条「冗余 `-p`」提示，`session-ledger` 也算作本会话记录。
 名字未知（空项目 / 概览未加载）时维持旧行为：照问——错误方向只能是「多问一次」。

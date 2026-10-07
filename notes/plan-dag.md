@@ -66,7 +66,7 @@
 
 - `at` = 该样本的采样时刻（宿主 epoch ms）；`tokens`/`elapsed_ms` 与线上 `DagNodeMetrics` **同语义**。
 - **校验是「整份严格、单条宽松」**：`samples` 不是对象 → 整份文档不可读；某条自身的字段非法（`at` 缺失/负数/小数、已出现的数字字段非法）→ **只丢该条**，图照常渲染；条目里一个数字都没有也丢。无 `samples` 的旧文档解析后**不产生该键**（round-trip 不变）。
-- **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 #168。
+- **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 #168。
 - **为什么落盘**：子代理结束、`ctx.agents.get(id)` 不再返回 session 之后，实测值否则会整份消失（#166 的真机实测）。
 
 ### 1.5 缺失与损坏的容错
@@ -131,7 +131,7 @@
 
 ### 4.2 路由与信封
 
-- `src/route-paths.ts` 的 `ROUTE_NAMES` 加 `dag`；`GET /dsh-mint/dag?session=<id>`（只读）。
+- `src/shared/route-paths.ts` 的 `ROUTE_NAMES` 加 `dag`；`GET /dsh-mint/dag?session=<id>`（只读）。
 - 信封：`{ ok: true, dag: DagView | null, revision, warnings? }`。
 - **文件缺失 → 200 + `dag: null`**（不是 404）。
 - `session` 非法（不匹配 §1.1 正则）→ 拒绝，不拼路径。
@@ -193,7 +193,7 @@
 - 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
   key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
   `dag-lifecycle.ts` 读 `header.parentSession` 是同一条路径。
-- **宿主侧**：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `mergeMetrics` /
+- **宿主侧**：`src/dag/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `mergeMetrics` /
   `measureDagNodes`；`readDagMetrics` 是它的薄封装），由 `/dsh-mint/dag` 调用；**只发实测过的字段**——
   缺失就是缺失，绝不写 0 猜测。
 - **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?, at?}}` 与 `sampled_at`（宿主 epoch ms）
@@ -230,17 +230,17 @@
 
 ### 5.1 宿主新增
 
-- `src/dag.ts`（纯数据 + 校验 + 分层）
-- `src/dag-store.ts`（文件读写、原子写、按 session 锁）
-- `src/dag-tool.ts`（`mint_plan_dag`）
-- `src/dag-lifecycle.ts`（subagent 配对）
+- `src/dag/dag.ts`（纯数据 + 校验 + 分层）
+- `src/dag/dag-store.ts`（文件读写、原子写、按 session 锁）
+- `src/dag/dag-tool.ts`（`mint_plan_dag`）
+- `src/dag/dag-lifecycle.ts`（subagent 配对）
 
 ### 5.2 宿主扩展
 
 - `src/index.ts` 挂 `installPlanDag(ctx)`
-- `src/route-paths.ts` 的 `ROUTE_NAMES` 加 `dag`
-- `src/routes.ts` 加只读 handler
-- `src/records.ts` 加 `DagView`
+- `src/shared/route-paths.ts` 的 `ROUTE_NAMES` 加 `dag`
+- `src/host/routes.ts` 加只读 handler
+- `src/shared/records.ts` 加 `DagView`
 
 ### 5.3 客户端
 
@@ -250,9 +250,9 @@
 
 ### 5.4 测试与文档
 
-- 新增 `src/dag.test.ts`、`src/dag-tool.test.ts`、`src/client/dag-model.test.ts`
-- 扩展 `src/routes.test.ts`（只读断言 + 缺失文件 200/null）、`src/client/api.test.ts`、
-  `src/route-paths.test.ts`（漂移守卫）、`src/client-bundle.test.ts`（不回归）
+- 新增 `tests/unit/dag/dag.test.ts`、`tests/unit/dag/dag-tool.test.ts`、`tests/unit/client/dag-model.test.ts`
+- 扩展 `tests/unit/host/routes.test.ts`（只读断言 + 缺失文件 200/null）、`tests/unit/client/api.test.ts`、
+  `tests/unit/shared/route-paths.test.ts`（漂移守卫）、`tests/guard/client-bundle.test.ts`（不回归）
 - 文档：`notes/client-face.md` 补「自动打开 tab」契约段、`notes/memory.md` 索引、
   `README.md` + `README.zh.md` 面板描述各加一句
 
@@ -288,7 +288,7 @@
 
 ### 7.1 与本文规格的偏差（有意）
 
-- `src/records.ts` + `src/route-paths.ts` 划给「宿主核心」批（接口冻结）：否则客户端批必须改宿主文件，
+- `src/shared/records.ts` + `src/shared/route-paths.ts` 划给「宿主核心」批（接口冻结）：否则客户端批必须改宿主文件，
   两条并行就不成立。
 - **不新建 `src/client/dag-copy.ts`**：`dag.*` 文案并入 `src/client/copy.ts`——`ZH` 是 key 集真源、
   `EN` 靠 `satisfies Record<CopyKey, string>` 编译期穷尽，拆第二份字典会破坏该不变量。
@@ -296,8 +296,8 @@
   半边——客户端只有 HTTP 通道，这是唯一能知道开关的地方）。
 - `/dsh-mint/dag` **不做在线会话门禁**（本文只要求校验 sessionId 形状）：它按**文件**取数、不 spawn mint CLI，
   所以不适用其余路由的 `session → cwd → 项目` 解析。
-- `src/dag.ts` 是**纯模块**（禁 `node:` 导入、不用 Node-only 的字节长度全局），因为客户端 bundle 会内联它
-  （`dagLayers` 单一真源）；`src/dag.test.ts` 有源码守卫。字节长度用 `TextEncoder`，两个 realm 都有。
+- `src/dag/dag.ts` 是**纯模块**（禁 `node:` 导入、不用 Node-only 的字节长度全局），因为客户端 bundle 会内联它
+  （`dagLayers` 单一真源）；`tests/unit/dag/dag.test.ts` 有源码守卫。字节长度用 `TextEncoder`，两个 realm 都有。
 
 ### 7.2 口径（本轮用户拍板）
 
@@ -316,18 +316,18 @@
 
 | 层 | 文件 |
 | --- | --- |
-| 纯数据/校验/分层 | `src/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`） |
-| 文件层 | `src/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖） |
-| 工具面 | `src/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离） |
-| 生命周期 | `src/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点） |
-| 路由 | `src/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/route-paths.ts`、`src/records.ts` |
+| 纯数据/校验/分层 | `src/dag/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`） |
+| 文件层 | `src/dag/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖） |
+| 工具面 | `src/dag/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离） |
+| 生命周期 | `src/dag/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点） |
+| 路由 | `src/host/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/shared/route-paths.ts`、`src/shared/records.ts` |
 | 客户端 | `src/client/dag-model.ts`（分层/几何/配色）、`src/client/DagBody.tsx`（SVG + tooltip + 2s 轮询）、`src/client/dag-open.ts`（5s 探测 + 唯一性判据）、`src/client/{index,api,copy,styles,types}.ts(x)` |
 
 ### 7.4 实测
 
 - **已完成（本机，2026-10-07）**：`pnpm lint` 0 error；`pnpm check-types` 0 error；
   `pnpm test:coverage` → **33 文件 / 668 用例全绿**，总覆盖率 96.13%（lines/statements）、91.41%（branches），
-  新文件：`src/dag.ts` 100%、`src/dag-store.ts` 96.3%、`src/dag-tool.ts` 98.9%、`src/dag-lifecycle.ts` 87.4%、
+  新文件：`src/dag/dag.ts` 100%、`src/dag/dag-store.ts` 96.3%、`src/dag/dag-tool.ts` 98.9%、`src/dag/dag-lifecycle.ts` 87.4%、
   `src/client/dag-model.ts`+`dag-open.ts` 89–100%；`pnpm build` → `dist/index.js` + `dist/client.js`
   （bundle 内已含 `mint_plan_dag` / `/dsh-mint/dag` / `plan-dag`）。
 - **重启 harness 后实测（本机，2026-10-07，宿主换新 bundle 后）：**
@@ -349,14 +349,14 @@
 > #164 面板渲染。**客户端产物不走 HMR**：宿主的 `dist/index.js` 只在 harness 启动时载入，
 > 所以新路由字段要**重启 harness** 才有；`dist/client.js` 重建后刷新页面即可。
 
-- 落点：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`）、
-  `src/routes.ts` 的 `MintRouteDeps.readDagMetrics` 缝 + `sendDag` 发布、`src/client/dag-model.ts`
+- 落点：`src/dag/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`）、
+  `src/host/routes.ts` 的 `MintRouteDeps.readDagMetrics` 缝 + `sendDag` 发布、`src/client/dag-model.ts`
   （`nodeMetricsMap` / `formatCount` / `formatSeconds` / `liveElapsedMs` / `dagStatusTone` / `DAG_COPY_KEYS`、
   `DAG_NODE_H` 34→44）、`src/client/styles.ts`（`LIVE_TOKENS_COLOR` / `LIVE_TIME_COLOR` /
   `dagLiveTokensStyle` / `dagLiveTimeStyle` / `DAG_NODE_METRICS`）、`src/client/DagBody.tsx`
   （`NodeMetricsLine` + 详情卡徽章行 + 1 s 走秒 + 整份读数守卫）。
 - 已实测（本机）：`pnpm lint` / `pnpm check-types` 0 error；`pnpm test` **34 文件 / 727 用例全绿**；
-  `pnpm test:coverage` 总覆盖率 96%+，`src/dag-metrics.ts` 100% statements（唯一未覆盖分支是
+  `pnpm test:coverage` 总覆盖率 96%+，`src/dag/dag-metrics.ts` 100% statements（唯一未覆盖分支是
   `dagDir ?? DAG_DIR` 的缺省值）；`pnpm build` 产出 `dist/index.js`（含 `sampled_at`）与 `dist/client.js`
   （含 `dsh-mint-dag-pulse`）。
 - **已实测（产物级端到端，不经 GUI）**：用 `dist/index.js` 的 `apply` + 假 ctx（`agents.get` 返回带
@@ -380,16 +380,16 @@
 > #169 skill 纪律 + 空 DAG 软提醒。触发：真机实测发现「子代理结束后实测值整份消失」（#166），
 > 以及本轮计划模式的调研阶段**全程没有 DAG**（#165）。
 
-- 落点：`src/dag.ts`（`DagSample` / `samples` 校验 / `sampleOf`）、`src/dag-metrics.ts`
+- 落点：`src/dag/dag.ts`（`DagSample` / `samples` 校验 / `sampleOf`）、`src/dag/dag-metrics.ts`
   （`mergeMetrics` / `measureDagNodes` / `rememberMeasurement` / `lastMeasurement` / `clearMeasurements`）、
-  `src/dag-lifecycle.ts`（`subagent/end` 落盘，导出 `readAgentMetrics` / `withSample`）、
-  `src/dag-tool.ts`（`set → done` 落盘）、`src/routes.ts`（兜底补写 + `flushedSamples` 记账）、
+  `src/dag/dag-lifecycle.ts`（`subagent/end` 落盘，导出 `readAgentMetrics` / `withSample`）、
+  `src/dag/dag-tool.ts`（`set → done` 落盘）、`src/host/routes.ts`（兜底补写 + `flushedSamples` 记账）、
   `src/client/{dag-model,DagBody,copy}`（`at` 校验、落盘样本不跑秒、`dag.measuredAt` 标注）、
-  `src/plan-mode.ts`（从 `planbind.ts` 抽出的 `planModeState`）、`src/dag-plan-reminder.ts`（空 DAG 软提醒，
+  `src/host/plan-mode.ts`（从 `planbind.ts` 抽出的 `planModeState`）、`src/dag/dag-plan-reminder.ts`（空 DAG 软提醒，
   由 `installDagPlanReminder` 在 `src/index.ts` 挂载）、`skill/references/{plan-dag,flow-planning}.md`。
 - 口径（本轮拍板）：实测值**落盘进文档**（不是只在内存缓存）；调研阶段**一律 DAG 化**（不再按「有无并行价值」取舍）。
 - 已实测（本机）：`pnpm lint` / `pnpm check-types` 0 error；`pnpm test` **36 文件 / 786 用例全绿**；
-  `src/dag.ts` / `src/dag-metrics.ts` 行覆盖 100%。
+  `src/dag/dag.ts` / `src/dag/dag-metrics.ts` 行覆盖 100%。
 - **产物级端到端实测（构建后的 `dist/index.js`，假 ctx）**，也是本 plan 最关键的一条：
   - 子会话还活着时：信封给出实时 `metrics`（不带 `at`）；
   - **触发 `subagent/end`：真机与探针都显示 `agents.get(childId)` 已经取不到 agent**（注册表先于
@@ -420,7 +420,7 @@
 - **仍留给人眼确认**：面板上 `done` 节点的「实测于 <时间>」标注、落盘样本不跑秒、`running` 且无读数时显示
   `?`（本会话里那个 `e2e` 临时节点正是这个形态）；以及紫/黄在浅深主题的可读性。
 - skill 侧实测：`grep -n "进计划模式\|空图\|0 节点" skill/references/plan-dag.md` 命中新触发语与新增 §3.1；
-  `skill/SKILL.md` 未改（路由行与新纪律不冲突，`src/skill-doc.test.ts` 仍 23 passed）。
+  `skill/SKILL.md` 未改（路由行与新纪律不冲突，`tests/guard/skill-doc.test.ts` 仍 23 passed）。
 
 ### 7.7 plan #33：空图提醒的第二次机会 + 两条「误判成坏掉」的宿主提示
 
@@ -430,7 +430,7 @@
 
 - **真机现象与根因（#171）**：本会话 DAG 文件在 `init` 后是 `nodes: []`，而面板自动打开的判据是
   「本会话 DAG **≥1 节点**」（`src/client/dag-open.ts` `shouldOpenDag`）——0 节点等于没有图、也没有面板，
-  这是 #165/§3.1 早已记录的边界。**但** `src/dag-plan-reminder.ts` 的注释写着「空图的会话故意不记为已提醒」，
+  这是 #165/§3.1 早已记录的边界。**但** `src/dag/dag-plan-reminder.ts` 的注释写着「空图的会话故意不记为已提醒」，
   实现却是无条件 `remember(sessionId)`：提醒只在会话的**第一次**工具调用出现，`init` 之后不再有第二次。
   注释与实现相反 → 独立的 #171。
 - **口径（本轮拍板）**：提醒记的是**状态**不是次数——「没有 DAG」与「有 DAG 但 0 节点」是两个 gap，
@@ -438,7 +438,7 @@
   原来「每会话一次」的语义被这条取代；`MAX_REMINDED_SESSIONS` 只作内存上界，命中即先删再插入，
   越界淘汰最旧会话。文案拆成两条：`DAG_PLAN_REMINDER`（先 `init` 再落节点）、
   `DAG_EMPTY_REMINDER`（只差「先 `add` 一个节点」，不再重复 `init`）。
-  实测：`src/dag-plan-reminder.test.ts` 13 passed（新增「missing → empty 两次提醒」「同一 gap 不重复」
+  实测：`tests/unit/dag/dag-plan-reminder.test.ts` 13 passed（新增「missing → empty 两次提醒」「同一 gap 不重复」
   「落节点后安静」三条路径）。
 - **#53 实测（宿主同一条校验路径）**：cordis 的 `resolveConfig` 把挂载行**缺省**的 config 以 `undefined`
   直接交给 `Config['~standard'].validate`，**不做归一化**；`z.object({…})` 于是报
@@ -448,13 +448,13 @@
   `cordis.patch.yml` 里「config 必须显式给」的过时注释同步改掉（`config: {}` 行保留，`package-manifest.test.ts` 守约）。
 - **#60 实测**：workspace-write 下经 bash 跑 mint，**连只读命令**也报
   `mint: error: SQLite error: attempt to write a readonly database`（SQLite 打开库时即使只读也要写 journal），
-  宿主 `mint` 工具与 `mint --db <可写目录>` 都正常。落点两条：`src/reminders.ts` 的
+  宿主 `mint` 工具与 `mint --db <可写目录>` 都正常。落点两条：`src/host/reminders.ts` 的
   `readonlyDbHintListener`（只扫结果文本里的 `READONLY_DB_SYMPTOM`，不看工具名/退出码；append 一句
   「用宿主工具 / 提权重试 / `--db` 指可写目录」）与 skill `host-dsh.md` §执行面 的同一症状记录。
 - **skill 侧**：#157 把「无独立工作就地结束本轮 / 运行时以 follow-up 轮次唤醒 / `sleep` 把结算通知推迟到
   sleep 结束之后」写进 `parallel-exec.md` §5；#158 把「清单条目只写 issue，不得写成批次/DAG 节点名」
   写成显式禁令（`flow-impl.md` §3，`parallel-exec.md` §4 交叉引用）。
-  实测：`src/skill-doc.test.ts` 23 passed（SKILL.md 字节预算未变，未动 SKILL.md）。
+  实测：`tests/guard/skill-doc.test.ts` 23 passed（SKILL.md 字节预算未变，未动 SKILL.md）。
 - **仍留给人眼确认**：本会话 DAG 面板由空变有节点后的自动打开（agent 无 DOM，无法自证）。
 
 ### 7.8 plan #36 调研：配对错位与 DAG 自测口径（#176）
@@ -467,9 +467,9 @@
 
 #### 7.8.1 一批多节点的 `subagent/start` ↔ 节点配对为何整体错位
 
-**机制（代码）**：`claimNextNode`（`src/dag-lifecycle.ts:85-94`）从节点数组**末尾向前**扫，认领第一个
+**机制（代码）**：`claimNextNode`（`src/dag/dag-lifecycle.ts:85-94`）从节点数组**末尾向前**扫，认领第一个
 `status === 'running' && agent === undefined` 的节点；`installDagLifecycle` 把它挂在 `subagent/start`
-（`src/dag-lifecycle.ts:282-290`，`write(parent, doc => claimNextNode(doc, String(info.id), now))`）。
+（`src/dag/dag-lifecycle.ts:282-290`，`write(parent, doc => claimNextNode(doc, String(info.id), now))`）。
 于是「谁配谁」由两个**外部顺序**相乘决定：① 数组里还剩哪些 running-无 agent 节点；② 宿主
 `subagent/start` 的**发射顺序**（不是模型派发的顺序）。`n7` 当时也是 running-无 agent，但它在数组里排在
 a 批之前，所以永远轮不到它——判据是**位置**，不是「最近 set running」。
@@ -497,8 +497,8 @@ DAG 文件实际记的是：`a1←7d07d0ac`、`a2←3a3381e0`、`a3←9a5711cd`�
 顺序（同一 step 里模型按 #157/#158/#159/#53/#90 派发，宿主按 #159/#157/#90/#53/#158 起跑）。
 
 **连带损伤（数字也归错人）**：`samples` 由 `node.agent` 决定写进哪个节点——`saveSample`
-（`src/dag-lifecycle.ts:248-280`：`nodeOf(doc, agentId)` → `withSample(doc, node.id, …)`）与
-`set → done` 的 `measuredNode`（`src/dag-tool.ts:401-407`）用的是同一个键。实测：5 条样本的 `tokens`
+（`src/dag/dag-lifecycle.ts:248-280`：`nodeOf(doc, agentId)` → `withSample(doc, node.id, …)`）与
+`set → done` 的 `measuredNode`（`src/dag/dag-tool.ts:401-407`）用的是同一个键。实测：5 条样本的 `tokens`
 **恰好等于被记那个 agent 的子会话当时的累计 token**（逐条 delta = 0，其它四支都不等，按「usage 四桶求和、
 截至 `samples.<node>.at`」算）。本轮（plan #36）同样复现：`b1`（issue 172）的 `agent` 是 `872cb7dc`
 （`label = "#173 面板透出 worktree"`，本该是 b2 的活），`b1` 的样本 `14597` 也正是 `872cb7dc` 当时的累计。
@@ -526,10 +526,10 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
    「最后一个」就是它，配对确定，`subagent/end` 的兜底结算与 `samples` 也都落在对的人身上。
 2. **派发后显式校正**：从 `subagent` 结果或 `list_agents` 拿到子会话 id 后，
    `mint_plan_dag({action:"set", id:"<node>", agent:"<childId>"})`——`set` 的 `agent` 是**覆盖写**
-   （`src/dag.ts:713`），参数已在工具 schema 里（`src/dag-tool.ts:106`）。代价：每节点多一次调用 + 需要
+   （`src/dag/dag.ts:713`），参数已在工具 schema 里（`src/dag/dag-tool.ts:106`）。代价：每节点多一次调用 + 需要
    一次 id/label 对应查询。
 3. **或接受 `agent` 仅作参考**：不要拿 `subagent/end` 的兜底（`settleNode` 按 `node.agent` 定位，
-   `src/dag-lifecycle.ts:102-115`）判断节点成败，节点结论以子代理自己 `set` 的 verdict/note 为准；
+   `src/dag/dag-lifecycle.ts:102-115`）判断节点成败，节点结论以子代理自己 `set` 的 verdict/note 为准；
    面板上的 `agent` 只当「有一支子代理在跑」的弱提示，`samples` 的数字不当作该节点自己的开销。
 4. **（需用户拍板，另拆）** 若要把配对做成确定映射，只能请宿主在生命周期 payload 里补派发身份
    （如 `callId`/`label`），或让工具层把「本次派发的子会话」与工具调用关联——本仓改不了宿主，属上游需求。
@@ -540,7 +540,7 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
 存在性校验——**不存在** → 报错 `commit <s> not found in this repository`；**存在但不是 HEAD 祖先** →
 只打警告 `mint: warning: <s> is not an ancestor of HEAD`（仍写入）；`--sha` 省略时取**当前 cwd 的 HEAD**
 （非 git 目录报错）——mint 仓 `src/cli/issue/state.rs:110-127` 与 `src/git.rs:83-108`（`#477`）。
-插件把 cwd 取成**调用会话的** `session.header.cwd`（本仓 `src/mint-tool.ts:385`），所以「在 worktree 里跑
+插件把 cwd 取成**调用会话的** `session.header.cwd`（本仓 `src/mint/mint-tool.ts:385`），所以「在 worktree 里跑
 mint，HEAD 是节点分支头；在主 worktree 里跑，HEAD 是主线头」——**「取哪个 sha」首先是「在哪个
 worktree、什么时候跑」**。
 
@@ -575,7 +575,7 @@ worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancest
 
 **先纠正前提**：同一份 DAG 文件（`revision 172`）里，20 个节点**全部没有 `tokens` 字段**（自报路径从未被
 写过），`samples` 只有 6 条（`a1`–`a5`、`b1`），**剩下 14 条为空**（`n1`–`n8`、`a6`、`b2`–`b6`）——这 14 个
-**全都没有 `agent`**。测量键就是 `node.agent`（`measuredNode`，`src/dag-tool.ts:401-407`；路由侧同规则），
+**全都没有 `agent`**。测量键就是 `node.agent`（`measuredNode`，`src/dag/dag-tool.ts:401-407`；路由侧同规则），
 没有 `agent` 的节点**结构上不可能**有实测读数；有 `agent` 的节点则确实留下了样本。所以「面板没打开」
 不是空样本的充分原因——**`set → done` 本身就是一条测量入口**（§7.6 第三轮已证；a1–a5 的样本就是它留下的）。
 真正的两条缺口是：① 无 `agent` 的节点没有测量键；② 唯一的补充来源（`tokens` 自报）没人写，而宿主从不
@@ -584,7 +584,7 @@ worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancest
 **方案（分层，从零改动到需上游）**：
 
 - **L1 零改动（今天可用）**：让**节点的 owner 自己**在还活着的最后一步 `set done`（工具描述里已是这条纪律，
-  `src/dag-tool.ts:70`）——配对正确时 `persistNodeSample` 会测到它并把样本落盘（`at` = 测量时刻）；需要
+  `src/dag/dag-tool.ts:70`）——配对正确时 `persistNodeSample` 会测到它并把样本落盘（`at` = 测量时刻）；需要
   数字时再 `curl 'http://127.0.0.1:<port>/dsh-mint/dag?session=<root>'` 主动制造一次观测（§4.7/§7.6 已证
   路由读一次即落盘，`running` 节点 10 s 节流）。代价：数字只在「有 agent + 那一刻可读」时存在；无 `agent`
   的调研节点（`n1`–`n8` 这类）仍然空，而且错位未修时数字会归错节点。

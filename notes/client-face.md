@@ -85,7 +85,7 @@ ctx.slots.inject('sidebar.right.pane.tab', () =>
 - **构建通道**：`pnpm build` = `tsup`（宿主面 ESM+dts）→ `node scripts/build-client.mjs`（浏览器面）→ `build-skill`。
   宿主面不得依赖 client 构建。
 - **CI 顺序坑**：`pnpm test:coverage` 在 `pnpm build` **之前**跑，所以测试不得读仓库里的 `dist/client.js`；
-  `src/client-bundle.test.ts` 调 `node scripts/build-client.mjs --outfile <tmp>` 再造伪 `window` 载入。
+  `tests/guard/client-bundle.test.ts` 调 `node scripts/build-client.mjs --outfile <tmp>` 再造伪 `window` 载入。
 
 ## 3. Host ↔ Client 数据通道
 
@@ -107,21 +107,21 @@ ctx.inject(['webServer'], (scoped) => {
   `pathname === prefix || pathname.startsWith(prefix + '/')`（`dsh-host-webserver` 的 `match`）。
   注册 `/dsh-mint/` 只匹配 `/dsh-mint/` 与 `/dsh-mint//…`，`/dsh-mint/issues` 会**落到 fallback**
   （SPA 静态服务 → 空 body 404，面板上显示 `HTTP 404: (empty body)`）。注册 `/dsh-mint` 才对，
-  且 `/dsh-mint-other` 不会被误吞。回归护栏在 `src/routes.test.ts`。
+  且 `/dsh-mint-other` 不会被误吞。回归护栏在 `tests/unit/host/routes.test.ts`。
 - 浏览器侧路径要用 `document.baseURI` 解析（反代子路径挂载时 `/xxx` 会 404）——见 `dshmarket` 的 `api()`。
 
 dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint/issue`（`show --json` 全量，含 body）、
 `/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`、`/dsh-mint/meta`，
 均带 `session=<SessionId>`，宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录
-（**不接受浏览器给的路径**）。**前缀与路由名单只有一份**：`src/route-paths.ts`（`ROUTE_PREFIX` /
-`ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/routes.ts` 与浏览器 `src/client/api.ts` 各自
-派生——`src/route-paths.test.ts` 比对两表防漂移（#104）。每次 CLI run 共享**本请求的一个
+（**不接受浏览器给的路径**）。**前缀与路由名单只有一份**：`src/shared/route-paths.ts`（`ROUTE_PREFIX` /
+`ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/host/routes.ts` 与浏览器 `src/client/api.ts` 各自
+派生——`tests/unit/shared/route-paths.test.ts` 比对两表防漂移（#104）。每次 CLI run 共享**本请求的一个
 AbortController**（`RequestScope`），
 浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
 `MaxListeners`，且只能取消其中一个。
 
 > **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由（plan #31）**：它读
-> `/tmp/mint/dag/<sessionId>.json`（`src/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
+> `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
 > ——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验后拼路径，非法即 400。信封
 > `{ ok:true, dag: DagView|null, revision, file, autoOpen, metrics?, sampled_at?, warnings? }`：**文件缺失 → 200 + `dag:null`**
 > （正常态，不是 404）；JSON/version 坏了 → 同样 `dag:null` 但多一个 `warnings` 与 `file`，面板显示
@@ -188,7 +188,7 @@ milestone + 是否直连）。
 
 > **mint 的可空字段是「合法答案」，不是形状漂移（#94/#95/#96/#107/#108）**：`show --json` 的 issue /
 > container `body`、plan/milestone 的 `version`、`label list` 的 `color` 都来自 `Option<…>`，未设时为
-> `null`。守卫（`src/mint-json.ts` 的 `isStringOrNull`）接受 `null`，路由**原样透传**（`truncateBody(null)`
+> `null`。守卫（`src/mint/mint-json.ts` 的 `isStringOrNull`）接受 `null`，路由**原样透传**（`truncateBody(null)`
 > 返回 `{body:null,truncated:false}`），由展示层消化：`hasBody(null)`/`BodyView` 显示空态、
 > `containerMeta`/`milestoneVersionOf` 丢弃 `null` 版本、`labelBadge(label?.color ?? '')` 退回中性徽章。
 > 千万不要把「要求 string」当严格性——那会把整条记录从列表里丢掉并报假的 `missing required fields`。
@@ -245,7 +245,7 @@ milestone + 是否直连）。
 
 1. **注册面**：`cordis_inspect_query` → client `Slots.listSubTree`，`root: "sidebar.right.pane.tab"`，
    看 occupants 是否含 `@yanqd0/dsh-mint`；`root: "sidebar.right.tab.guide"` 看 guide 链。
-2. **产物面**：`src/client-bundle.test.ts`（伪 `__ModuleLoader__` 物化 + require 白名单）。
+2. **产物面**：`tests/guard/client-bundle.test.ts`（伪 `__ModuleLoader__` 物化 + require 白名单）。
 3. **实机面**：新增 `dsh.client` 后**必须重启 harness**（row 只在启动扫描时入图）；
    此后改 bundle 只需重新 `pnpm build` + 刷新页面（revision 由 mtime/ctime/size 推导，无内容哈希）。
 4. profile 以 `link:` 安装时，`dist/client.js` 直接从工作区被服务。
@@ -327,7 +327,7 @@ console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存
   标题行下的 `<code data-plugin-name>`；设置里的卡片是 `cardDescription`（2 行截断）。
 - `icon`：manifest 内**相对路径**，SVG/PNG/JPEG/WebP，≤256 KiB，`realpath` 后须仍在 manifest 目录内；
   失败只丢图标、保留文字。
-- 守卫：`src/package-manifest.test.ts` 的 `plugin display metadata` 组用**自引用解析**
+- 守卫：`tests/guard/package-manifest.test.ts` 的 `plugin display metadata` 组用**自引用解析**
   （`createRequire(join(ROOT,'package.json')).resolve('@yanqd0/dsh-mint/package.json')`）复刻同一条
   resolver 规则，无需安装 harness，即可在 CI 抓住门禁回归。
 - **生效路径**：改了 `package.json`（exports / files / description）⇒ **重启 harness** 才生效（resolver 缓存，

@@ -53,7 +53,7 @@ pnpm pack:check    # pnpm pack --dry-run
 CI (Node 22, pnpm 11) runs `lint`, `check-types`, `test:coverage`, `build` and
 `pack:check`. Keep one logical change per commit, with an Angular-style prefix.
 **Do not run prettier over `skill/**/*.md`**: table padding blows the SKILL.md
-byte budget that `src/skill-doc.test.ts` guards.
+byte budget that `tests/guard/skill-doc.test.ts` guards.
 
 ### Verifying a mount
 

@@ -10,7 +10,7 @@
 dsh-mint 客户端面 = **一个插件包的两个半边**：
 宿主半边（`dist/index.js`，cordis 插件）注册**只读 HTTP 路由**并 spawn mint CLI；
 浏览器半边（`dist/client.js`，loader 工厂）向右侧边栏**注册一个页面类型**并用 `fetch` 取数。
-两个半边**不共享内存、不共享类型运行时**，只共享 `src/records.ts` 的**类型声明**（编译期擦除）。
+两个半边**不共享内存、不共享类型运行时**，只共享 `src/shared/records.ts` 的**类型声明**（编译期擦除）。
 
 **职责边界（刻意如此）**：
 
@@ -29,7 +29,7 @@ flowchart TB
   subgraph build["构建期 pnpm build"]
     srchost["src 宿主面<br/>index / routes / context / mint"]
     srcclient["src/client 浏览器面<br/>index.tsx / MintBody / api / copy<br/>Rows.tsx / Body.tsx / model.ts / styles.ts"]
-    shared["src/records.ts<br/>仅类型，两端共享"]
+    shared["src/shared/records.ts<br/>仅类型，两端共享"]
     tsup["tsup<br/>ESM 加 d.ts"]
     esb["scripts/build-client.mjs<br/>esbuild 加加载器包装"]
     srchost --> tsup --> dhost["dist/index.js"]
@@ -39,7 +39,7 @@ flowchart TB
   end
   subgraph hostside["宿主进程 插件进程 无沙箱"]
     row["loader 行 id 等于 mint"]
-    routes["src/routes.ts<br/>前缀 /dsh-mint"]
+    routes["src/host/routes.ts<br/>前缀 /dsh-mint"]
     runner["runMint spawn CLI"]
     row --> routes --> runner
   end
@@ -176,7 +176,7 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 | 层 | 手段 | 能证明什么 |
 | --- | --- | --- |
 | 纯逻辑 | `pnpm test`（model / routes / api / copy） | 参数映射、守卫、状态映射、URL 拼接 |
-| 产物契约 | `src/client-bundle.test.ts` | bundle 是合法 loader 工厂、只 require 基线模块 |
+| 产物契约 | `tests/guard/client-bundle.test.ts` | bundle 是合法 loader 工厂、只 require 基线模块 |
 | 注册面 | `cordis_inspect_query` client `Slots.listSubTree` | tab 类型与 body 是否真的注册进了座位 |
 | 端到端（宿主） | `curl http://127.0.0.1:<port>/dsh-mint/...` | 路由匹配、session→cwd、CLI、守卫、错误分支（**实测可用**） |
 | 端到端（界面） | 人眼看 GUI | 渲染、主题、交互 —— **agent 侧没有浏览器控制，只能由人确认** |

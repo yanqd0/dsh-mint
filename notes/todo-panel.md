@@ -25,16 +25,16 @@
 ## 3. 本插件的分工（#119）
 
 - **只提醒，不代写**：`issue state` / `plan plan` / `plan close` 成功后，在工具结果末尾追加一行
-  「同步 todo」（`src/reminders.ts` 的 `TODO_SYNC_REMINDER`）；失败结果与**子代理会话**
+  「同步 todo」（`src/host/reminders.ts` 的 `TODO_SYNC_REMINDER`）；失败结果与**子代理会话**
   （`header.delegationDepth > 0`）跳过——面板属于根 agent 的会话。
-- 识别走 `invocationsOf`（`src/cross-project-gate.ts`），mint 工具与 bash 兜底同一口径。
+- 识别走 `invocationsOf`（`src/mint/cross-project-gate.ts`），mint 工具与 bash 兜底同一口径。
 - 清单内容由模型写：它是**实施步骤的拆解**，不是 issue 行的镜像；插件无法知道模型的步骤划分。
 - skill 侧口径：`skill/references/flow-impl.md` §3（开工每 turn 写一次 + 每次状态变更重写）、
   `flow-session.md` §5（接管时派生）、`parallel-exec.md` §4（子代理不写）。
 
 ## 4. 验证手法
 
-- 单测：`src/reminders.test.ts`（识别 + enrich + 子代理静默）与内存态。
+- 单测：`tests/unit/host/reminders.test.ts`（识别 + enrich + 子代理静默）与内存态。
 - 实机：写一次 `todo_write` → 输入区出现面板；同一 turn 内改动 issue 状态 → 工具结果末尾出现提醒；
   重写清单 → 计数随之变化；**开新的一轮输入后不写清单 → 面板消失**（turn 重置的判据）。
 - 若面板始终不出现：先确认调用者真的是 agent（子代理会话的面板不在根会话里）。
