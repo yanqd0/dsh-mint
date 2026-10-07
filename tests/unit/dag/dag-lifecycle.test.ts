@@ -13,8 +13,9 @@ import type { DagNodeView } from '../../../src/shared/records.js';
 import type { DshContext } from '../../../src/shared/types.js';
 
 /**
- * The host's subagent ↔ DAG node pairing (plan #31), and the sample it persists
- * on `subagent/end` (#168).
+ * The host's subagent ↔ DAG node pairing, and the sample it persists on
+ * `subagent/end` — both are host-event contracts, specified in the DAG spec
+ * (`notes/plan-dag.md` section 3「宿主生命周期配对」).
  *
  * Every case runs against a **temporary directory**: the shipped default is
  * `/tmp/mint/dag`, and a test that wrote there would delete a real session's
@@ -206,7 +207,7 @@ async function stored(session = SESSION): Promise<DagRead> {
   return readDag(session, dir);
 }
 
-describe('subagent/end persists a sample (#168)', () => {
+describe('subagent/end persists a sample', () => {
   it('merges the measured sample under its node id, with an `at`', async () => {
     await seedNode(SESSION, PAIRED_NODE);
     const events = harness();
