@@ -84,8 +84,18 @@
 
 ## 4. 统一测试与收口
 
-- 同 plan 各 issue 先停在 **test**（不逐个 close），到齐后统一跑测试/lint。
-- 全绿 → `mint({ args: ["plan","close","<plan>","--test-cmd","<命令>"] })`（全部 test → done）。
+**两层，都不可省**：
+
+① **节点内 UT**：各节点在**自己的 worktree 内**先跑**该节点相关的 UT**（命令形式与可行性见
+`worktree-exec.md` §2/§3；判据轴见 `parallel-exec.md` §1）：红了在树内修，**不带红 merge**。
+
+② **收口全量**：一个 plan 的**全部 commit 都 merge 进目标分支**后，主 agent 在**主工作树**跑一次**完整测试**
+（`pnpm lint && pnpm check-types && pnpm test:coverage && pnpm build`），全绿才 `plan close`。
+
+- **为什么两层都要**：节点内 UT 挡**单点红**（贴本次改动、秒级、merge 前就发现）；收口全量挡**跨节点集成红**
+  （单节点各自绿，合起来仍可能红）。少任一层都会把一类红漏到最后。
+- 同 plan 各 issue 先停在 **test**（不逐个 close）；收口全量绿 →
+  `mint({ args: ["plan","close","<plan>","--test-cmd","<命令>"] })`（全部 test → done）。
 - 失败 → `mint({ args: ["issue","state","retest","<id>","--test-cmd","<精确手法>"] })` 打回 dev →
   修复 → 新 commit → 新 `state commit`（新 sha）→ 再测。
 - 跳过测试也要 commit 到 test，close 时 `--test-cmd not-tested`；**无 dev→done 捷径**。

@@ -554,7 +554,7 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
 mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，HEAD 是**开工时所在分支（目标分支）**的头」——
 **「取哪个 sha」首先是「在哪个 worktree、什么时候跑」**。
 
-**口径（沿用既有 skill 口径 `worktree-exec.md` §5 / `flow-impl.md:89`，此处补自证）**：
+**口径（沿用既有 skill 口径 `worktree-exec.md` §5 / `flow-impl.md` §4，此处补自证）**：
 取 **merge 落地之后、开工时所在分支（目标分支）的工作树 HEAD**，即 `--no-ff` 产生的那个 merge commit。
 
 节点存储的 worktree 记录（`DagWorktree`）：`path` / `branch` / `base` / `state` / `merged_sha?`，以及
