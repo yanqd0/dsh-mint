@@ -1,3 +1,4 @@
+import { BASH_TOOL_NAMES } from './approval-gate.js';
 import { sessionIdOf } from './session-id.js';
 import { invocationsOf } from './cross-project-gate.js';
 import { hasMintWrite, noteRecordGapNotified } from './session-ledger.js';
@@ -18,8 +19,6 @@ const COMMIT_REMINDER =
 const FAILURE_HINT = (toolName: string): string =>
   `[mint] tool ${toolName} failed — consider registering an issue: ` +
   `mint({args:["issue","add","<标题>","--kind","problem"]})\n`;
-
-const BASH_TOOL_NAMES = new Set(['bash', 'tool:bash']);
 
 /**
  * `git commit` inside a shell command line (#110).
@@ -145,10 +144,15 @@ export function installCommitReminder(ctx: DshContext): () => void {
  * it at the moment the ledger changes, which is when the panel starts to
  * disagree. It only nudges — the list stays model-authored, because it is the
  * model's step breakdown, not a mirror of the issue rows.
+ *
+ * #159 在此补上粒度：清单**一项对应一个 issue**（条目只写 issue，不写批次名/DAG
+ * 节点名），并点明重置时机——`todos` 投影每个 `turn/start` 都清空，所以不是写一次就够，
+ * 每次状态变更后都要整份重写。
  */
 export const TODO_SYNC_REMINDER =
-  '[mint] issue 状态已变更——同步宿主 todo：todo_write 全量重写清单，' +
-  '让每项的 status 与 mint 一致（面板是人类看进度的入口）。';
+  '[mint] issue 状态已变更——同步宿主 todo：todo_write 整份重写清单，一项对应一个 issue' +
+  '（条目只写 issue，不写批次名/DAG 节点名），让每项的 status 与 mint 一致；' +
+  '宿主的 todos 投影在每个 turn/start 重置，所以每次状态变更后都要全量重写（面板是人类看进度的入口）。';
 
 /**
  * True when the call moves mint issue/plan state.
@@ -256,4 +260,164 @@ export function installFailureSignal(ctx: DshContext): () => void {
       process.stderr.write(FAILURE_HINT(exec.name));
     }
   });
+}
+
+/**
+ * 轮询子代理的词（#160）：命令文本或 argv token 里出现**独立**的 `list_agents`
+ * 才算命中（`\b` 把 `foo_list_agents` 这类同名前缀排除在外）。
+ */
+const LIST_AGENTS_WORD = /\blist_agents\b/;
+
+/** 以 `sleep` 起头的 shell 命令（`sleep 120`；`sleepy 5` 不算）。 */
+const SLEEP_COMMAND = /^sleep\s/;
+
+/**
+ * 等待子代理时「不要 `sleep`、不要轮询」的提示文案（#160）。
+ *
+ * skill 里的「不 sleep」口径是软约束，本轮实测被违反 3 次（共 ~9.3 min），
+ * 所以加一道只提示不拦截的机器兜底：合法 `sleep`（等端口、重试）不该被拦，
+ * 重复提示的成本也远低于误拦。
+ */
+export const sleepPollHint =
+  '[mint] 等子代理不要 bash sleep、也不要轮询 list_agents：结算通知会自动到达，' +
+  'sleep 反而把通知推迟到 sleep 结束之后（运行时会在子代理结算时以 follow-up 轮次唤醒本会话）。' +
+  '没有独立工作就地结束本轮；真被阻塞才 job_output(<id>, wait: true)（只用于一次性后台 job，不用于子代理）。';
+
+/** 一段文本是否在 `sleep` 空等或轮询 `list_agents`（`trimStart` 容忍前导空白）。 */
+function hasSleepPollText(text: string): boolean {
+  return SLEEP_COMMAND.test(text.trimStart()) || LIST_AGENTS_WORD.test(text);
+}
+
+/**
+ * argv 形态的命中判定（#160）：`['sleep', …]`、`['bash'|'sh','-c','…']` 里的命令，
+ * 以及数组里出现独立的 `list_agents` token。
+ *
+ * 相邻 token 拼接后再匹配，是为了不在「词被切成两段 token」这种构造上漏判；
+ * 单独判 `token === 'list_agents'` 则覆盖下一 token 是普通词（拼接后反而没有词边界）的情形。
+ */
+export function isSleepPollArgv(tokens: readonly string[]): boolean {
+  if (tokens[0] === 'sleep') return true;
+  const [head, flag, inline] = tokens;
+  if ((head === 'bash' || head === 'sh') && flag === '-c' && inline !== undefined) {
+    if (hasSleepPollText(inline)) return true;
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index] ?? '';
+    if (token === 'list_agents') return true;
+    if (LIST_AGENTS_WORD.test(token + (tokens[index + 1] ?? ''))) return true;
+  }
+  return false;
+}
+
+/**
+ * True when a tool call is a bash `sleep` or a `list_agents` poll (#160).
+ *
+ * 两个通道，按**参数形态**判定（与 {@link isGitCommit} 同一套口径）：
+ *
+ * - `command` 是 shell 命令行——工具名仍走 {@link BASH_TOOL_NAMES}，别的工具恰好也带
+ *   `command` 字段时不会误触发；
+ * - `args` 是 argv 数组——`uv` 这类外部插件直接 spawn、不过 shell，所以只认形状、不认名字。
+ *
+ * `sleep` 必须带参数（`/^sleep\s/`），否则 `sleepy` 之类的词会被误判。
+ */
+export function isSleepPoll(exec: ToolExecutionLike): boolean {
+  if (BASH_TOOL_NAMES.has(exec.name)) {
+    const command = exec.arguments.command;
+    if (typeof command === 'string' && hasSleepPollText(command)) return true;
+  }
+  const argv = exec.arguments.args;
+  if (
+    Array.isArray(argv) &&
+    argv.length > 0 &&
+    argv.every((token): token is string => typeof token === 'string')
+  ) {
+    return isSleepPollArgv(argv);
+  }
+  return false;
+}
+
+/**
+ * `tools/post-execute` listener：调用里出现 `sleep` 空等或 `list_agents` 轮询时，
+ * 在结果末尾追加 {@link sleepPollHint}（#160）。
+ *
+ * enrich 而非 deny：`sleep` 本身合法，这里只把「通知会被推迟」这条实测事实摆在模型眼前。
+ * 失败调用（{@link isFailedResult}）不提示——那时代码根本没跑起来。检测或拼装出任何异常都
+ * 直接 `next()`：提示是附加物，绝不能挡住工具结果。
+ */
+export async function sleepPollReminderListener(
+  exec: ToolExecutionLike,
+  result: ToolResultLike,
+  next: () => Promise<PostToolDecisionLike>,
+): Promise<PostToolDecisionLike> {
+  try {
+    if (isFailedResult(result) || !isSleepPoll(exec)) {
+      return next();
+    }
+    const hint: ContentBlockLike = { type: 'text', text: sleepPollHint };
+    return { kind: 'accept', content: [...result.content, hint] };
+  } catch {
+    return next();
+  }
+}
+
+/** Register the sleep/poll hint on `tools/post-execute` (#160). */
+export function installSleepHint(ctx: DshContext): () => void {
+  return ctx.on('tools/post-execute', sleepPollReminderListener);
+}
+
+/**
+ * mint 的 SQLite 报错原文（#60）。常量导出，好让测试与文档引用同一串，不各写一份。
+ *
+ * 它是**症状**而非根因：workspace-write 沙箱下走 bash 跑 mint（连 `mint list` 这种只读命令）
+ * 也会这么报——SQLite 连只读查询都要写 journal，所以看到它就说明「db 目录对本次执行只读」。
+ */
+export const READONLY_DB_SYMPTOM = 'attempt to write a readonly database';
+
+/**
+ * 看见 {@link READONLY_DB_SYMPTOM} 时追加的可诊断提示（#60）。
+ *
+ * 模型最可能的误判是「mint 坏了 / db 损坏」，于是绕路重试甚至改写数据；这句话把它拉回
+ * 正确的两条路：宿主 `mint` 工具（插件进程内 spawn，不受会话沙箱约束）或常规沙箱提权。
+ */
+export const BASH_DIAGNOSTIC_HINT =
+  '[mint] 沙箱挡住 mint 的 db 写（即使只读命令也要写 journal）。' +
+  '改用宿主 mint 工具；确需 bash 时按常规沙箱提权审批重试，或把 --db 指向可写目录。';
+
+/**
+ * True when a tool result carries the SQLite readonly-db symptom (#60).
+ *
+ * 只认 `content` 里的文本：`bash` 把非零退出当**成功**调用返回（见 {@link isFailedResult}），
+ * 而且这里不依赖工具名——同样的症状经别的构造出现时，提示一样成立。
+ */
+export function isReadonlyDbFailure(result: ToolResultLike): boolean {
+  return result.content.some(
+    (block) => block.type === 'text' && block.text.includes(READONLY_DB_SYMPTOM),
+  );
+}
+
+/**
+ * `tools/post-execute` listener：结果里出现只读 db 症状时追加 {@link BASH_DIAGNOSTIC_HINT}（#60）。
+ *
+ * 只 append 一块 text，原 content 与工具值都不动；任何异常都 `next()`，
+ * 提示永远不能改变一次已经发生的失败。
+ */
+export async function readonlyDbHintListener(
+  _exec: ToolExecutionLike,
+  result: ToolResultLike,
+  next: () => Promise<PostToolDecisionLike>,
+): Promise<PostToolDecisionLike> {
+  try {
+    if (!isReadonlyDbFailure(result)) {
+      return next();
+    }
+    const hint: ContentBlockLike = { type: 'text', text: BASH_DIAGNOSTIC_HINT };
+    return { kind: 'accept', content: [...result.content, hint] };
+  } catch {
+    return next();
+  }
+}
+
+/** Register the readonly-db diagnostic hint on `tools/post-execute` (#60). */
+export function installReadonlyDbHint(ctx: DshContext): () => void {
+  return ctx.on('tools/post-execute', readonlyDbHintListener);
 }

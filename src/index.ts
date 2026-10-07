@@ -12,7 +12,9 @@ import { installPlanBinding } from './planbind.js';
 import {
   installCommitReminder,
   installFailureSignal,
+  installReadonlyDbHint,
   installSessionRecordReminder,
+  installSleepHint,
   installTodoSyncReminder,
 } from './reminders.js';
 import { installMintRoutes } from './routes.js';
@@ -103,6 +105,12 @@ export function apply(ctx: DshContext, config: Config): void {
   installCommitReminder(ctx);
   // #119: the host todo panel must not drift away from the mint ledger.
   installTodoSyncReminder(ctx);
+  // #160: a bash `sleep` while waiting for a subagent delays the settlement
+  // notice it is waiting for, so the busy-poll gets named at the call site.
+  installSleepHint(ctx);
+  // #60: a sandbox-blocked mint run (SQLite's readonly-db error) must read as
+  // "use the tool / escalate", not as "mint is broken".
+  installReadonlyDbHint(ctx);
   installFailureSignal(ctx);
   // #111: session-scoped mint-write ledger, read by the plan-mode exit notice.
   // #114: the `mintEntry` makes `-p <本项目>` count as this session's own write.

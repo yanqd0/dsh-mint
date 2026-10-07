@@ -1,17 +1,27 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
+  BASH_DIAGNOSTIC_HINT,
+  READONLY_DB_SYMPTOM,
   SESSION_RECORD_REMINDER,
   TODO_SYNC_REMINDER,
   commitReminderListener,
   installCommitReminder,
   installFailureSignal,
+  installReadonlyDbHint,
   installSessionRecordReminder,
+  installSleepHint,
   installTodoSyncReminder,
   isCommitArgv,
   isFailedResult,
   isGitCommit,
+  isReadonlyDbFailure,
+  isSleepPoll,
+  isSleepPollArgv,
+  readonlyDbHintListener,
   sessionRecordReminderListener,
+  sleepPollHint,
+  sleepPollReminderListener,
   todoSyncChanged,
   todoSyncReminderListener,
 } from './reminders.js';
@@ -237,6 +247,11 @@ describe('todoSyncReminderListener (#119)', () => {
     expect(decision.content?.[0]).toBe(successResult.content[0]);
     expect(decision.content?.[1]?.text).toBe(TODO_SYNC_REMINDER);
     expect(TODO_SYNC_REMINDER).toContain('todo_write');
+    // #159: 粒度与重置时机都写进文案，断言关键片段而非整串（文案还会改）。
+    expect(TODO_SYNC_REMINDER).toContain('一项');
+    expect(TODO_SYNC_REMINDER).toContain('issue');
+    expect(TODO_SYNC_REMINDER).toContain('turn/start');
+    expect(TODO_SYNC_REMINDER).toContain('全量重写');
   });
 
   it('stays silent when the transition failed', async () => {
@@ -393,5 +408,154 @@ describe('installFailureSignal', () => {
     listener({ name: 'bash', arguments: {} }, successResult);
 
     expect(write).not.toHaveBeenCalled();
+  });
+});
+
+describe('isSleepPoll (#160)', () => {
+  it('matches a sleep or a list_agents poll in a bash command line', () => {
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'sleep 120' } })).toBe(true);
+    expect(isSleepPoll({ name: 'tool:bash', arguments: { command: '  sleep 30 && echo done' } })).toBe(
+      true
+    );
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'list_agents' } })).toBe(true);
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'echo list_agents | head' } })).toBe(true);
+  });
+
+  it('matches the argv shapes a foreign tool spawns without a shell', () => {
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['sleep', '30'] } })).toBe(true);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['bash', '-c', 'list_agents'] } })).toBe(true);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['sh', '-c', 'sleep 5'] } })).toBe(true);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['run', 'list_agents'] } })).toBe(true);
+  });
+
+  it('reads argv tokens, not prose or non-argv shapes', () => {
+    expect(isSleepPollArgv(['list_agents'])).toBe(true);
+    expect(isSleepPollArgv(['--then=list_', 'agents'])).toBe(true);
+    expect(isSleepPollArgv(['list', 'agents'])).toBe(false);
+    expect(isSleepPollArgv(['sleepy', '5'])).toBe(false);
+    expect(isSleepPollArgv([])).toBe(false);
+  });
+
+  it('reads the command channel only on the bash tool names', () => {
+    // 与 isGitCommit 同口径：别的工具带同名字段不算 bash 命令（#160）。
+    expect(isSleepPoll({ name: 'read', arguments: { command: 'sleep 30' } })).toBe(false);
+    expect(isSleepPoll({ name: 'mint', arguments: { command: 'list_agents' } })).toBe(false);
+  });
+
+  it('leaves unrelated calls alone', () => {
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'git commit -m "x"' } })).toBe(false);
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'sleepy 5' } })).toBe(false);
+    expect(isSleepPoll({ name: 'bash', arguments: {} })).toBe(false);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['run', 'pytest', '-q'] } })).toBe(false);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: [] } })).toBe(false);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: 'run sleep 30' } })).toBe(false);
+  });
+});
+
+describe('sleepPollReminderListener (#160)', () => {
+  it('appends the hint after a bash sleep, keeping the original content', async () => {
+    const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'sleep 120' } };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await sleepPollReminderListener(exec, successResult, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(decision.kind).toBe('accept');
+    expect(decision.content).toHaveLength(2);
+    expect(decision.content?.[0]).toBe(successResult.content[0]);
+    expect(decision.content?.[1]).toBeTypeOf('object');
+    expect(decision.content?.[1]?.type).toBe('text');
+    expect(decision.content?.[1]?.text).toBe(sleepPollHint);
+  });
+
+  it('names the notification delay and the blocked-only escape hatch in the text', () => {
+    expect(sleepPollHint).toContain('list_agents');
+    expect(sleepPollHint).toContain('自动到达');
+    expect(sleepPollHint).toContain('follow-up');
+    expect(sleepPollHint).toContain('job_output(<id>, wait: true)');
+    expect(sleepPollHint).toContain('不用于子代理');
+  });
+
+  it('stays silent when the call failed', async () => {
+    const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'sleep 120' } };
+    const failed: ToolResultLike = {
+      isError: false,
+      content: [{ type: 'text', text: 'interrupted [exit code: 130]' }],
+    };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await sleepPollReminderListener(exec, failed, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(decision.content).toBeUndefined();
+  });
+
+  it('defers to next() on unrelated work', async () => {
+    const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'git log --oneline' } };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await sleepPollReminderListener(exec, successResult, next);
+
+    expect(next).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'accept' });
+  });
+
+  it('registers a tools/post-execute listener', () => {
+    const { ctx, listeners } = makeCtx();
+    installSleepHint(ctx);
+    expect(listeners['tools/post-execute']).toBeTypeOf('function');
+  });
+});
+
+describe('readonlyDbHintListener (#60)', () => {
+  const readonlyResult: ToolResultLike = {
+    isError: false,
+    content: [
+      { type: 'text', text: `mint: error: SQLite error: ${READONLY_DB_SYMPTOM}\n[exit code: 1]` },
+    ],
+  };
+
+  it('detects the symptom in any text block, without the tool name or exit code', () => {
+    expect(isReadonlyDbFailure(readonlyResult)).toBe(true);
+    expect(isReadonlyDbFailure({ isError: false, content: [{ type: 'text', text: 'ok' }] })).toBe(
+      false
+    );
+    expect(
+      isReadonlyDbFailure({
+        isError: false,
+        content: [{ type: 'text', text: 'mint list: 3 issues\n' }],
+      })
+    ).toBe(false);
+  });
+
+  it('appends the diagnostic hint, keeping the original content', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await readonlyDbHintListener(
+      { name: 'bash', arguments: { command: 'mint list' } },
+      readonlyResult,
+      next
+    );
+
+    expect(next).not.toHaveBeenCalled();
+    expect(decision.content).toHaveLength(2);
+    expect(decision.content?.[0]).toBe(readonlyResult.content[0]);
+    expect(decision.content?.[1]?.text).toBe(BASH_DIAGNOSTIC_HINT);
+    expect(BASH_DIAGNOSTIC_HINT).toContain('宿主 mint 工具');
+    expect(BASH_DIAGNOSTIC_HINT).toContain('--db');
+  });
+
+  it('defers to next() when the symptom is absent', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await readonlyDbHintListener(
+      { name: 'bash', arguments: { command: 'mint list' } },
+      successResult,
+      next
+    );
+
+    expect(next).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'accept' });
+  });
+
+  it('registers a tools/post-execute listener', () => {
+    const { ctx, listeners } = makeCtx();
+    installReadonlyDbHint(ctx);
+    expect(listeners['tools/post-execute']).toBeTypeOf('function');
   });
 });
