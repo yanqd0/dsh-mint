@@ -107,3 +107,18 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 | 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <目标分支 sha>` |
 | 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
 | 重命令 | 主 agent | 主 agent（worktree 内不跑） |
+
+## 7. 降级：worktree 不可用
+
+- **判据**：`git --version` < 2.5，或 `git worktree …` 报 `unknown subcommand` / `is not a git command`，
+  或沙箱直接拒绝该命令。**默认路径仍是 worktree**：不预检、也不因为「可能不行」提前退缩，**失败才降级**
+  （工具在 `worktree add` / `worktree remove` 的失败文案里带上本机版本与本节指针，老 git 上
+  `wt list` 返回空表属正常——真正的失败在 `add` 那步暴露）。
+- **动作**：回退共享工作区——子代理照旧执行，但 main **逐个派发**（一步一节点，不并行）；或 main 亲自依次
+  执行（伪 DAG）。批次表（`parallel-exec.md` §1）**仍然有效**：谁和谁可以并行的判据没变，变的只是执行方式；
+  子代理照旧只改白名单内的文件。
+- **收口**：`state commit --sha` 取**主工作树（目标分支）**merge 后的 sha（降级时 = main 直接在该分支上
+  为每个 issue 提交的 sha）；与 worktree 模式的差别只有「没有隔离目录」，统一测试与 `plan close` 照
+  `flow-impl.md` §4。
+- **禁止**：目录不可解析时**不许**静默落到主工作树（丢掉隔离却不告诉任何人）；降级时**不许**并行派发
+  （失去隔离后并行会互相污染，正是本文件要避免的事）。

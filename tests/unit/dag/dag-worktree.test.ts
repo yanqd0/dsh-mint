@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -58,6 +58,65 @@ function commitFile(cwd: string, name: string, text: string, message: string): v
   writeFileSync(join(cwd, name), text);
   gitIn(cwd, 'add', '--', name);
   gitIn(cwd, ...USER, 'commit', '-q', '-m', message);
+}
+
+// --- 老 git 的假 runner（#187）---
+
+/** 老 git（< 2.5，没有 `worktree` 子命令）对 `git worktree …` 的实际答复。 */
+const NO_WORKTREE = "git: 'worktree' is not a git command. See 'git --help'.";
+
+/** 40 位 sha 的占位值：假 runner 不真解析 ref，只保证形状对。 */
+const FAKE_SHA = 'a'.repeat(40);
+
+/** 凑一个 runner 的返回形状；假答复不需要分开写五个字段。 */
+function answer(ok: boolean, stdout = '', stderr = ''): GitRunResult {
+  return { ok, stdout, stderr, code: ok ? 0 : 1 };
+}
+
+/**
+ * 按参数分派的假 git（#187）。
+ *
+ * 真 git（本机 ≥2.5）装不出「老版本没有 worktree」这个局面，所以「失败之后才给降级
+ * 指引」这条只能在假 runner 上验。默认就是一台 git 1.9.0：读路径/读 ref 这些老版本
+ * 本来就有的命令照常成功，`worktree list` / `worktree add` 与 `--version` 由入参决定。
+ *
+ * `worktreeList` 单独给 remove 的场景用：老 git 上 list 同样会失败，但 remove 那条
+ * 路径要先把目标认成「已注册」才会走到 `worktree remove`。未覆盖的命令直接 reject，
+ * 假 runner 的失败模式必须是「测试红了」，不是静默空答。
+ */
+function fakeGit(
+  options: {
+    version?: GitRunResult;
+    worktreeList?: GitRunResult;
+    worktreeRemove?: GitRunResult;
+  } = {}
+): WorktreeDeps['git'] {
+  const version = options.version ?? answer(true, 'git version 1.9.0\n');
+  const list = options.worktreeList ?? answer(false, '', NO_WORKTREE);
+  const remove = options.worktreeRemove ?? answer(false, '', NO_WORKTREE);
+  return (cwd: string, args: readonly string[]): Promise<GitRunResult> => {
+    const [command, second] = args;
+    if (command === '--version') return Promise.resolve(version);
+    if (command === 'rev-parse' && second === '--git-common-dir') {
+      return Promise.resolve(answer(true, `${join(cwd, '.git')}\n`));
+    }
+    if (command === 'rev-parse' && second === '--verify') {
+      return Promise.resolve(answer(true, `${FAKE_SHA}\n`));
+    }
+    if (command === 'rev-parse' && second === '--abbrev-ref') {
+      return Promise.resolve(answer(true, 'main\n'));
+    }
+    if (command === 'rev-parse' && second === '--short=7') {
+      return Promise.resolve(answer(true, `${FAKE_SHA.slice(0, 7)}\n`));
+    }
+    if (command === 'worktree' && second === 'list') return Promise.resolve(list);
+    if (command === 'worktree' && second === 'add') {
+      return Promise.resolve(answer(false, '', NO_WORKTREE));
+    }
+    if (command === 'worktree' && second === 'remove') return Promise.resolve(remove);
+    if (command === 'merge-base') return Promise.resolve(answer(true));
+    return Promise.reject(new Error(`假 git 未覆盖：${args.join(' ')}`));
+  };
 }
 
 beforeEach(() => {
@@ -394,5 +453,54 @@ describe('removeWorktree (#172)', () => {
     if (refused.ok) return;
     expect(refused.error).toContain('尚未合并');
     expect(refused.error).toContain('目标分支 main');
+  });
+});
+
+/**
+ * 失败之后才查版本、给可行动报错（#187）。
+ *
+ * 默认路径仍是 worktree：不预检（happy path 不付版本检查的成本）、不静默失败，也
+ * 绝不因为失败把路径回落到主工作树。这条行为的全部价值都在失败分支上，所以三条用例
+ * 都走假 runner——真 git 装不出老版本那个局面。
+ */
+describe('worktree 降级指引 (#187)', () => {
+  it('appends the local version and the shared-workspace fallback to a failed add', async () => {
+    const withFake = deps({ git: fakeGit() });
+    const outcome = await createWorktree(withFake, { id: 'a1' });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error).toContain('git version 1.9.0');
+    expect(outcome.error).toContain('共享工作区串行');
+    // 失败不得落到主工作树：目标路径根本没被创建（隔离没丢，也没假装成功）。
+    const path = await worktreePath(withFake, { id: 'a1' });
+    expect(typeof path).toBe('string');
+    if (typeof path !== 'string') return;
+    expect(existsSync(path)).toBe(false);
+  });
+
+  it('still forms the hint when even git --version fails', async () => {
+    const withFake = deps({
+      git: fakeGit({ version: answer(false, '', 'git: command not found') }),
+    });
+    const outcome = await createWorktree(withFake, { id: 'a1' });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    // 版本读不到不是二次失败：文案必须照旧成形，且仍指向降级动作。
+    expect(outcome.error).toContain('git 版本未知');
+    expect(outcome.error).toContain('共享工作区串行');
+  });
+
+  it('appends the same hint to a failed remove', async () => {
+    const probe = deps({ git: fakeGit() });
+    const path = await worktreePath(probe, { id: 'a1' });
+    expect(typeof path).toBe('string');
+    if (typeof path !== 'string') return;
+    // `worktree remove` 只在路径被认成「已注册」时才执行，所以这条让 list 成功。
+    const withFake = deps({ git: fakeGit({ worktreeList: answer(true, `worktree ${path}\n`) }) });
+    const outcome = await removeWorktree(withFake, { id: 'a1' });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.error).toContain('git version 1.9.0');
+    expect(outcome.error).toContain('共享工作区串行');
   });
 });

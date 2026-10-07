@@ -137,11 +137,43 @@ function stderrOf(result: GitRunResult): string {
 /** Paths git currently registers as worktrees of this repository. */
 async function registeredWorktrees(deps: WorktreeDeps): Promise<string[]> {
   const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
+  // 老 git（< 2.5）不认 `worktree` 子命令，这里会落成空表（#187）。这是有意为之：
+  // 空表被调用方读成「还没建过」，真正的失败会在随后的 `worktree add` 上暴露，
+  // 并带上 {@link degradationHint} 那条降级文案——所以别在这里补救。
   if (!result.ok) return [];
   return result.stdout
     .split('\n')
     .filter((line) => line.startsWith('worktree '))
     .map((line) => line.slice('worktree '.length).trim());
+}
+
+/**
+ * 本机 git 的版本行（`git version 2.43.0`），读不到时 `''`（#187）。
+ *
+ * 只在**失败之后**调用：happy path 不该为一句提示多付一次进程开销（没坏就别查）。
+ */
+async function gitVersion(deps: WorktreeDeps): Promise<string> {
+  const result = await deps.git(deps.repo, ['--version']);
+  if (!result.ok) return '';
+  // 只取第一行：`--version` 在个别包装器（如 Apple Git）下会多印几行。
+  return (result.stdout.trim().split('\n')[0] ?? '').trim();
+}
+
+/**
+ * `worktree add` / `worktree remove` 失败时追加的**单行**降级指引（#187）。
+ *
+ * 失败原因里最常见也最容易被误读成「仓库坏了」的一种，是本机 git 太老（`worktree`
+ * 是 2.5 才有的子命令）：报错本身（`git: 'worktree' is not a git command`）既不点
+ * 版本也不给替代路径。这里把版本、判据与**唯一**可行动作写进同一行——不预检、不静默
+ * 失败、也绝不因此回落到主工作树（那等于丢掉隔离）。
+ */
+async function degradationHint(deps: WorktreeDeps): Promise<string> {
+  const version = await gitVersion(deps);
+  return (
+    `（本机 ${version === '' ? 'git 版本未知' : version}；worktree 需要 git ≥ 2.5 —— ` +
+    `若不支持，改走共享工作区串行：main 逐个派发子代理（一步一节点）或亲自依次执行，` +
+    `见 skill references/worktree-exec.md 的「降级」节）`
+  );
 }
 
 /** The repository's current `HEAD` in short form, or `''` when unreadable. */
@@ -216,7 +248,11 @@ export async function createWorktree(
   const resolved = await resolveBase(deps, base);
   if (typeof resolved !== 'string') return { ok: false, error: resolved.error };
   const added = await deps.git(deps.repo, ['worktree', 'add', '-b', branch, path, resolved]);
-  if (!added.ok) return { ok: false, error: `git worktree add 失败：${stderrOf(added)}` };
+  if (!added.ok) {
+    // 失败才查版本（#187）：这里也是老 git 唯一会暴露的出口。
+    const hint = await degradationHint(deps);
+    return { ok: false, error: `git worktree add 失败：${stderrOf(added)}${hint}` };
+  }
   return { ok: true, worktree: { path, branch, base: resolved, state: 'active', target } };
 }
 
@@ -386,6 +422,11 @@ export async function removeWorktree(
     ...(force ? ['--force'] : []),
     path,
   ]);
-  if (!removed.ok) return { ok: false, error: `git worktree remove 失败：${stderrOf(removed)}` };
+  if (!removed.ok) {
+    // 与 create 同一条降级文案（#187）：merge 的失败不混进来——冲突走 conflict
+    // 分支，脏树有专门文案，那是另一类失败。
+    const hint = await degradationHint(deps);
+    return { ok: false, error: `git worktree remove 失败：${stderrOf(removed)}${hint}` };
+  }
   return { ok: true, worktree };
 }
