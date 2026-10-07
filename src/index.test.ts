@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { DAG_DIR } from './dag-store.js';
-import { apply, inject, name } from './index.js';
+import { apply, Config, inject, name } from './index.js';
 import { installSkill } from './install-skill.js';
 import { runMint } from './mint.js';
 import type { DshContext, EventListener } from './types.js';
@@ -25,6 +25,35 @@ describe('dsh-mint plugin', () => {
 
   it('declares the services it consumes via inject', () => {
     expect(inject).toEqual(['tools']);
+  });
+
+  it('parses a missing mount-line config into the defaults (#53)', () => {
+    const defaults = {
+      debug: false,
+      autoApprove: false,
+      autoInstallSkill: true,
+      openDagTab: true,
+    };
+
+    // Same validation path the host takes: cordis `resolveConfig` passes the raw
+    // mount-line `config` (absent => `undefined`) straight to the schema's
+    // `~standard` validator, without normalizing it first. That call is typed
+    // `Result | Promise<Result>` with mutually exclusive `value`/`issues` (an
+    // async schema is legal too), so narrow to the synchronous arm here.
+    const parse = (input: unknown): { value?: Config; issues?: ReadonlyArray<unknown> } => {
+      const result = Config['~standard'].validate(input);
+      expect(result).not.toBeInstanceOf(Promise);
+      return result as { value?: Config; issues?: ReadonlyArray<unknown> };
+    };
+
+    const missing = parse(undefined);
+    expect(missing.issues).toBeUndefined();
+    expect(missing.value).toEqual(defaults);
+
+    // An explicit empty object is the documented alternative and must match.
+    const empty = parse({});
+    expect(empty.issues).toBeUndefined();
+    expect(empty.value).toEqual(defaults);
   });
 
   it('registers the agent lifecycle listeners (#113)', () => {

@@ -29,6 +29,13 @@ export const name = 'dsh-mint';
  */
 export const inject = ['tools'];
 
+/**
+ * #53: the host (`cordis` `resolveConfig`) hands a mount line's missing config
+ * to `~standard.validate` as a plain `undefined` and does no normalization, so
+ * without this default the whole mount line dies (`invalid config: - Required
+ * (at )`). `.default({})` makes every field fall back to its own default; the
+ * inferred type stays a plain object (`apply` never sees `undefined`).
+ */
 export const Config = z.object({
   /** Reserved for mount-line config — features land in #3–#6. */
   debug: z.boolean().default(false),
@@ -60,7 +67,7 @@ export const Config = z.object({
    * a repeat never stacks one); false = leave the tab to the add control.
    */
   openDagTab: z.boolean().default(true),
-});
+}).default({});
 
 export type Config = z.infer<typeof Config>;
 
@@ -102,9 +109,10 @@ export function apply(ctx: DshContext, config: Config): void {
   installSessionLedger(ctx, mintEntry);
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
-  // #169: plan mode without a DAG is invisible (an empty graph never opens the
-  // panel), so the research discipline gets a soft, once-per-session nudge. It
-  // reads the same plan-mode answer as the exit gate above (`src/plan-mode.ts`).
+  // #169/#171: plan mode without a DAG is invisible (an empty graph never opens
+  // the panel), so the research discipline gets a soft nudge per gap — the
+  // missing document, then an `init` that is still node-less. It reads the same
+  // plan-mode answer as the exit gate above (`src/plan-mode.ts`).
   installDagPlanReminder(ctx);
   installMintTool(ctx, mintEntry);
   // plan 31: the DAG tool and its subagent pairing are registered on the root
