@@ -19,6 +19,11 @@ import { REPO_ROOT } from '../helpers/repo.js';
  * （`--milestone 1`）都会撞上裸词——那是自击，不是回归。最宽的那条（井号 +
  * 两位以上数字）靠白名单收敛到零误报。
  *
+ * 边界（有意如此，不是待办）：**裸编号只覆盖 ≥2 位**（`#\d{2,}`）——它是防御性兜底，
+ * 收到 1 位会立刻被颜色字面量（形如 `#8b76f6` 的「井号 + 1 位数字 + 十六进制字母」）
+ * 与渲染器夹具（断言里单个数字的引用形状）淹没；**单数字的溯源仍由另外两条判据覆盖**
+ * （括号夹住的 `#\d`、或 issue/plan/milestone 前缀接 `#\d`，都照样会红）。
+ *
  * 本文件自己也在受控集里（守卫扫自己），所以这里**不写完整 ID 字面量**：
  * 白名单只用 `digits` 存数字部分定位，正样本用 `HASH` 拼出来。
  */
@@ -102,7 +107,7 @@ const ALLOWED: readonly AllowedSite[] = [
   {
     file: 'notes/mounting.md',
     digits: '3276',
-    reason: '上游 pnpm 仓的 tracker 编号（写成 `pnpm` + 井号 + 3276），不是 mint ID。',
+    reason: '上游 pnpm 仓的 tracker 编号（不在 mint 台账里），不是 mint ID。',
   },
   {
     file: 'skill/references/commands.md',
