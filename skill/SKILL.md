@@ -22,6 +22,7 @@ description: >-
 | 登记：bug / 需求 / 遗留 / 审查发现 | `flow-bug.md`、`flow-requirement.md`、`flow-todo.md`、`flow-review.md` |
 | 规划：版本 / 计划 / 拆解 / 分支决策 | `flow-planning.md`、`flow-conditions.md` |
 | 写码实施：门禁 / 并行批次 / 状态机 | `flow-impl.md`、`parallel-exec.md`、`state-machine.md` |
+| worktree 隔离并行 | `worktree-exec.md` |
 | 调研 / 执行两阶段的 DAG 与分派 | `plan-dag.md`、`dag-exec.md` |
 | 接管 / 收口 / 多机同步 | `flow-session.md`、`flow-sweep.md`、`flow-sync.md` |
 | 命令 / 正文取值 / 模板 / body / label / 约束红线 | `commands.md`、`template-guide.md`、`body-editing.md`、`labels.md`、`constraints.md` |

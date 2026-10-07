@@ -43,6 +43,9 @@
 - 逐 issue：`git add -- <该 issue 的文件>` → commit → dev 类再 `git rev-parse --short=7 HEAD` → `issue state commit <id> --sha <前7位>`。
 - 批内不并行跑 build / test:coverage / format：全局独占，主 agent 串行。
 - 子代理只改文件，自检只用只读命令。
+- **worktree 例外口径**：需要「一 issue 一个可独立验证的 commit」（或共享工作区已互相污染）的批次，
+  改走节点级 worktree——子代理在**自己的 worktree 内** commit，主 agent 按 **issue 顺序 merge** 后再
+  `state commit`；无 git 仓 / worktree 不可用时仍按本节共享模式。见 `worktree-exec.md`。
 
 ## 5. 等待与收尾（不 sleep）
 
