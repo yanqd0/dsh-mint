@@ -59,11 +59,16 @@
 
 **进度可见（宿主 todo 面板，人类看进度的入口）**：开工第一步（**每个 turn**）先用
 `mint({ args: ["list","--plan","<plan>"] })` 取本 plan 的 issue 列表，写一份全量
-`todo_write` 清单——一项一个 issue，条目文本带 `#<id>`（如 `#119 插件：todo 同步提醒`）
-与文件白名单。此后**每次 issue 状态变更后重写同一清单**：当前 issue 置 `in_progress`，
-`commit`/`close` 过的置 `completed`，未开工的留 `pending`。
+`todo_write` 清单——**一项对应一个 issue**，条目文本 = `#<id>` + issue 标题（可带文件白名单），
+如 `#119 插件：todo 同步提醒`。此后**每次 issue 状态变更后重写同一清单**：当前 issue 置
+`in_progress`，`commit`/`close` 过的置 `completed`，未开工的留 `pending`。
 宿主 `todos` 投影在**每个 `turn/start` 重置为空**，所以每个 turn 都要重写一次；
 面板与 mint 状态不一致即视为未同步（插件在状态变更后会追加一行提醒，别忽略它）。
+
+- **条目粒度禁令**：清单条目**不得写成批次**名（如「批次 1（#150）」「批次 2-B」）、
+  **DAG 节点**名，或「串行/并行」标注——**批次只是执行分组，不是清单条目**（批次口径见
+  `parallel-exec.md`）；清单里也不要出现与 issue 无关的条目（纯文档/杂务条目除外：它们本就是 issue）。
+  写成批次名会与 mint 台账对不上，人类看进度面板会误判（#158）。
 
 1. 改码前 `mint({ args: ["issue","state","start","<id>"] })`（planned → dev），**保持 dev**。
    - 自查：改码前确认该 issue 已 start；phase 结束用 `mint({ args: ["list","--plan","<plan>"] })` 复查。
