@@ -20,6 +20,11 @@
  * must not take down an unrelated event dispatch. The persistence step is the
  * same shape: it runs beside `settle`, never in front of it, so a measurement
  * that cannot be read costs a sample rather than the settlement.
+ *
+ * 「哪次派发属于哪个节点」宿主不给（`SubagentRunInfo` 只有 runId/id/provider/local，
+ * 见 `notes/plan-dag.md` §7.8.1），所以认领结果只能自己在 `start` 时记下来，`end` 时
+ * 拿它兜底（{@link FALLBACK_MARK}）。批内多节点同时 `running` 时认领本身就会整体错位
+ * ——这一步只做到「发生过兜底能被看见」，错位靠「一步一节点」的纪律避免。
  */
 import { DAG_NOTE_MAX, sampleOf } from './dag.js';
 import { nodeMetrics, rememberMeasurement } from './dag-metrics.js';
@@ -45,6 +50,15 @@ const NOTE_MAX_BYTES = DAG_NOTE_MAX;
 
 /** A silent end is still an outcome; say so instead of writing an empty note. */
 const NO_REASON = 'subagent ended without a verdict';
+
+/**
+ * What a settlement written through {@link settleNodeById} says about itself.
+ *
+ * 兜底认领没有任何日志面可用（宿主 `DshContext` 既没有 logger，`subagent/end`
+ * 也没有工具回答），所以「这次是兜底结算的」唯一能存活下来的痕迹就是节点 `note` 的
+ * 这个前缀——面板 tooltip 直接看得到它。
+ */
+const FALLBACK_MARK = '[fallback 认领] ';
 
 /** Grow a string from a fixed suffix until it fits the byte budget. */
 function prefixWithinBytes(text: string, suffix: string): string {
@@ -81,14 +95,23 @@ function completedNote(info: SubagentRunEndInfoLike): string {
   return `${prefixWithinBytes(note, '\n…[note 已截断]')}\n…[note 已截断]`;
 }
 
-/** The last node waiting for an agent — the one a starting child belongs to. */
-function claimNextNode(doc: DagDoc, agentId: string, now: string): DagDoc | undefined {
+/**
+ * The last node waiting for an agent — the one a starting child belongs to.
+ *
+ * 返回**认领到的那个节点 id**：`subagent/end` 拿它兜底，所以认领必须能被调用方
+ * 记住（宿主 payload 里没有「哪次派发」的关联信息，这是唯一的配对凭据）。
+ */
+function claimNextNode(
+  doc: DagDoc,
+  agentId: string,
+  now: string
+): { doc: DagDoc; nodeId: string } | undefined {
   for (let index = doc.nodes.length - 1; index >= 0; index -= 1) {
     const node = doc.nodes[index] as DagNode;
     if (node.status !== 'running' || node.agent !== undefined) continue;
     const nodes = [...doc.nodes];
     nodes[index] = { ...node, agent: agentId, updated_at: now };
-    return { ...doc, nodes, revision: doc.revision + 1, updated_at: now };
+    return { doc: { ...doc, nodes, revision: doc.revision + 1, updated_at: now }, nodeId: node.id };
   }
   return undefined;
 }
@@ -112,6 +135,55 @@ function settleNode(doc: DagDoc, agentId: string, note: string, now: string): Da
     updated_at: now,
   };
   return { ...doc, nodes, revision: doc.revision + 1, updated_at: now };
+}
+
+/**
+ * 认领过这个节点的子代理没能按 `agent` 结算时的兜底：按 id 结算同一个节点。
+ *
+ * 守卫与 {@link settleNode} 一致（**只动 `running` 节点**）：子代理已经自己
+ * `set` 过结论时，它的记录比兜底更好，也不该让 revision 再跳一次。
+ * 三条边界：① 它只救「文档里**没有任何节点**带这个 agent」的情形（按 `agent` 找不到
+ * 才走到这里）；② 认领本身错位时，它落到的仍是**认领过的**那个节点——所以它能自证
+ * 「发生过兜底」，但**不修错位**（错位只能靠「一步一节点」的纪律避免）；③ 调用方
+ * 必须给带 {@link FALLBACK_MARK} 前缀的 note，这是兜底唯一的可见面。
+ */
+function settleNodeById(doc: DagDoc, nodeId: string, note: string, now: string): DagDoc | undefined {
+  const index = doc.nodes.findIndex((node) => node.id === nodeId && node.status === 'running');
+  if (index < 0) return undefined;
+  const node = doc.nodes[index] as DagNode;
+  const nodes = [...doc.nodes];
+  nodes[index] = {
+    ...node,
+    status: 'done',
+    verdict: 'fail',
+    note,
+    updated_at: now,
+  };
+  return { ...doc, nodes, revision: doc.revision + 1, updated_at: now };
+}
+
+/**
+ * 兜底结算的 note：前缀 `[fallback 认领] ` + 原来的结论原文。
+ *
+ * 复用 {@link prefixWithinBytes}——它的第二个参数是「要追加的 suffix」，语义是
+ * 「按 suffix 占掉的字节把 text 截到剩余预算」，所以把前缀当 suffix 传进去，
+ * 拼出来的整条 note 仍在 `DAG_NOTE_MAX` 字节内。
+ */
+function fallbackNote(note: string): string {
+  return `${FALLBACK_MARK}${prefixWithinBytes(note, FALLBACK_MARK)}`;
+}
+
+/**
+ * 一次派发的配对记录：runId → {父会话, 认领到的节点 id}。
+ *
+ * `nodeId` 故意**可变**：它由 `start` 里那次认领回调**回填**，而回调与
+ * `subagent/end` 是两条互不等待的路径——`end` 可能先到，把 map 里的这一项删掉。
+ * 所以 map 只负责把对象交给回调，认领结果写在对象自身上（闭包持有同一个引用），
+ * 即使 map 项已经消失，`end` 仍能读到它。
+ */
+interface PendingRun {
+  parent: string;
+  nodeId?: string;
 }
 
 /**
@@ -215,8 +287,8 @@ export function withSample(
  * @param dagDir - DAG directory override; absent means `DAG_DIR`.
  */
 export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
-  /** runId → the parent session, remembered so `end` needs no agent lookup. */
-  const pending = new Map<string, string>();
+  /** runId → 配对记录（父会话 + 认领到的节点 id），见 {@link PendingRun}。 */
+  const pending = new Map<string, PendingRun>();
 
   const agents = (): AgentsLike | undefined => ctx.get?.('agents') as AgentsLike | undefined;
 
@@ -256,8 +328,10 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
    *
    * @param parent - the DAG-owning session, resolved once by the caller.
    * @param info - the host's own `subagent/end` payload.
+   * @param fallbackId - 这次派发**认领过的**节点 id；只在该 agent 在文档里找不到
+   *   任何节点时用来定位样本落点，见 {@link settleNodeById} 的边界。
    */
-  const saveSample = (parent: string, info: SubagentRunEndInfoLike): void => {
+  const saveSample = (parent: string, info: SubagentRunEndInfoLike, fallbackId?: string): void => {
     const agentId = info.id;
     if (typeof agentId !== 'string' || agentId.length === 0) return;
     // Nothing here may throw into the host's dispatch; one `try` covers the
@@ -270,7 +344,11 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
         projections: ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined,
       };
       write(parent, (doc) => {
-        const node = nodeOf(doc, agentId);
+        const node =
+          nodeOf(doc, agentId) ??
+          (fallbackId === undefined
+            ? undefined
+            : doc.nodes.find((candidate) => candidate.id === fallbackId));
         if (node === undefined) return undefined;
         const metrics = readAgentMetrics({
           ...lookup,
@@ -295,25 +373,44 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     const child = agents()?.get(info.id);
     const parent = child?.session.header.parentSession;
     if (parent === undefined) return;
-    pending.set(String(info.runId), parent);
+    // 先建对象再写 map，并让下面的 mutation 闭包**持有同一个对象**：认领是异步的
+    // （排队等 `updateDag` 的锁），而 `subagent/end` 不排队等它——`end` 完全可以先到，
+    // 把 map 里这一项 `pending.delete` 掉。map 只负责把对象交给回调；认领结果写在
+    // 对象自身上，所以即使 map 项已经消失，那位仍握着引用的读者也能看到它。
+    const entry: PendingRun = { parent };
+    pending.set(String(info.runId), entry);
     // `parent` is the session that owns the DAG: a subagent's parent is the
     // root (or the DAG of a nested chain is written by that same root rule).
-    write(parent, (doc, now) => claimNextNode(doc, String(info.id), now));
+    write(parent, (doc, now) => {
+      const claimed = claimNextNode(doc, String(info.id), now);
+      if (claimed === undefined) return undefined;
+      entry.nodeId = claimed.nodeId;
+      return claimed.doc;
+    });
   });
 
   ctx.on('subagent/end', (info: SubagentRunEndInfoLike) => {
     const runId = String(info.runId);
     const remembered = pending.get(runId);
+    const fallbackId = remembered?.nodeId;
     pending.delete(runId);
     // A session started before this plugin loaded (or one the `start` event
     // missed) still has a live agent to ask.
-    const parent = remembered ?? agents()?.get(info.id)?.session.header.parentSession;
+    const parent =
+      remembered?.parent ?? agents()?.get(info.id)?.session.header.parentSession;
     if (parent === undefined) return;
     // The measurement first, the settlement second: both are queued on the
     // session's own lock, so the order here is the order on disk — and a
     // measurement that cannot be taken never delays the backstop below.
-    saveSample(parent, info);
+    saveSample(parent, info, fallbackId);
     const note = completedNote(info);
-    write(parent, (doc, now) => settleNode(doc, String(info.id), note, now));
+    // 先按 agent 结算（子代理自己没 `set` 时 `start` 回填的那个 agent 就是它），
+    // 找不到再按认领记录兜底 —— 两条路径都只动 `running` 节点。
+    write(parent, (doc, now) => {
+      const settled = settleNode(doc, String(info.id), note, now);
+      if (settled !== undefined) return settled;
+      if (fallbackId === undefined) return undefined;
+      return settleNodeById(doc, fallbackId, fallbackNote(note), now);
+    });
   });
 }

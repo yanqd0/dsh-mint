@@ -31,11 +31,24 @@
 
 ## 3. 派发协议
 
-- 一批在**同一条 assistant message** 里批量发 `subagent`（并行，不要逐个等）。
-- 一 issue 一子代理；3–6 路为宜。
+- 一批在**同一条 assistant message** 里批量发 `subagent`（并行，不要逐个等）——这里的「批量」是
+  **执行分组**（几条活一起跑），不是「一条消息里同时点几路火」：派发顺序按下面「一步一节点」串行走。
+- 一 issue 一子代理；3–6 路为宜；**一个节点一个 worktree**（worktree 批次见 `worktree-exec.md` §3）。
 - 提示词五段：① 目标（含 issue 号）；② 允许改的文件白名单；③ **该节点 UT 命令 + 期望输出**
   （`node <repo>/node_modules/vitest/vitest.mjs run <文件…>`，在它自己的 worktree 内跑，见 `worktree-exec.md` §2）；
   ④ 禁令（不 git、不 mint 写、不跑重命令、不动他人文件）；⑤ 输出契约（变更文件 + 验收输出摘要 + 未决点，不贴 diff）。
+- **一步一节点（本节的硬纪律）**：派发前把该节点 `set running`，且此刻只让**一个**节点处于
+  `running` 且无 `agent`；下一个节点**下一条消息**再 `set running` + 派发。判据 = **派发的那一刻只有
+  一个候选节点**（不是「同一条消息里 `set` 写在 `subagent` 前面」——同一条消息里的多个 `set`/`subagent`
+  是并发工具调用，谁先到不保证）。
+- **违反的代价**：宿主 `subagent/start` 的 payload 只有 `{runId, provider, id, local}`，**没有**
+  「哪次派发/哪个节点」的关联；节点由宿主从数组**末尾**认领「最近的 `running` 且无 `agent`」。于是
+  配对 = 「剩余候选 × 宿主发射顺序」的一个置换，而宿主 `subagent/start` 的**发射顺序不等于派发顺序** →
+  一步把多个节点置 running 再同批派发，`agent` 与节点必然**整体错位**（机制与实测数字见
+  `plan-dag.md` §7.8.1）。
+- **确要同批并行派发**：接受 `agent` 字段**仅作参考**（面板弱提示）；节点成败以子代理自己 `set` 的
+  `verdict` / `note` 为准，`samples` 的数字也不当作该节点自己的开销。
+- 派发后从 `subagent` 结果或 `list_agents` 拿到子会话 id，可 `set agent` 显式校正（**覆盖写**）。
 - **UT 绿才算这一路完成**；红了在树内修，不带红 merge。
 - 指针优于复述：issue body 用只读 `mint({ args: ["issue","get","<id>"] })` 取，不贴父对话、不复述 AGENTS.md。
 - 拥有：工作区 cwd、AGENTS.md、bash/write/edit、`mint` 工具、skill catalog；缺少：父对话与 tool output、`[Mint]` 概览注入、提权能力。

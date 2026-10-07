@@ -123,9 +123,20 @@
 
 - 监听 `subagent/start` / `subagent/end`：宿主 `SubagentRunInfo` / `SubagentRunEndInfo` 含
   `runId`、`id`（子 sessionId）、`stopReason`（`end` 侧）。
-- `start`：把 `id` 回填到**最近一个 `status='running'` 且 `agent` 为空**的节点。
-- `end`：若目标节点仍为 `running` → 标 `verdict:'fail'`，并附 `stopReason`（写入节点 `note`，
-  即结果原文）；这是「子代理崩了没收尾」的兜底。
+- `start`：把 `id` 回填到**最近一个 `status='running'` 且 `agent` 为空**的节点，并把这次认领
+  **记下来**：`runId → { parent, nodeId }`（`nodeId` 由认领回调**回填**——回调是异步排队的，
+  `end` 可能先到把这一项从 map 删掉，所以对象由回调闭包持有，认领结果写在对象自身上）。
+- `end`（① 按 `agent` 结算）：若该 agent 名下仍有 `running` 节点 → 标 `verdict:'fail'`，并附
+  `stopReason`（写入节点 `note`，即结果原文）；这是「子代理崩了没收尾」的兜底。
+- `end`（② **兜底认领**）：文档里**没有任何节点**带这个 agent 时（条目被覆盖写、或子代理在
+  宿主登记前就把节点改掉），退回它 `start` 时**认领过的**那个节点 id 结算——守卫相同（只动
+  `running`），note = 前缀 `[fallback 认领] ` + 原文（两者一起截在 `DAG_NOTE_MAX` 字节内）。
+  样本同理：`agent` 找不到节点时落到认领过的那个节点。
+- **兜底的三条边界**：① 它只救「文档里没有任何节点带这个 agent」的情形；② 认领本身错位时它落到
+  的仍是**认领过的**那个节点——能自证「发生过兜底」，但**不修错位**（错位靠「一步一节点」的纪律
+  避免，§7.8.1）；③ 宿主 `DshContext` 没有 logger、`subagent/end` 也没有工具回答，所以「这次是
+  兜底」**唯一**能存活下来的痕迹就是节点 `note` 的前缀（面板 tooltip 可见）。
+- 监听器**仍然不抛、不 await 阻塞**：兜底是同一个 `write` 里的一次追加尝试，认不出就跳过。
 - **不自动建节点**：没有任何节点可回填时只跳过，绝不为子代理新建节点——节点一律来自 `init`/`add`。
 - **`set → done` 的测量键**：优先取**调用者自己的会话**（子代理收尾自己的节点时它必然活着，不受注册表释放与 §7.8.1 的配对错位影响，且**不要求节点有 `agent`**）；`callerId === 根会话`（main 自己）时退回节点 `agent`（旧路径，只写 `samples`）；节点没有 `agent` 就不测——main 自有节点的整会话累计对「该节点开销」没有意义（§7.8.3）。
 
@@ -548,6 +559,41 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
    面板上的 `agent` 只当「有一支子代理在跑」的弱提示，`samples` 的数字不当作该节点自己的开销。
 4. **（需用户拍板，另拆）** 若要把配对做成确定映射，只能请宿主在生命周期 payload 里补派发身份
    （如 `callId`/`label`），或让工具层把「本次派发的子会话」与工具调用关联——本仓改不了宿主，属上游需求。
+
+**正例：一步一节点（本轮实测，旧口径）**
+
+§3 的「认领记录 + 兜底认领」已在宿主侧落地（`claimNextNode` 返回认领到的节点 id、
+`subagent/end` 先按 `agent` 再按该 id 兜底）。**但下面这组数据跑的是改动前的 dist**：
+当时 `node.agent` 是旧口径（节点 `tokens` 全为空），兜底路径还不存在——所以它是
+「**一步一节点时配对天然正确**」的正例，不是新口径的复验；**新口径（测调用者会话 + 写 `tokens`）
+的复验留待重启 harness 之后**。
+
+本会话（`session-4911cb07-a368-44f8-8a89-25f0112cf3d2`）的 DAG 文件实测（`revision 235`，
+读取时 `e179` 刚派发、另有 `t1`/`p1`/`p2` 三个 main 自有节点无 `agent`）：全程按「先 `set running`
+一个节点、**下一条消息**才派发」执行，7 个由子代理收尾的节点**各自 `agent` 互不相同**，
+且**每个都留下了 `samples`**（`tokens`/`elapsed_ms`）：
+
+| 节点 | `agent`（前 8 位） | `samples` tokens | `samples` elapsed_ms |
+|---|---|---|---|
+| `e177` | `2c036a02` | 4430676 | 202505 |
+| `n4` | `9bf3301c` | 10962231 | 345845 |
+| `n2` | `1c5d5597` | 1460935 | 113365 |
+| `n1` | `a7ef4a12` | 23988658 | 587434 |
+| `n3` | `5f9da8af` | 11050146 | 370347 |
+| `n5` | `6e88afa2` | 1246004 | 103227 |
+| `e178` | `c43e0bcb` | 5312534 | 213295 |
+
+**可操作判据**：同一时刻**只有一个** `running` 且无 `agent` 的节点 → 配对与样本必然对位。
+想复核就查 `/tmp/mint/dag/<session>.json` 的 `nodes[].agent` 与 `samples`：
+
+```bash
+S=session-4911cb07-a368-44f8-8a89-25f0112cf3d2
+node -e 'const d=JSON.parse(require("fs").readFileSync("/tmp/mint/dag/"+process.argv[1]+".json","utf8"));
+for(const n of d.nodes) if(n.agent) console.log(n.id, n.agent, JSON.stringify(d.samples?.[n.id]));' $S
+```
+
+每个有 `agent` 的节点都该有 `samples[node.id]`，且各节点 `agent` 两两不同（有重复或空样本 =
+配对退回了「一批多路」的错位模式，见上文）。
 
 #### 7.8.2 worktree 内 commit 的 sha 口径（#176）
 

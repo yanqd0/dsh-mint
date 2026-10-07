@@ -67,7 +67,10 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
    - `create` 同时记下**开工时所在的分支**（`worktree.target`）：它就是该节点的 merge 目标，
      后续 merge/remove 都按它判定（§3.5/§5）。detached HEAD 下记成 `HEAD`，此时不校验。
    - 先 `set` 该节点 `running`（见 `plan-dag.md` §4.1），再 create，再派活。
-2. **派活（一批在同一条 assistant message 里批量发）**：提示词五段不变（`parallel-exec.md` §3），
+   - **一个 worktree 一个节点，一步一节点**：`set running` → `create` → 派活按这个顺序走，
+     且派活的那一刻只让**一个**节点处于 `running` 且无 `agent`——同批多路派发会让宿主的
+     `agent` 配对整体错位（见 `parallel-exec.md` §3）。
+2. **派活（一批的活一起跑，但派发按「一步一节点」串行）**：提示词五段不变（`parallel-exec.md` §3），
    **必须写明该节点自己的 worktree 路径**，并写明「在本 worktree 内 `git add` / `git commit`」。
    漏写路径 = 子代理在主工作树上改，隔离失效。
 3. **子代理在自己的 worktree 内 commit**：

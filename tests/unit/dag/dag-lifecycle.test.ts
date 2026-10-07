@@ -152,6 +152,14 @@ const PAIRED_NODE = {
   agent: AGENT,
 } as const;
 
+/**
+ * 兜底结算写进 `note` 的前缀，与 `src/dag/dag-lifecycle.ts` 的 `FALLBACK_MARK` 同值。
+ *
+ * 这里**故意另写一份**（不 import 那个未导出的常量）：断言的是节点 note 上真的多了
+ * 那串可读文字，同值重复一次正是「契约」与「实现」分离的意义。
+ */
+const FALLBACK_MARK = '[fallback 认领] ';
+
 /** Let both queued writes (`samples`, then the settlement) run to completion. */
 async function drain(): Promise<void> {
   for (let turn = 0; turn < 20; turn += 1) {
@@ -313,6 +321,81 @@ describe('subagent/end persists a sample (#168)', () => {
     await drain();
 
     expect((await stored('lonely')).state).toBe('missing');
+  });
+});
+
+describe('subagent/end 的兜底认领', () => {
+  it('agent 找不到节点时，按认领记录结算并打上 fallback 前缀，样本也落回该节点', async () => {
+    // 不带 agent 的 running 节点 = `start` 会认领的那个；`someone-else` 是之后被
+    // 覆盖上去的（模拟错位/被覆盖），于是按 agent 定位必然找不到。
+    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    const events = harness();
+    measurable(events);
+    events.parents.set(AGENT, SESSION);
+
+    events.start({ runId: 'r1', id: AGENT });
+    await drain();
+    const claimed = await stored();
+    expect(claimed.state).toBe('ok');
+    if (claimed.state !== 'ok') return;
+    expect(claimed.doc.nodes[0]?.agent).toBe(AGENT);
+
+    await updateDag(SESSION, (state) => {
+      if (state.state !== 'ok') return { skip: true };
+      return {
+        doc: { ...state.doc, nodes: state.doc.nodes.map((node) => ({ ...node, agent: 'someone-else' })) },
+      };
+    }, dir);
+
+    events.end({ runId: 'r1', id: AGENT, stopReason: 'error' });
+    await drain();
+
+    const read = await stored();
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    expect(read.doc.nodes[0]).toMatchObject({ status: 'done', verdict: 'fail' });
+    expect(read.doc.nodes[0]?.note?.startsWith(FALLBACK_MARK)).toBe(true);
+    // 认领过的节点 id 也是样本的落点：agent 对不上，兜底记录还认得出它。
+    expect(read.doc.samples?.['a']?.tokens).toBe(124);
+  });
+
+  it('有配对记录但没认领到节点时，不写样本也不结算该 agent 的节点', async () => {
+    // 这次 `end` 的 runId 从未 `start` 过：remembered 为 undefined，而节点带着
+    // 另一个 agent，所以按 id 结算的那条分支必须**不被调用**。
+    await seedNode(SESSION, { ...PAIRED_NODE, agent: 'someone-else' });
+    const events = harness();
+    measurable(events);
+    events.parents.set(AGENT, SESSION);
+
+    events.end({ runId: 'never-started', id: AGENT, stopReason: 'error' });
+    await drain();
+
+    const read = await stored();
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    expect(read.doc.revision).toBe(1);
+    expect(read.doc.nodes[0]).toMatchObject({ agent: 'someone-else', status: 'running' });
+    expect(read.doc.samples).toBeUndefined();
+  });
+
+  it('按 agent 结算成功时，note 不带 fallback 前缀', async () => {
+    // 与第一条互补：这里 `start` 的认领把 `agent` 回填成 AGENT，之后没人覆盖它，
+    // 于是 `end` 走的是「按 agent 结算」那条路——fallback 分支不该被碰到。
+    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    const events = harness();
+    events.parents.set(AGENT, SESSION);
+
+    events.start({ runId: 'r1', id: AGENT });
+    await drain();
+    events.end({ runId: 'r1', id: AGENT, stopReason: 'boom' });
+    await drain();
+
+    const read = await stored();
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    expect(read.doc.nodes[0]?.note).toBe('boom');
+    expect(read.doc.nodes[0]?.note?.includes(FALLBACK_MARK)).toBe(false);
+    expect(read.doc.nodes[0]).toMatchObject({ status: 'done', verdict: 'fail' });
   });
 });
 
