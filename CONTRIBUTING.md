@@ -121,6 +121,24 @@ keep their defaults:
 | `autoInstallSkill` | `true` | Install the bundled skill into `$DSH_HOME/skills/mint` on plugin load. A symlink target is left alone (the dev form owns it). |
 | `debug` | `false` | Reserved for verbose plugin diagnostics. |
 | `mintEntry` | mint-faa's `run-mint.js` | Mint CLI to run: a `run-mint.js` path, a native mint binary, a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel. |
+| `openDagTab` | `true` | Auto-open the plan DAG sidebar tab once the session has a DAG. The browser half probes `GET /dsh-mint/dag` every 5s and stops after the host answers `autoOpen: false`; set it to `false` to leave the tab manual (the tab strip's add control still opens it). |
+
+## Plan DAG (`mint_plan_dag`)
+
+The DAG panel is fed by a host tool, not by mint: `mint_plan_dag` (init / add /
+set / get) writes `/tmp/mint/dag/<rootSessionId>.json`, and the panel polls the
+read-only `GET /dsh-mint/dag` route for it. Two things are worth knowing while
+developing on it:
+
+- **Session attribution resolves to the root session**: a call from a subagent
+  walks `session.header.parentSession` up to the top-level session, so a child
+  writes its own node into the parent's graph. The file is keyed by that root
+  session id, and the panel reads the session whose sidebar it is.
+- **The file is `/tmp`-only**: a reboot or `/tmp` cleanup is the documented
+  "no DAG" state (the panel shows an empty state, the tool tells the model to
+  `init`). Nothing tries to outlive the machine.
+- Per the skill, `init`/`add` (new nodes and edges) belong to the main agent;
+  subagents only `set` their own node. The tool validates data, not identity.
 
 ## Choosing the mint CLI
 

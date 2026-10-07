@@ -120,6 +120,31 @@ AbortController**（`RequestScope`），
 浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
 `MaxListeners`，且只能取消其中一个。
 
+> **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由（plan #31）**：它读
+> `/tmp/mint/dag/<sessionId>.json`（`src/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
+> ——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验后拼路径，非法即 400。信封
+> `{ ok:true, dag: DagView|null, revision, file, autoOpen, warnings? }`：**文件缺失 → 200 + `dag:null`**
+> （正常态，不是 404）；JSON/version 坏了 → 同样 `dag:null` 但多一个 `warnings` 与 `file`，面板显示
+> 「DAG 不可读 + 路径」而不是空白。`autoOpen` 是宿主把挂载行 `openDagTab` 回传给浏览器半边的地方
+> （客户端只有这一次机会知道开关，见下）。
+
+**自动打开 tab 的契约（plan #31；`notes/plan-dag.md` §4.7 的实现细节）**：
+
+- 页面类型（无 `patterns`）由 `ctx.sidebarRight.openTab(kind)` 打开；`TabDefinitionLike.multiple !== true`
+  时该 kind 的地址是**每会话固定**的（`pageAddress(kind)`），所以重复 `openTab` 只会聚焦同一个 tab、
+  **不会开第二个**——自动打开就建立在这条唯一性上。
+- 是否已打开查 `ctx.sidebarRight.openTabs.getSnapshot()`（`{sessionId, tabId, kind, contentId}[]`，
+  saved/adopted 布局都算）；当前在屏会话查 `ctx.sidebarRight.mounted.getSnapshot()`。
+  `sidebarRight` 是**可选注入**：`dsh.client.inject` 已声明 `@deepseek-ai/dsh-client-ui-sidebar-right`，
+  客户端 `inject` 数组也要加 `'sidebarRight'`，但代码仍按可选处理（lean 上下文/单测 double 可能没有）。
+- dsh-mint 用**5s 低频探测** `GET /dsh-mint/dag?session=<mounted>`：有 DAG（≥1 节点）且该会话尚无
+  `kind='plan-dag'` tab 就 `openTab('plan-dag')`；宿主回 `autoOpen:false`（挂载行 `openDagTab:false`）
+  即永久停表。**不做 SSE**：宿主侧没有推送原语，浏览器只能自己探。
+- 探测循环只在 `typeof document !== 'undefined'` 时启动（`apply` 里判），否则单测（node 环境）会留下
+  真实定时器；`document.visibilityState === 'hidden'` 时不请求。
+- 面板**数据**更新与自动打开解耦：`DagBody` 在 `useTabInfo().tab.visible` 为真时每 2s 拉一次
+  `/dsh-mint/dag`，`revision` 未变不重渲（与 mint 面板同风格）。
+
 `/dsh-mint/meta` 是面板的**字典路由**（一次响应替代 N 次读）：`plan list --all-states`、
 `milestone list --all-states`、`label list`（均 `--no-page`），加上 `placement`（issue → effective
 milestone + 是否直连）。

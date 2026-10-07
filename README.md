@@ -31,6 +31,11 @@ plan always has a mint plan behind it.
 - **Mint panel in the right sidebar** — opened from the tab strip's add control
   beside _Workspace files_ and _New terminal_, it shows this project's issues,
   plans and milestones read-only.
+- **Plan DAG panel** — a second sidebar tab, beside the mint panel, draws the
+  execution graph the agent records through the `mint_plan_dag` tool: pending,
+  running (pulsing) and settled nodes, with the full title, the self-reported
+  token count and the conclusion text on hover. It opens itself as soon as a DAG
+  exists for the session and refreshes while it is on screen.
 - **Reminders** — after a `git commit` the agent is reminded to register it, and
   after a mint state change to sync the host todo panel.
 - **Bundled mint skill** — the `mint` skill ships with this package and is

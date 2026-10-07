@@ -210,3 +210,63 @@
   token 在 `assistant/message` 事件的 `TokenUsage` 里，**当前没有现成的「子代理 token 查询接口」**。
   故 `tokens` 做成可选字段、由 agent / 子代理在 `set` 时**自报**，自动采集留待后续；缺失时 tooltip 不显示该行。
 - **客户端产物不走 HMR**：改 `src/client/**` 必须重建 `dist/client.js` 并**重启 harness + 刷新页面**。
+
+## 7. 实现落点与实测（plan #31 开工记录）
+
+> issue 拆分：#150 宿主核心（数据模型 + 状态文件 + 线上类型/路由名，**接口冻结批**）、
+> #155 宿主工具 + 生命周期 + 路由、#156 客户端面板。批次 2 的两条并行改互不相交的文件。
+> 端到端结论（面板四态、自动打开）**需要重启 harness 后**才有：宿主 bundle 与 client 产物都只在启动时加载。
+
+### 7.1 与本文规格的偏差（有意）
+
+- `src/records.ts` + `src/route-paths.ts` 划给「宿主核心」批（接口冻结）：否则客户端批必须改宿主文件，
+  两条并行就不成立。
+- **不新建 `src/client/dag-copy.ts`**：`dag.*` 文案并入 `src/client/copy.ts`——`ZH` 是 key 集真源、
+  `EN` 靠 `satisfies Record<CopyKey, string>` 编译期穷尽，拆第二份字典会破坏该不变量。
+- 信封多两个字段：`file`（面板显示「不可读 + 路径」）与 `autoOpen`（把挂载行 `openDagTab` 回传给浏览器
+  半边——客户端只有 HTTP 通道，这是唯一能知道开关的地方）。
+- `/dsh-mint/dag` **不做在线会话门禁**（本文只要求校验 sessionId 形状）：它按**文件**取数、不 spawn mint CLI，
+  所以不适用其余路由的 `session → cwd → 项目` 解析。
+- `src/dag.ts` 是**纯模块**（禁 `node:` 导入、不用 Node-only 的字节长度全局），因为客户端 bundle 会内联它
+  （`dagLayers` 单一真源）；`src/dag.test.ts` 有源码守卫。字节长度用 `TextEncoder`，两个 realm 都有。
+
+### 7.2 口径（本轮用户拍板）
+
+- **DAG 归属会话解析到根会话**：工具沿 `session.header.parentSession` 上溯（上限 16 跳 + visited 集合防环），
+  子代理 `set` 写的**就是 main 会话那张图**；面板只读 main 会话文件。
+- **`init` / `add` 不做身份硬拦**（只做数据校验），靠 skill 口径约束：
+  `skill/references/plan-dag.md` §4.1——新增节点/连边归 main，子代理只 `set` 自己的节点、可 `get`。
+- **自动打开**：客户端 5s 探测 `GET /dsh-mint/dag`；有 DAG（≥1 节点）且该会话尚无 `kind='plan-dag'` tab 就
+  `openTab('plan-dag')`（页面类型同 kind 地址固定 → 唯一、不重复开）；宿主 `autoOpen:false`
+  （挂载行 `openDagTab:false`）→ 永久停表；`document.visibilityState === 'hidden'` 时不请求。
+  探测循环只在 `typeof document !== 'undefined'` 时启动（否则单测会留真实定时器）。
+- 面板**数据**更新与自动打开解耦：`DagBody` 只在 `useTabInfo().tab.visible` 为真时每 2s 拉一次，
+  `revision` 未变不重渲；**不做 SSE**（宿主无推送原语）。
+
+### 7.3 落点
+
+| 层 | 文件 |
+| --- | --- |
+| 纯数据/校验/分层 | `src/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`） |
+| 文件层 | `src/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖） |
+| 工具面 | `src/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离） |
+| 生命周期 | `src/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点） |
+| 路由 | `src/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/route-paths.ts`、`src/records.ts` |
+| 客户端 | `src/client/dag-model.ts`（分层/几何/配色）、`src/client/DagBody.tsx`（SVG + tooltip + 2s 轮询）、`src/client/dag-open.ts`（5s 探测 + 唯一性判据）、`src/client/{index,api,copy,styles,types}.ts(x)` |
+
+### 7.4 实测
+
+- **已完成（本机，2026-10-07）**：`pnpm lint` 0 error；`pnpm check-types` 0 error；
+  `pnpm test:coverage` → **33 文件 / 668 用例全绿**，总覆盖率 96.13%（lines/statements）、91.41%（branches），
+  新文件：`src/dag.ts` 100%、`src/dag-store.ts` 96.3%、`src/dag-tool.ts` 98.9%、`src/dag-lifecycle.ts` 87.4%、
+  `src/client/dag-model.ts`+`dag-open.ts` 89–100%；`pnpm build` → `dist/index.js` + `dist/client.js`
+  （bundle 内已含 `mint_plan_dag` / `/dsh-mint/dag` / `plan-dag`）。
+- **需要重启 harness 后才能验（本会话做不到：重启即结束本会话）**：
+  - `curl -s 'http://127.0.0.1:3081/dsh-mint/dag?session=<本会话 id>'` → `{ok:true,dag:{…},revision,file,autoOpen:true}`；
+    不存在的会话 → `dag:null`。
+  - 面板：自动打开（唯一 tab）/ 四态配色 / running 闪烁 / 悬停显示完整标题、`tokens`、`note` 原文；
+    `prefers-reduced-motion: reduce` 下降级为静态描边。
+  - 容错：文件缺失（空态）、损坏（「不可读 + 路径」）。
+  - 生命周期实机：派一个子代理（该节点先 `set running`），确认 `agent` 字段被回填、
+    `/tmp/mint/dag/<根会话>.json` 落在 main 会话（`parentSession` 语义已按宿主源码核对：
+    `packages/subagent/subagent/src/child-agent.ts` 的 `childSessionMeta()` 写 `parentSession: parentHeader.id`）。
