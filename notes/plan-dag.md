@@ -52,7 +52,7 @@
 | `depends_on` | 否 | 前置节点 id 数组（缺省为空） |
 | `issue` | 否 | 关联 mint issue id |
 | `agent` | 否 | 子代理 sessionId（由 §3 生命周期回填） |
-| `tokens` | 否 | 可选，由 agent / 子代理在 `set` 时自报（见 §6） |
+| `tokens` | 否 | 可选，由 agent / 子代理在 `set` 时自报；**面板优先显示宿主的实测值**（§4.7），自报值只在实测缺失时退回 |
 | `note` | 否 | 子代理回给 main 的结论原文；tooltip 显示，可滚动 |
 | `updated_at` | 是 | 该节点最后一次变更时间 |
 
@@ -126,17 +126,32 @@
 ### 4.3 渲染
 
 - SVG 图；**宿主不下发布局**，客户端按 `depends_on` **拓扑分层、自上而下**，同层等距。
-- 节点圆角矩形 + 折线边；标签居中。
-- 悬停 tooltip：完整 `title`、`tokens`（有则显示）、`note`（结果原文，可滚动）。
+- 节点圆角矩形 + 折线边；框内**两行**：`label` 在上，下面一行是实测 `token` 与时长（见 §4.7）。
+- 悬停 tooltip：状态/结论**徽章行**、完整 `title`、实测 token 与时长（缺失时退回自报 `tokens`）、`note`（结果原文，可滚动）。
 
 ### 4.4 四态配色（已核对主题 token）
 
-| 状态 | 配色 |
+节点**底色**由 `dagTone` 决定（下表）；tooltip 的**徽章**另用 `dagStatusTone`：`pending` 与 `running` 都取 `warn`
+（徽章要一眼看到"在做什么"），只有 `done+fail` 取 `error`。
+
+| 状态 | 节点底色 |
 | --- | --- |
 | `pending` | 黄 `--dsw-alias-state-warn-primary` |
 | `running` | 绿 `--dsw-alias-state-success-primary` + 边框闪烁 |
 | `done` + `pass` | 绿 `--dsw-alias-state-success-primary`（不闪） |
 | `done` + `fail` | 红 `--dsw-alias-state-error-primary` |
+
+实测数字另有自己的两种颜色，只上数字、不上单位：
+
+| 量 | 颜色 |
+| --- | --- |
+| token 数字 | 黄 `--dsw-alias-state-warn-primary`（金钱语义，复用主题已有的 warn） |
+| 时长数字 | 紫 `#8b76f6`（`styles.ts` 的 `LIVE_TIME_COLOR` 常量） |
+
+> **为什么紫色是字面量**：本主题的 403 个 `--dsw-*` token 里没有紫色 alias——紫只出现在 onboarding 渐变
+> 与 shiki 语法色。这与 `labelBadge` 接受 label 自带字面色的先例同一取舍；浅/深主题下的可读性靠人眼确认，
+> 需要时改这一个常量。
+
 
 ### 4.5 闪烁与降级
 
@@ -146,19 +161,49 @@
 ### 4.6 刷新
 
 - `useTabInfo().tab.visible` 为真时每 **2000 ms** 轮询；不可见时不轮询。
-- `revision` 未变则不重渲；`tab.signal` 中止在途请求。
+- 跳过写的判据是「**整份读数**与上次相同」：`revision` + `sampled_at` + 逐字段 `metrics` 全等（plan #34）；
+  只比 `revision` 会让实时数字停住，只比 `sampled_at` 会让静止的图每 2 s 重渲一次。
+- **走秒**：存在 `running` 且该节点有实测 `elapsed_ms` 时才起一个 **1 s** 本地定时器，把
+  `sampled_at` 当锚算"最后一次采样又过了多久"；没有这样的节点、tab 不可见、组件卸载都会清掉它。
+- `tab.signal` 中止在途请求；失败的一轮会忘掉上次读数，避免"恢复后样本未变"被跳过而停在错误页。
 - **不做 SSE**。
 
-### 4.7 自动打开
+### 4.7 实时指标：token 与执行时间（plan #34）
+
+**真源 = 宿主会话投影，不是子代理自报**（dsh 子代理 UI 用的就是同一对值）：
+
+| 量 | 投影 key | 算法 |
+| --- | --- | --- |
+| token | `tokenUsage`（`@deepseek-ai/dsh-token-meter`，`dsh-base` 已挂） | `totals.uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens`（四桶不相交） |
+| 时长 | `subagentTiming`（`@deepseek-ai/dsh-subagent`） | `settledMs + max(0, end - active.since)`，`end = 节点 running ? sampledMs : active.through`（与子代理 UI 的 `activityDuration` 同式） |
+
+- 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
+  key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
+  `dag-lifecycle.ts` 读 `header.parentSession` 是同一条路径。
+- **宿主侧**：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`），
+  由 `/dsh-mint/dag` 调用；**只发实测过的字段**——缺失就是缺失，绝不写 0 猜测。
+- **信封**：`metrics: {<node id>: {tokens?, elapsed_ms?}}` 与 `sampled_at`（宿主 epoch ms）**只在
+  非空时出现**；无 `agents`/`sessionProjections`、会话已消失、文件缺失/不可读、投影形状漂移 → 一个字段都不出现。
+- **客户端降级**：`nodeMetricsMap` 只保留「文档里还有该节点 + 字段是非负安全整数」的项；
+  `running` 且拿不到时长 → 时间位显示 `?`；`done` 且两者都没有 → `-`；`pending` → 整行不渲染。
+- **走秒口径**：`elapsed_ms + max(0, browserNow - sampled_at)`——两个时钟不必同源，锚在采样时刻上
+  抵消偏差；宿主没给 `sampled_at` 就只画采样值（见 §4.6）。
+- **已知边界**：子代理结束后若其 agent 已不在 `agents` 注册表，该节点只剩自报 `tokens`、没有时长；
+  面板 2 s 轮询 + `subagent/end` 立刻把节点落成 `done`，窗口是秒级。真机复核口径：节点 `running` 时
+  `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的 `metrics`（见 §7.4 的实现记录）。
+
+### 4.8 自动打开
 
 - 沿用宿主先例（`dsh-client-ui-plan` 的 `PlanReviewOpen` 经 `ctx.sidebarRight.openTab` / `mounted` 自动开 review）。
 - 新增挂载行 config `openDagTab`，**默认 true**：客户端 `apply` 首次探测到本会话有 DAG 就开**一次**，
   用一次性标记防反复抢焦点。
 - `src/client/types.ts` 加 `sidebarRight` 最小结构类型；`src/client/index.tsx` 的 `inject` 加 `sidebarRight`。
 
-### 4.8 文案
+### 4.9 文案
 
 - 沿用 locale 命名空间 `mint`，新键统一 `dag.` 前缀；ZH/EN 双字典，沿用 `src/client/copy.ts` 纪律。
+- plan #34 新增：`dag.liveTokens`（实测 token 行，占位 `{tokens}`）、`dag.seconds`（时长单位，ZH `秒` / EN `s`）；
+  键名在 `src/client/dag-model.ts` 的 `DAG_COPY_KEYS` 里只写一次（`copy.test.ts` 的"无死 key"判据读源码文本）。
 
 ## 5. 落点与测试文件清单
 
@@ -206,9 +251,12 @@
 - **并行 `add` / `set`** → 按 session 锁串行；锁只在本插件进程内有效，**同机多 harness 进程下退化**，
   属已知限制。
 - **环 / 未知依赖 / 未知 node id / 非终态 `verdict`** → 工具拒绝并回显，不写文件。
-- **token 采集限制**：宿主 `sessionStats` 投影只有 turns / steps / 墙钟时间，**无 token**；
-  token 在 `assistant/message` 事件的 `TokenUsage` 里，**当前没有现成的「子代理 token 查询接口」**。
-  故 `tokens` 做成可选字段、由 agent / 子代理在 `set` 时**自报**，自动采集留待后续；缺失时 tooltip 不显示该行。
+- **token 采集（plan #31 的旧结论已作废）**：宿主 `sessionStats` 确实只有 turns / steps / 墙钟时间，
+  但 `@deepseek-ai/dsh-token-meter` 另外注册了 **`tokenUsage`** 投影，`@deepseek-ai/dsh-subagent`
+  注册了 **`subagentTiming`**；两者都能经 `ctx.sessionProjections.stateOf(session, key)` 按子会话读到
+  （plan #34 落地，见 §4.7）。节点 `tokens` 仍是可选**自报**字段，现在只作**降级**用：实测缺失时 tooltip 显示它。
+- **实测的读取窗口**：子代理结束后若其 agent 已不在 `ctx.agents` 注册表，该节点取不到时长与实测 token
+  （见 §4.7 末尾），属已知边界而非 bug。
 - **客户端产物不走 HMR**：改 `src/client/**` 必须重建 `dist/client.js` 并**重启 harness + 刷新页面**。
 
 ## 7. 实现落点与实测（plan #31 开工记录）
@@ -273,3 +321,29 @@
   - **仍需人眼确认（agent 无 DOM 可自证）**：tab 自动打开（唯一）、四态配色（黄 pending / 绿闪 running /
     绿 done+pass / 红 done+fail）、悬停 tooltip（完整 `title`、`tokens`、`note` 原文）、
     `prefers-reduced-motion: reduce` 降级；浏览器若命中旧 `client.js` 缓存需硬刷新。
+
+### 7.5 plan #34：实时指标落地与实测
+
+> issue 拆分：#161 宿主投影读取 + 线上类型（接口冻结）、#162 路由信封、#163 客户端模型/样式/文案、
+> #164 面板渲染。**客户端产物不走 HMR**：宿主的 `dist/index.js` 只在 harness 启动时载入，
+> 所以新路由字段要**重启 harness** 才有；`dist/client.js` 重建后刷新页面即可。
+
+- 落点：`src/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `readDagMetrics`）、
+  `src/routes.ts` 的 `MintRouteDeps.readDagMetrics` 缝 + `sendDag` 发布、`src/client/dag-model.ts`
+  （`nodeMetricsMap` / `formatCount` / `formatSeconds` / `liveElapsedMs` / `dagStatusTone` / `DAG_COPY_KEYS`、
+  `DAG_NODE_H` 34→44）、`src/client/styles.ts`（`LIVE_TOKENS_COLOR` / `LIVE_TIME_COLOR` /
+  `dagLiveTokensStyle` / `dagLiveTimeStyle` / `DAG_NODE_METRICS`）、`src/client/DagBody.tsx`
+  （`NodeMetricsLine` + 详情卡徽章行 + 1 s 走秒 + 整份读数守卫）。
+- 已实测（本机）：`pnpm lint` / `pnpm check-types` 0 error；`pnpm test` **34 文件 / 727 用例全绿**；
+  `pnpm test:coverage` 总覆盖率 96%+，`src/dag-metrics.ts` 100% statements（唯一未覆盖分支是
+  `dagDir ?? DAG_DIR` 的缺省值）；`pnpm build` 产出 `dist/index.js`（含 `sampled_at`）与 `dist/client.js`
+  （含 `dsh-mint-dag-pulse`）。
+- **已实测（产物级端到端，不经 GUI）**：用 `dist/index.js` 的 `apply` + 假 ctx（`agents.get` 返回带
+  session 的对象、`sessionProjections.stateOf` 返回真实形状的 `tokenUsage`/`subagentTiming`）驱动
+  `/dsh-mint/dag`：信封得到 `metrics.r1 = {tokens: 46600, elapsed_ms: 8999}`（= 1200+340+45000+60 与
+  4000+(now-(now-5000))）且 `sampled_at` 为 number；无 agent 的节点与 pending 节点**都不出现在 metrics 里**；
+  文件缺失时信封只有 `autoOpen,dag,file,ok,revision`（**没有** `metrics`/`sampled_at` 键）。
+- **未实测、留给人眼/重启复核**：真机 `ctx.agents.get(子会话)` 对**已结束**子代理是否仍返回 session
+  （计划假设为真——`dag-lifecycle.ts` 已依赖同一结构读 `header.parentSession`）；若为假，`done` 节点只剩
+  自报 token、没有时长，属 §4.7 已记录的降级。另外紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、
+  `?` 与 `-` 的出现时机都只能在页面上确认。

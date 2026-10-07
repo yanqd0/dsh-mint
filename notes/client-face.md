@@ -123,10 +123,19 @@ AbortController**（`RequestScope`），
 > **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由（plan #31）**：它读
 > `/tmp/mint/dag/<sessionId>.json`（`src/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
 > ——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验后拼路径，非法即 400。信封
-> `{ ok:true, dag: DagView|null, revision, file, autoOpen, warnings? }`：**文件缺失 → 200 + `dag:null`**
+> `{ ok:true, dag: DagView|null, revision, file, autoOpen, metrics?, sampled_at?, warnings? }`：**文件缺失 → 200 + `dag:null`**
 > （正常态，不是 404）；JSON/version 坏了 → 同样 `dag:null` 但多一个 `warnings` 与 `file`，面板显示
 > 「DAG 不可读 + 路径」而不是空白。`autoOpen` 是宿主把挂载行 `openDagTab` 回传给浏览器半边的地方
 > （客户端只有这一次机会知道开关，见下）。
+
+> **实时指标（plan #34）**：宿主为**每个有 `agent` 的节点**读子会话的会话投影——`tokenUsage`
+> （四桶之和）与 `subagentTiming`（`settledMs + max(0, end - active.since)`，与 dsh 子代理 UI 同式），
+> 路径是 `ctx.get('agents').get(childId).session` + `ctx.get('sessionProjections').stateOf(session, key)`
+> （**两个服务都在每次请求时解引用**，与 `getCwd` 同风格；都属可选服务）。**只在实测到东西时**才发
+> `metrics: {<node id>: {tokens?, elapsed_ms?}}` 与 `sampled_at`（宿主 epoch ms，同一答案共用一个采样钟）；
+> 没服务、会话消失、文件缺失/不可读、投影形状漂移 → 两个字段都不出现（**不是 `{}`、不是 0**）。浏览器侧
+> 用 `sampled_at` 当锚做 1 s 走秒，故宿主与浏览器时钟无需同源。实现与降级口径见
+> [plan-dag.md](plan-dag.md) §4.7。
 
 **自动打开 tab 的契约（plan #31；`notes/plan-dag.md` §4.7 的实现细节）**：
 
@@ -143,7 +152,8 @@ AbortController**（`RequestScope`），
 - 探测循环只在 `typeof document !== 'undefined'` 时启动（`apply` 里判），否则单测（node 环境）会留下
   真实定时器；`document.visibilityState === 'hidden'` 时不请求。
 - 面板**数据**更新与自动打开解耦：`DagBody` 在 `useTabInfo().tab.visible` 为真时每 2s 拉一次
-  `/dsh-mint/dag`，`revision` 未变不重渲（与 mint 面板同风格）。
+  `/dsh-mint/dag`；跳过写的判据是**整份读数**相同（`revision` + `sampled_at` + 逐字段 `metrics`），
+  只比 `revision` 会让实时数字停住。`running` 且有实测时长时另起 1s 本地定时器走秒（plan #34）。
 
 `/dsh-mint/meta` 是面板的**字典路由**（一次响应替代 N 次读）：`plan list --all-states`、
 `milestone list --all-states`、`label list`（均 `--no-page`），加上 `placement`（issue → effective

@@ -25,8 +25,9 @@
 - **右侧边栏 mint 面板** —— 从 tab 栏的新建按钮打开，与「工作区文件」「新建终端」并列，
   以只读方式显示当前会话项目的 issue、plan 与 milestone。
 - **plan DAG 面板** —— 与 mint 面板并列的第二个侧边栏 tab，画出 agent 用 `mint_plan_dag`
-  记录的 plan 执行图：pending、running（边框闪烁）与已定论节点，悬停显示完整标题、自报 token
-  与结论原文；本会话一有 DAG 就自动打开，可见期间持续刷新。
+  记录的 plan 执行图：pending、running（边框闪烁）与已定论节点，各自显示宿主从子会话实测的
+  token 数与执行时长，悬停显示完整标题与结论原文；本会话一有 DAG 就自动打开，running 节点的
+  时间在可见期间逐秒增长。
 - **提醒** —— `git commit` 后提醒 agent 登记；mint 状态变更后提醒同步宿主 todo 面板。
 - **内置 mint skill** —— 随包发布的 `mint` skill 在插件加载时装到 `$DSH_HOME/skills/mint`，
   无需手工安装 skill，agent 即知 issue/plan/milestone 流程。
