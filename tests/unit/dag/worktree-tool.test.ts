@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -48,6 +48,25 @@ function commit(cwd: string, name: string, text: string, message: string): void 
   execFileSync('git', [...IDENTITY, 'commit', '-q', '-m', message], { cwd });
 }
 
+/**
+ * Commit a file and backdate **both** commit dates to 2020.
+ *
+ * `prune` 的年龄判定取「目录 mtime 与分支头提交时间的较大者」，所以只做旧提交还不够：
+ * 调用方随后要把树目录 `utimesSync` 到同一时刻，两者一起才是「真的够老」。
+ */
+function commitBackdated(cwd: string, name: string, text: string, message: string): void {
+  writeFileSync(join(cwd, name), text);
+  execFileSync('git', ['add', '--', name], { cwd });
+  execFileSync('git', [...IDENTITY, 'commit', '-q', '-m', message], {
+    cwd,
+    env: {
+      ...process.env,
+      GIT_AUTHOR_DATE: '2020-01-01T00:00:00Z',
+      GIT_COMMITTER_DATE: '2020-01-01T00:00:00Z',
+    },
+  });
+}
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'dsh-mint-worktree-tool-'));
   repo = mkdtempSync(join(tmpdir(), 'dsh-mint-worktree-repo-'));
@@ -81,6 +100,15 @@ async function seedGraph(session: string = SESSION): Promise<void> {
   const added = await executeDagTool(
     { sessionId: session, dagDir: dir },
     { action: 'add', nodes: [{ id: 'a1', label: '①', title: 'work', phase: 'exec', issue: 172 }] }
+  );
+  expect(added.ok).toBe(true);
+}
+
+/** Add one more node to the seeded graph, so a second tree has something to hang on. */
+async function addNode(id: string, session: string = SESSION): Promise<void> {
+  const added = await executeDagTool(
+    { sessionId: session, dagDir: dir },
+    { action: 'add', nodes: [{ id, label: id, title: id, phase: 'exec' }] }
   );
   expect(added.ok).toBe(true);
 }
@@ -129,7 +157,7 @@ describe('installWorktreeTool', () => {
       additionalProperties: false,
       required: ['action'],
       properties: {
-        action: { type: 'string', enum: ['create', 'list', 'merge', 'remove'] },
+        action: { type: 'string', enum: ['create', 'list', 'merge', 'remove', 'prune'] },
         node: { type: 'string' },
         base: { type: 'string' },
         force: { type: 'boolean' },
@@ -174,7 +202,7 @@ describe('installWorktreeTool', () => {
 
 describe('WORKTREE_TOOL_DESCRIPTION', () => {
   it('keeps every action name and the batch rule in the one description', () => {
-    for (const marker of ['create', 'list', 'merge', 'remove', '同批同 base']) {
+    for (const marker of ['create', 'list', 'merge', 'remove', 'prune', '同批同 base']) {
       expect(WORKTREE_TOOL_DESCRIPTION, marker).toContain(marker);
     }
   });
@@ -198,6 +226,7 @@ describe('parseWorktreeAction', () => {
 
   it('reads each action into its node, base and force', () => {
     expect(parseWorktreeAction({ action: 'list' })).toEqual({ action: 'list' });
+    expect(parseWorktreeAction({ action: 'prune' })).toEqual({ action: 'prune' });
     expect(parseWorktreeAction({ action: 'create', node: 'a1' })).toEqual({
       action: 'create',
       node: 'a1',
@@ -226,6 +255,13 @@ describe('parseWorktreeAction', () => {
     expect(errorOf({ action: 'merge', node: 'a1', base: 'HEAD' })).toContain('base 只用于 create');
     expect(errorOf({ action: 'create', node: 'a1', force: true })).toContain('force 只用于 remove');
     expect(errorOf({ action: 'list', force: true })).toContain('force 只用于 remove');
+  });
+
+  it('refuses node, base and force on prune', () => {
+    // prune 是仓库级动作：它按规则处理整仓，点名哪一棵是 remove 的事。
+    expect(errorOf({ action: 'prune', node: 'a1' })).toContain('prune 不接受 node');
+    expect(errorOf({ action: 'prune', base: 'HEAD' })).toContain('base 只用于 create');
+    expect(errorOf({ action: 'prune', force: true })).toContain('force 只用于 remove');
   });
 
   it('validates the node id, base and force shapes', () => {
@@ -459,5 +495,49 @@ describe('executeWorktreeTool', () => {
       .filter((line) => !line.startsWith('  …'));
     expect(rows).toHaveLength(20);
     expect(listed.summary).toContain('  …还有 1 条');
+  });
+});
+
+describe('executeWorktreeTool prune', () => {
+  it('reports the trunk when the repository has no dsh-mint worktree', async () => {
+    // 仓库级动作：没有 DAG、也没有会话也要能问（与 `list` 同一口径）。
+    const pruned = await executeWorktreeTool(
+      { sessionId: undefined, dagDir: dir, repo, git: runGit },
+      { action: 'prune' }
+    );
+    expect(pruned.ok).toBe(true);
+    expect(pruned.summary).toBe('[worktree] 本仓没有可清理的 dsh-mint worktree');
+  });
+
+  it('removes the old merged tree, keeps the unmerged one and reads out both', async () => {
+    await seedGraph();
+    await addNode('b1');
+    // a1：分支上有一个被做旧到 2020 的 commit，再合回 main → 已合并 + 干净 + 够老。
+    expect((await runWorktree({ action: 'create', node: 'a1' })).ok).toBe(true);
+    const old = (await node())?.worktree?.path;
+    if (old === undefined) return;
+    commitBackdated(old, 'feature.txt', 'work\n', 'work a1');
+    expect((await runWorktree({ action: 'merge', node: 'a1' })).ok).toBe(true);
+    const when = new Date('2020-01-01T00:00:00Z');
+    // 年龄取「目录 mtime 与分支头提交时间」的较大者，所以两边都要做旧。
+    utimesSync(old, when, when);
+    // b1：分支上有未合并的 commit（刚刚做的）→ 无论多旧都必须保留。
+    expect((await runWorktree({ action: 'create', node: 'b1' })).ok).toBe(true);
+    const b1 = join(repo, '.git', 'dsh-mint', 'worktrees', SESSION, 'b1');
+    commit(b1, 'other.txt', 'work\n', 'work b1');
+    utimesSync(b1, when, when);
+
+    const pruned = await executeWorktreeTool(
+      { sessionId: undefined, dagDir: dir, repo, git: runGit },
+      { action: 'prune' }
+    );
+    expect(pruned.ok).toBe(true);
+    expect(pruned.summary).toContain('删除 1 棵，保留 1 棵');
+    expect(pruned.summary).toContain(`removed ${SESSION}/a1`);
+    expect(pruned.summary).toContain(`kept ${SESSION}/b1`);
+    expect(pruned.summary).toContain('未合并');
+    // 现场按 verdict 落地：够格的没了，未合并的还在盘上。
+    expect(existsSync(old)).toBe(false);
+    expect(existsSync(b1)).toBe(true);
   });
 });

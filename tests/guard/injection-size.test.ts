@@ -146,12 +146,12 @@ describe('per-request injection budget (#61)', () => {
   });
 
   // The worktree tool is the third per-request budget, and the only one whose
-  // actions touch the filesystem: the description has to name all four (a model
-  // that cannot see `remove` leaves trees behind) and the batch rule that makes
-  // the merges independent.
+  // actions touch the filesystem: the description has to name all five (a model
+  // that cannot see `remove`/`prune` leaves trees behind, or never clears the old
+  // ones) and the batch rule that makes the merges independent.
   it('keeps the worktree tool description under 700 bytes', () => {
     expect(bytes(WORKTREE_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
-    for (const marker of ['create', 'list', 'merge', 'remove']) {
+    for (const marker of ['create', 'list', 'merge', 'remove', 'prune']) {
       expect(WORKTREE_TOOL_DESCRIPTION, marker).toContain(marker);
     }
   });

@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   createWorktree,
   mergeWorktree,
+  pruneWorktrees,
   removeWorktree,
   worktreeBranch,
   worktreePath,
@@ -114,7 +115,14 @@ function fakeGit(
       return Promise.resolve(answer(false, '', NO_WORKTREE));
     }
     if (command === 'worktree' && second === 'remove') return Promise.resolve(remove);
+    // `prune` 清孤儿元数据：本用例假的是「老 git」，这条命令在 1.9 上也不存在，
+    // 但 `pruneWorktrees` 只要求「失败被忽略」，所以给成功答复不影响断言。
+    if (command === 'worktree' && second === 'prune') return Promise.resolve(answer(true));
     if (command === 'merge-base') return Promise.resolve(answer(true));
+    // `installedWorktrees` 的时间列（`log -1 --format=%cI`）：假 runner 只要形状对，
+    // 这一档用例断言的是「目录读不到」，与时间值无关。
+    if (command === 'log') return Promise.resolve(answer(true, '2026-01-01T00:00:00+00:00\n'));
+    if (command === 'status') return Promise.resolve(answer(true, ''));
     return Promise.reject(new Error(`假 git 未覆盖：${args.join(' ')}`));
   };
 }
@@ -502,5 +510,109 @@ describe('worktree 降级指引 (#187)', () => {
     if (outcome.ok) return;
     expect(outcome.error).toContain('git version 1.9.0');
     expect(outcome.error).toContain('共享工作区串行');
+  });
+});
+
+/**
+ * 开工点清理（prune）：保留现场的另一半。
+ *
+ * 判据全部是「真的 git 在真仓里怎么答」，所以这些用例也走真临时仓。年龄一律用
+ * `options` 拨时间（`nowMs` / `minAgeMs`），不去改系统时钟——树够不够老只由这两个
+ * 数决定，测试要能一眼看出自己卡的是哪一档。
+ */
+describe('pruneWorktrees', () => {
+  /** 建一棵树，失败就抛（用例的后半段都建立在「树真的建出来了」之上）。 */
+  async function tree(id: string): Promise<string> {
+    const created = await createWorktree(deps(), { id });
+    if (!created.ok) throw new Error(`建树失败：${created.error}`);
+    return created.worktree.path;
+  }
+
+  it('removes a merged, clean and old tree but keeps its branch', async () => {
+    // 刚建出来的树就在 HEAD 上（零领先）→ 已合并；没有未提交改动 → 干净。
+    const path = await tree('a1');
+    const branch = worktreeBranch(deps(), { id: 'a1' });
+
+    const results = await pruneWorktrees(deps(), { minAgeMs: 0 });
+
+    expect(results).toHaveLength(1);
+    expect(results[0]?.verdict).toBe('removed');
+    expect(results[0]?.node).toBe('a1');
+    expect(results[0]?.branch).toBe(branch);
+    expect(existsSync(path)).toBe(false);
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).not.toContain(path);
+    // 不删分支：树没了，分支还在，退回去看/重新签出都还有凭据。
+    expect(gitIn(repo, 'branch', '--list', branch)).toContain(branch);
+  });
+
+  it('keeps a tree whose branch is not merged', async () => {
+    const path = await tree('a1');
+    commitFile(path, 'feature.txt', 'work\n', 'work a1');
+
+    const results = await pruneWorktrees(deps(), { minAgeMs: 0 });
+
+    expect(results[0]?.verdict).toBe('unmerged');
+    expect(existsSync(path)).toBe(true);
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(path);
+  });
+
+  it('keeps a dirty tree even when it is merged and old', async () => {
+    // 脏树是「绝不 --force」那条口径的验收点：不带 --force 的 remove 自己也会拒绝。
+    const path = await tree('a1');
+    writeFileSync(join(path, 'uncommitted.txt'), 'wip\n');
+
+    const results = await pruneWorktrees(deps(), { minAgeMs: 0 });
+
+    expect(results[0]?.verdict).toBe('dirty');
+    expect(existsSync(path)).toBe(true);
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(path);
+  });
+
+  it('keeps a tree younger than the minimum age', async () => {
+    const path = await tree('a1');
+    commitFile(path, 'feature.txt', 'work\n', 'work a1');
+    const merged = await mergeWorktree(deps(), { id: 'a1' });
+    expect(merged.ok).toBe(true);
+
+    // 刚合完 5 分钟：按缺省一小时的口径还太新（时间不靠系统时钟，只靠这两个数）。
+    const results = await pruneWorktrees(deps(), {
+      nowMs: Date.now() + 5 * 60 * 1000,
+      minAgeMs: 3_600_000,
+    });
+
+    expect(results[0]?.verdict).toBe('recent');
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it('cleans up the metadata git kept for a manually deleted directory', async () => {
+    const path = await tree('a1');
+    rmSync(path, { recursive: true, force: true });
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).toContain(path);
+
+    const results = await pruneWorktrees(deps(), { minAgeMs: 0 });
+
+    // 目录已被手工删掉：年龄/干净都无从测起，结论只能是「保留现场」那两档之一。
+    expect(['dirty', 'failed', 'unmeasured']).toContain(results[0]?.verdict);
+    // 收尾那次 `git worktree prune` 把孤儿元数据清掉，list 不再认它。
+    expect(gitIn(repo, 'worktree', 'list', '--porcelain')).not.toContain(path);
+    expect(gitIn(repo, 'branch', '--list', worktreeBranch(deps(), { id: 'a1' }))).toContain(
+      'dsh-mint/wt/'
+    );
+  });
+
+  it('keeps a tree whose directory metadata cannot be read', async () => {
+    // 真 git 装不出「路径读不到但元数据还在」：假 runner 报一棵已合并、干净的树，
+    // 路径却不存在 → `statSync` 失败 → 年龄不可测 → 保留（宁可不删，绝不抛）。
+    // 路径仍要落在命名空间里（否则被 `installedWorktrees` 的过滤挡掉，测不到这一档）。
+    const missing = join(repo, '.git', 'dsh-mint', 'worktrees', SESSION, 'a1');
+    const branchRef = `branch refs/heads/${worktreeBranch(deps(), { id: 'a1' })}`;
+    const withFake = deps({
+      git: fakeGit({ worktreeList: answer(true, `worktree ${missing}\n${branchRef}\n`) }),
+    });
+
+    const results = await pruneWorktrees(withFake, { minAgeMs: 0 });
+
+    expect(results[0]?.verdict).toBe('unmeasured');
+    expect(results[0]?.node).toBe('a1');
   });
 });

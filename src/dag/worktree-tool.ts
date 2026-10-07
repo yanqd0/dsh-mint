@@ -16,6 +16,8 @@
  * session's document and node), so a refused git command can never leave a
  * worktree claim in the stored graph. The git side itself lives in
  * `dag-worktree.ts`; this file only decides what the graph does with the answer.
+ * `list` 与 `prune` 更彻底：它们连文档都不读，是纯粹的**仓库级**动作（`list` 看现状、
+ * `prune` 在开工点按规则收旧的）。
  *
  * Git runs in the plugin process (`runGit`), not through a subagent's sandboxed
  * bash: the tree has to be created where the delegating agent can reach it, and
@@ -26,9 +28,10 @@ import {
   createWorktree,
   installedWorktrees,
   mergeWorktree,
+  pruneWorktrees,
   removeWorktree,
 } from './dag-worktree.js';
-import type { WorktreeDeps, WorktreeNode } from './dag-worktree.js';
+import type { PruneResult, PruneVerdict, WorktreeDeps, WorktreeNode } from './dag-worktree.js';
 import { isRecord } from '../mint/mint-json.js';
 import { runGit } from '../shared/git.js';
 import type { GitRunResult } from '../shared/git.js';
@@ -50,8 +53,11 @@ export const TOOL_NAME = 'worktree';
 /** Every refusal and answer carries this prefix, so a worktree line is not a DAG line. */
 const PREFIX = '[worktree] ';
 
-/** The four operations this tool accepts; `prune` is a later issue, not an alias. */
-export const WORKTREE_ACTIONS = ['create', 'list', 'merge', 'remove'] as const;
+/**
+ * Every operation this tool accepts. `list` 与 `prune` 是仓库级动作（不读 DAG），
+ * 其余三个作用在某个节点上。
+ */
+export const WORKTREE_ACTIONS = ['create', 'list', 'merge', 'remove', 'prune'] as const;
 
 /** One operation, as {@link parseWorktreeAction} validated it. */
 export type WorktreeAction = (typeof WORKTREE_ACTIONS)[number];
@@ -60,8 +66,8 @@ export type WorktreeAction = (typeof WORKTREE_ACTIONS)[number];
  * How many trees `list` prints before it starts counting.
  *
  * The output goes into the model's context: twenty lines is already a long
- * answer, and everything past it is one number until `prune` (the next issue)
- * gives the leftovers a home.
+ * answer, and `prune` reports the same way at the start of a plan — the count on
+ * the last line is what tells the model there are more.
  */
 const LIST_MAX = 20;
 
@@ -75,10 +81,11 @@ const LIST_MAX = 20;
  */
 export const WORKTREE_TOOL_DESCRIPTION = [
   '按节点管理 git worktree：每棵独立的树对应 DAG 的一个节点；只回摘要。',
-  'action：create(node?,base?) 建树并记录 target=当前分支；list 列出本仓已装的树（无需 DAG）；',
+  'action：create(node?,base?) 建树并记 target=当前分支；list 列出本仓已装的树（无需 DAG）；',
   'merge(node) 合回该节点记录的目标分支（不一致即拒绝，冲突不裁决）；remove(node?,force?) 清理（未合并默认拒绝）。',
+  'prune 按「未合并 / 脏树 / 不到 1 小时」保护清理旧的（开工点用，仓库级）；',
   '只有 main agent 调 create/merge/remove；一步一节点派发、同批同 base（见 skill worktree-exec.md）。',
-  '例：worktree({action:"create",node:"a1",base:"<sha>"})。',
+  '例：worktree({action:"prune"}) 或 worktree({action:"create",node:"a1",base:"<sha>"})。',
 ].join('\n');
 
 /**
@@ -96,7 +103,8 @@ const WORKTREE_TOOL_PARAMETERS: Record<string, unknown> = {
     action: {
       type: 'string',
       enum: [...WORKTREE_ACTIONS],
-      description: '要执行的操作：create 建树，list 列出，merge 合回目标分支，remove 清理',
+      description:
+        '要执行的操作：create 建树，list 列出，merge 合回目标分支，remove 清理，prune 按规则清理旧的（仓库级）',
     },
     node: { type: 'string', description: '目标 DAG 节点 id（create/merge/remove 必需）' },
     base: {
@@ -181,14 +189,32 @@ function listLine(entry: {
   return `  ${entry.session}/${entry.node} · ${branch} · ${state} · ${tip} · ${entry.path}`;
 }
 
+/** 保留原因的中文说法：`prune` 的每一行都要说清「为什么没删」。 */
+const PRUNE_REASONS: Record<Exclude<PruneVerdict, 'removed'>, string> = {
+  unmerged: '未合并',
+  dirty: '有未提交改动',
+  recent: '不到 1 小时',
+  unmeasured: '年龄不可测',
+  failed: '删除失败',
+};
+
+/** One prune row: what happened to one tree, in one line. */
+function pruneLine(entry: PruneResult): string {
+  const where = `${entry.session}/${entry.node} · ${entry.branch}`;
+  return entry.verdict === 'removed'
+    ? `  removed ${where}`
+    : `  kept ${where} · ${PRUNE_REASONS[entry.verdict]}`;
+}
+
 /**
  * Validate raw tool arguments into a typed call.
  *
  * The combinations are the point: `base` only ever means something to `create`
  * (it is the commit a parallel batch shares), `force` only to `remove` (the
- * override of the unmerged guard), and every action except `list` names exactly
- * one node. Accepting a stray field would silently ignore an intent the caller
- * clearly had, so each one is refused by name.
+ * override of the unmerged guard), and every action except the two repository-
+ * level ones (`list`/`prune`) names exactly one node. Accepting a stray field
+ * would silently ignore an intent the caller clearly had, so each one is refused
+ * by name.
  *
  * @param raw - the tool call's arguments, however malformed.
  */
@@ -206,7 +232,13 @@ export function parseWorktreeAction(raw: unknown): WorktreeCall | { error: strin
     if (typeof checked !== 'string') return checked;
     call.node = checked;
   }
-  if (call.action !== 'list' && call.node === undefined) return { error: '该动作需要 node' };
+  // `prune` 与 `list` 一样不认节点：它按规则处理整仓，点名哪一棵是 `remove` 的事。
+  if (call.action !== 'list' && call.action !== 'prune' && call.node === undefined) {
+    return { error: '该动作需要 node' };
+  }
+  if (call.action === 'prune' && call.node !== undefined) {
+    return { error: 'prune 不接受 node（整仓按规则清理，单棵用 remove）' };
+  }
   if (args.base !== undefined) {
     if (call.action !== 'create') return { error: 'base 只用于 create' };
     if (typeof args.base !== 'string' || args.base.trim() === '') {
@@ -255,6 +287,21 @@ export async function executeWorktreeTool(
       shown.push(`  …还有 ${String(found.length - shown.length)} 条`);
     }
     return answer(shown.join('\n'));
+  }
+
+  // `prune` 同样是仓库级：开工点先收旧的，判据与「删哪一棵」都在 git 层，
+  // 这里只负责排版。它不接受 node —— 点名一棵是 `remove` 的事（显式丢弃）。
+  if (parsed.action === 'prune') {
+    const results = await pruneWorktrees({ git, repo, session: '' });
+    if (results.length === 0) return answer('本仓没有可清理的 dsh-mint worktree');
+    const removed = results.filter((entry) => entry.verdict === 'removed').length;
+    const lines = [
+      `prune：删除 ${String(removed)} 棵，保留 ${String(results.length - removed)} 棵；`,
+    ];
+    lines.push(...results.slice(0, LIST_MAX - 1).map((entry) => pruneLine(entry)));
+    const rest = results.length - (lines.length - 1);
+    if (rest > 0) lines.push(`  …还有 ${String(rest)} 条`);
+    return answer(lines.join('\n'));
   }
 
   const sessionId = input.sessionId;

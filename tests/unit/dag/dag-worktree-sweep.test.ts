@@ -127,7 +127,10 @@ describe('outstandingWorktrees (#175)', () => {
     const text = worktreeSweepReminder([node('a', 'conflict')]);
     expect(text).toContain('a conflict');
     expect(text).toContain('b/a');
-    // 清理命令走独立工具（worktree 动作已从 mint_plan_dag 拆出）。
+    // 收尾不再逐棵清理：口径是保留现场，旧树由下一个开工点的 prune 按规则收。
+    expect(text).toContain('保留现场');
+    expect(text).toContain('worktree({action:"prune"})');
+    // 显式丢弃某一棵仍然走 remove（两个入口都要给）。
     expect(text).toContain('worktree({action:"remove"');
     expect(text).not.toContain('mint_plan_dag({action:"wt"');
   });

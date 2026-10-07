@@ -28,6 +28,10 @@
 当前 plan 的 issue 在「本次工作开工」那一刻锁到 `planned`，计划模式退出口正是那一刻（#135/#136）——
 但**只有本次确实要开工**才锁；只登记、或等用户拍板先做哪条 plan，就留 `open`（#141）。
 
+- **开工点先清 worktree**：真正动手前（`plan plan` 那一步）先 `worktree({action:"prune"})`——
+  上一批的树按「保留现场」口径留在盘上（见 §4），这里是收掉它们的唯一时机；
+  未合并 / 有未提交改动 / 不到 1 小时的会被保护下来（`worktree-exec.md` §7）。
+
 ## 2. 计划与归属
 
 - 属已有 plan → `mint({ args: ["plan","attach","<plan>","<issue>"] })`。
@@ -86,8 +90,9 @@
   修复 → 新 commit → 新 `state commit`（新 sha）→ 再测。
 - 跳过测试也要 commit 到 test，close 时 `--test-cmd not-tested`；**无 dev→done 捷径**。
 - plan 的 issue 全 close 后自动派生 done（含 dropped → partial，属完成态）。
-- 走 worktree 隔离的批次：**merge 之后**才 `state commit`（sha 取**目标分支**（开工时所在分支）merge 后的），`plan close` 后清理
-  `active` worktree；口径见 `worktree-exec.md`。
+- 走 worktree 隔离的批次：**merge 之后**才 `state commit`（sha 取**目标分支**（开工时所在分支）merge 后的）；
+  `plan close` 后**不清理** `active` worktree，**保留现场**（理由与三条保护见 `worktree-exec.md` §7），
+  下一次开工点（`plan plan` 之前）用 `worktree({action:"prune"})` 按规则收旧的。
 
 ## 5. 复查
 
@@ -103,6 +108,7 @@
     逐 issue `state start` → 改码；只登记就把 plan 与 issue 留在 `open` 再出模式（#141）。
   - 非计划模式（#136）：`plan create`（挂当前 running milestone）+ 拆 issue → **保持 `open`** →
     开工前才 `plan plan` → 逐 issue `state start` → 改码；**建 plan 不要求计划模式**。
+  - 两条序列的开工点都**先 `worktree({action:"prune"})`** 收上一批留下的旧树（§1、§4）。
 - **先跑后建（补登记）**：已在**无记录**状态下改了码/提交了 commit → 停下来补：
   建/挂 plan → 按实测现象与 commit 范围建 issue → `plan plan` → `issue state start <id>` →
   **对每个既有 commit 逐条** `issue state commit <id> --sha <前7位>`（sha 用 `git log --oneline` 回看）→

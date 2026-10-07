@@ -1,8 +1,8 @@
 # worktree 隔离并行执行（worktree-exec）
 
 > 触发：并行批次需要「每条 issue 一个**独立可验证的 commit**」，或共享工作区已被证明互相污染。
-> 命令全部走 `worktree` 工具（`action:"create"|"merge"|"list"|"remove"`）；批次判据见 `parallel-exec.md` §1，
-> 派发与等待纪律见 `parallel-exec.md` §3、§5；收口见 `flow-impl.md` §4。
+> 命令全部走 `worktree` 工具（`action:"create"|"merge"|"list"|"remove"|"prune"`）；批次判据见 `parallel-exec.md` §1，
+> 派发与等待纪律见 `parallel-exec.md` §3、§5；收口见 `flow-impl.md` §4；保留现场与开工点清理见本文件 §7。
 
 默认的并行批次是**共享工作区**：子代理只改自己白名单内的文件，git 提交与一切 mint 写由主 agent
 逐 issue 串行做（`parallel-exec.md` §4）。本文件是它的**例外口径**——把每个节点放进自己的 git
@@ -45,8 +45,8 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 
 ## 3. 全流程（工具形态）
 
-    create → 派活（提示词含 worktree 路径）→ 子代理在 worktree 内 commit
-    → merge → issue state commit --sha → remove
+    （开工点：prune 旧树）→ create → 派活（提示词含 worktree 路径）→ 子代理在 worktree 内 commit
+    → merge → issue state commit --sha →（保留现场，收尾不删）
 
 1. **建 worktree（主 agent，派发前）**：`worktree({action:"create", node:"a1", base:"<sha>"})`
    - 落点 `.git/dsh-mint/worktrees/<session前8位>/<node>`（`<common-git-dir>` 内部，
@@ -76,7 +76,9 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 5. **登记 sha（merge 之后）**：`mint({ args: ["issue","state","commit","<id>","--sha","<目标分支上的 sha>"] })`
    - sha 必须是**该目标分支 merge 后**的 sha（`git rev-parse --short=7 HEAD`，即在目标分支的工作树里读），
      不是 worktree 里的 sha。
-6. **清理**：`worktree({action:"remove", node:"a1"})`（收尾见 §5）。
+6. **收尾不清理**：本批的树**保留现场**（§7）——要立刻丢掉某一棵才用
+   `worktree({action:"remove", node:"a1"})`（未合并默认拒绝）。旧树由**下一次开工点**的
+   `worktree({action:"prune"})` 按规则收。
 
 ## 4. 与文件白名单/串行判据的关系
 
@@ -92,10 +94,11 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 - 冲突的常见根因是白名单判据没守住（同一文件被两节点改）→ 先回 §4 复核批次表，再决定是否人工合并。
 - worktree 落在 `<common-git-dir>` 内的 `dsh-mint/worktrees/`，`git status` 看不见它，**不需要**
   `.gitignore` 条目；旧的 `.worktrees/` 条目可以删掉（残留目录手工删）。
-- **`plan close` 后清理 `active` worktree**：逐个 `action:"remove"`，`worktree({action:"list"})` 不应再剩未合并项。
-  `remove` 按记录的**目标分支**（`worktree.target`）判「已合并」，拒绝**尚未合并进该分支**的分支
-  （避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；它只删工作树、不删分支（分支可留可删，
-  不删也不影响目标分支）。
+- **`plan close` 后保留现场，不清理**：收尾时**不**逐棵 `remove`，树原地留着（理由见 §7）。
+  下一次开工点第一步用 `worktree({action:"prune"})` 按规则清理旧的；显式丢弃某一棵才用
+  `remove`。`remove` 按记录的**目标分支**（`worktree.target`）判「已合并」，拒绝**尚未合并进该分支**
+  的分支（避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；`remove` 与 `prune` 都只删工作树、
+  **不删分支**（分支可留可删，不删也不影响目标分支）。
 - 统一测试与 `plan close` 照 `flow-impl.md` §4：各 issue 停在 `test` → 主工作树统一跑 → close。
 
 ## 6. 与共享模式对照
@@ -108,7 +111,35 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 | 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
 | 重命令 | 主 agent | 主 agent（worktree 内不跑） |
 
-## 7. 降级：worktree 不可用
+## 7. 保留现场与开工点清理
+
+**`plan close` 不清理 worktree**；旧树由**下一个开工点**的 `worktree({action:"prune"})` 按规则收。
+这是有意选择的三段式：现场留着 → 开工点收旧的 → 本批再建新的。
+
+① **为什么保留**：merge 进目标分支只说明「代码合了」，不代表「现场不再需要」。收尾之后常见两件事
+仍需那棵树——回看这个节点到底改了什么（`git diff` 的主工作树版本已被后续提交冲淡）、以及回改
+（`plan` 的 issue 被 `retest` 打回、或复查发现漏改）。`plan close` 那一刻正是最后一次会看它的时候，
+在那里删掉等于把现场销毁；而树留在 `<common-git-dir>` 内，不进 `git status`，也不占主工作树。
+
+② **为什么在开工点清**：留着不收会越积越乱（每批都多几棵，`list` 一屏放不下、名字相近易混）；
+但也不该过早清（见 ①）。开工点是唯一自然的重置时刻：上一批已完全结束、这一批还没建，清掉旧的
+正好给新树腾出干净的起点，也不会误删这一批正在用的树。
+
+③ **三条保护**（任一命中即保留，`prune` 按顺序判）：**未合并**（分支还没进当前 HEAD，删了就只剩
+分支可救）、**有未提交改动**（树里还有没 commit 的活）、**不到 1 小时**（刚建/刚动过，人可能还在看）。
+年龄取「树目录 mtime 与分支头提交时间」的**较大者**；目录读不到（已被手工删）时按「年龄不可测」保留。
+判定够格而 git 仍拒绝（权限等）时记「删除失败」并保留，**绝不 `--force`**。
+
+④ **不删分支**：`prune` 只删工作树，分支一律留着——分支是回退与复看的唯一凭据，删树不等于丢工作。
+`git worktree prune` 只清孤儿元数据（目录被手工删过时残留的登记），同样不动分支。
+
+⑤ **怎么读输出**：首行 `prune：删除 N 棵，保留 M 棵；`，其下每棵一行——
+`removed <会话前8位>/<节点> · <分支>` 或 `kept <会话前8位>/<节点> · <分支> · <原因>`，
+原因是 `未合并 | 有未提交改动 | 不到 1 小时 | 年龄不可测 | 删除失败`。一条都没有时输出
+`本仓没有可清理的 dsh-mint worktree`（空仓不是错误）。**`prune` 是仓库级动作**：它扫命名空间内的树，
+不读 DAG、不需要节点、也不限于本会话；要立刻丢掉某一棵仍然用 `remove(node)`（可 `force:true`）。
+
+## 8. 降级：worktree 不可用
 
 - **判据**：`git --version` < 2.5，或 `git worktree …` 报 `unknown subcommand` / `is not a git command`，
   或沙箱直接拒绝该命令。**默认路径仍是 worktree**：不预检、也不因为「可能不行」提前退缩，**失败才降级**

@@ -24,6 +24,7 @@
  * This module is pure orchestration over a git runner, so the whole cycle is
  * testable against a real temporary repository with no host wiring.
  */
+import { statSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import type { DagWorktree } from '../shared/records.js';
@@ -522,4 +523,129 @@ export async function removeWorktree(
     return { ok: false, error: `git worktree remove 失败：${stderrOf(removed)}${hint}` };
   }
   return { ok: true, worktree };
+}
+
+/** 一棵树至少要多老才允许自动清理（1 小时）：够短，不让旧树积压；够长，不打断「刚看完现场」。 */
+export const WORKTREE_MIN_AGE_MS = 3_600_000;
+
+/** 自动清理的可调项；两者都只在测试里传，生产走缺省。 */
+export interface PruneOptions {
+  /** 判定年龄的「现在」；缺省 `Date.now()`（测试可把它拨到未来）。 */
+  nowMs?: number;
+  /** 年龄下限；缺省 {@link WORKTREE_MIN_AGE_MS}。 */
+  minAgeMs?: number;
+}
+
+/**
+ * 一棵树的处置结论。
+ *
+ * 前四个是**保留**的原因（`verdict` 记的就是「为什么没删」），只有 `removed` 真删了；
+ * `failed` 是「判定够格删但 git 拒绝」，同样保留现场。
+ */
+export type PruneVerdict = 'removed' | 'unmerged' | 'dirty' | 'recent' | 'unmeasured' | 'failed';
+
+/** 一棵树的处置结果，供调用方按 `verdict` 计数与排版。 */
+export interface PruneResult {
+  path: string;
+  session: string;
+  node: string;
+  branch: string;
+  verdict: PruneVerdict;
+}
+
+/**
+ * 分支头提交时间（毫秒），读不到时 `undefined`。
+ *
+ * 用 `%ct`（Unix 秒）而不是 `%cI`：这里要算差值，ISO 串还得再解析一次。
+ */
+async function tipCommitMs(deps: WorktreeDeps, branch: string): Promise<number | undefined> {
+  if (branch === '') return undefined;
+  const result = await deps.git(deps.repo, ['log', '-1', '--format=%ct', branch]);
+  if (!result.ok) return undefined;
+  const seconds = Number.parseInt(result.stdout.trim(), 10);
+  return Number.isFinite(seconds) ? seconds * 1000 : undefined;
+}
+
+/**
+ * 一棵树的年龄（毫秒），`statSync` 失败时 `undefined`（= 不可测）。
+ *
+ * 取**目录 mtime 与分支头提交时间的较大者**：只按 mtime 会让「刚 checkout 过」的旧树
+ * 永远显得新，只按提交时间会让「提交很早但刚才还在动」的树显得老。两个都不够老才是
+ * 真的没人碰。之所以用 `max` 而不是只看 mtime 一个来源：单看 mtime 无法区分「新树」
+ * 与「老树被 touch」。
+ */
+function ageOf(path: string, nowMs: number, tipMs: number | undefined): number | undefined {
+  let directoryMs: number;
+  try {
+    directoryMs = statSync(path).mtimeMs;
+  } catch {
+    // 目录都读不到（权限/已被手工删）：年龄不可测 → 保留，宁可不删。
+    return undefined;
+  }
+  const youngest = tipMs === undefined ? directoryMs : Math.max(directoryMs, tipMs);
+  return nowMs - youngest;
+}
+
+/**
+ * 清理本仓命名空间内**已不需要**的 worktree，返回逐棵的处置结果。
+ *
+ * 这是「保留现场」策略的另一半：`remove` 是显式丢弃某一棵（人点名），`prune` 是
+ * 开工点按规则收掉旧的一批（没人点名）。判据按顺序短路，任一命中即**保留**并记因：
+ *
+ * 1. `unmerged`：分支未并入当前 HEAD（`branch` 为空/detached 同样保留——无从判定）。
+ * 2. `dirty`：该树路径下有未提交改动。这一条也是**绝不传 `--force`** 的原因：
+ *    不带 `--force` 的 `git worktree remove` 自己就会拒绝脏树，两道防线同向。
+ * 3. `recent`：年龄 < `minAgeMs`（缺省一小时）。
+ * 4. `unmeasured`：连目录 mtime 都读不到，年龄无从判定。
+ *
+ * 只有「已合并 + 干净 + 够老」才真删，失败（权限、git 太老等）记 `failed` 并**不抛**：
+ * 清理是收尾动作，一次失败不该让开工点停下来。**全程不删分支**——分支是回退的唯一
+ * 凭据，删树不等于丢工作。扫描结束后跑一次 `git worktree prune` 清孤儿元数据（手工删
+ * 过目录时元数据会残留；失败忽略）。
+ *
+ * 只处理 {@link installedWorktrees} 返回的树（命名空间内、正好两层深）：主工作树、
+ * 用户在仓里手工建的普通 worktree 一律不碰。
+ */
+export async function pruneWorktrees(
+  deps: WorktreeDeps,
+  options: PruneOptions = {}
+): Promise<PruneResult[]> {
+  const nowMs = options.nowMs ?? Date.now();
+  const minAgeMs = options.minAgeMs ?? WORKTREE_MIN_AGE_MS;
+  const found = await installedWorktrees(deps);
+  const results: PruneResult[] = [];
+  for (const entry of found) {
+    const where = {
+      path: entry.path,
+      session: entry.session,
+      node: entry.node,
+      branch: entry.branch,
+    };
+    // 1. 未合并（含 detached：branch 为空时无从证明已合并）。
+    if (entry.branch === '' || !entry.merged) {
+      results.push({ ...where, verdict: 'unmerged' });
+      continue;
+    }
+    // 2. 脏树：在该树自己的路径下看，看的是这棵树而不是主工作树。
+    const status = await deps.git(entry.path, ['status', '--porcelain']);
+    if (!status.ok || status.stdout.trim() !== '') {
+      results.push({ ...where, verdict: 'dirty' });
+      continue;
+    }
+    // 3. 太新（含 4. 年龄不可测的分支）。
+    const age = ageOf(entry.path, nowMs, await tipCommitMs(deps, entry.branch));
+    if (age === undefined) {
+      results.push({ ...where, verdict: 'unmeasured' });
+      continue;
+    }
+    if (age < minAgeMs) {
+      results.push({ ...where, verdict: 'recent' });
+      continue;
+    }
+    const removed = await deps.git(deps.repo, ['worktree', 'remove', entry.path]);
+    results.push({ ...where, verdict: removed.ok ? 'removed' : 'failed' });
+  }
+  // 孤儿元数据（目录被手工删过）只有 `prune` 清得掉；失败不影响上面的结论。
+  await deps.git(deps.repo, ['worktree', 'prune']);
+  return results;
 }
