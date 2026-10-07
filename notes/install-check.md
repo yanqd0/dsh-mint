@@ -45,15 +45,18 @@ dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
   行不存在时会报 `patch: entry not found`——所以别把它当成新增挂载的手段。
 - 改完若配置不生效，重启 harness（GUI 进程）。
 
-## 3. 产物：dist 与 skill 都在（预期：两处 SKILL.md 存在且一致，且 client bundle 在）
+## 3. 产物与 skill 形态（预期：dist 三件套在；`--status` 报出本机形态）
 
 ```bash
 ls /home/user/yanqd0/dsh-mint/dist/index.js /home/user/yanqd0/dsh-mint/dist/skill/SKILL.md
 ls /home/user/yanqd0/dsh-mint/dist/client.js                # #9：client 半边预构建产物
 head -c 60 /home/user/yanqd0/dsh-mint/dist/client.js        # 应为 window.__ModuleLoader__.load(
-ls ~/.dsh/skills/mint/SKILL.md                 # 插件 apply/postinstall 自动同步目标
-diff -rq ~/.dsh/skills/mint /home/user/yanqd0/dsh-mint/dist/skill >/dev/null && echo "skill 一致"
+ls -ld ~/.dsh/skills/mint                      # 本机 dev 预期：symlink -> <repo>/dist/skill
+node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
 ```
+
+本机 dogfood 预期 `symlink … (-> /home/user/yanqd0/dsh-mint/dist/skill, ok)`；打包安装则是
+`copy … (in-sync)`。形态定义、所有权守卫与卸载见 `mounting.md` §3。
 
 坑：
 - `exports: { ".": "./dist/index.js" }` —— **dist 不构建则加载即失败**。先 `pnpm build`。
@@ -65,7 +68,14 @@ diff -rq ~/.dsh/skills/mint /home/user/yanqd0/dsh-mint/dist/skill >/dev/null && 
   `pnpm install --frozen-lockfile --ignore-scripts && pnpm build`。
 - 仓库 **无 node_modules** → zod/mint-faa 解析失败（本仓库曾因从未 install 而全工具瘫痪）。
 - **skill 单一真源 = 本仓 `skill/`**（#38 起与 mint 子模块 git 层解耦）：构建拷入 `dist/skill`，
-  插件加载时 content-sync 到 `~/.dsh/skills/mint`（rank 400 `user-dsh`）。
+  由落盘同步写到 `~/.dsh/skills/mint`（rank 400 `user-dsh`）；dev 走 symlink
+  （`scripts/install-dsh.sh`），改完 `pnpm build` 即被读到、**无需重启**。
+- **形态与一致性只看 `--status`**：别再拿 `diff -rq` 对账——复制形态多一个所有权标记
+  `.dsh-mint-skill`，那是正常差异，不是不同步。
+- **卸载必须显式收尾**：dsh 没有插件卸载钩子，`dsh plugin remove` 之后 `~/.dsh/skills/mint`
+  会留在原地继续被扫描（一份工具已不存在的 skill）。先 `scripts/install-dsh.sh --uninstall`
+  （或包内 `dist/install-skill.js --uninstall`）再 `remove`；包已删就确认 `head -2 …/SKILL.md`
+  后手动 `rm -rf`。
 - **手工清理（一次性）**：删掉 `~/.agents/skills/mint` 软链（rank 500，指向 mint 上游仓的旧
   skill）。rank 400 本已遮蔽 rank 500，但删掉可避免两个 mint skill 同时在目录里造成困惑。
   **注意别删 `~/.dsh/skills/mint`**——那是插件的同步产物。

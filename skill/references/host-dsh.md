@@ -56,9 +56,13 @@
 
 ## skill 安装与生效
 
-- skill 安装到 `~/.dsh/skills/mint`（rank 400，遮蔽其它用户级 skill），由本插件 content-sync
-  （按整树比对，改任一 reference 都会重同步）。
-- 同步发生在插件加载时；**改完 skill 需重启 harness**，新会话才看到新内容。
+- skill 落到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的同名用户级 skill）。**两种形态**：
+  打包安装由插件加载/`postinstall` content-sync（整树比对）；dev/dogfood 用
+  `scripts/install-dsh.sh`（或 `pnpm skill --link`）建**符号链接**指向 `<pkg>/dist/skill`。
+- 生效时机按形态：**符号链接**下改 `skill/**` + `pnpm build` 即被读到（provider 每次 `get()` 重读）；
+  **复制**形态要**重启 harness**，让加载时的重同步跑起来。
+- **卸载没有钩子**：`dsh plugin remove` 不会清掉这份 skill（会残留一份工具已不存在的 skill），
+  必须显式 `--uninstall`（或确认后手动 rm）；形态与一致性用 `--status` 判定。
 
 ## 模型可见文案分工
 

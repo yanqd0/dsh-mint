@@ -105,31 +105,56 @@ duplicate loader entry id: mint
 dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
 ```
 
-## 3. 安装 skill
+## 3. 安装 skill（两种形态，同一机制）
 
 > skill 单一真源是**本仓 `skill/`**（#38 起与 mint 子模块 git 层解耦）：`pnpm build` 把它拷进
-> `dist/skill`，再由下面两条路径同步到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的
-> `~/.agents/skills`）。
+> `dist/skill`，再由落盘同步写到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的
+> `~/.agents/skills`）。**机制只有一种，形态按场景分两种**（#151 / plan #32）：
 
-**发布包（pnpm -g）自动安装（#28）**：无需手工步骤——
+| 形态 | 谁创建 | 目标 | 生效方式 | 场景 |
+| --- | --- | --- | --- | --- |
+| **symlink** | 显式命令（`scripts/install-dsh.sh` / `pnpm skill --link`） | `~/.dsh/skills/mint -> <repo>/dist/skill` | 改仓库 + `pnpm build` 即被读到，**无需重启**（provider 每次 `get()` 重读；watcher 默认 `followSymlinks`） | 本机 dev / dogfood |
+| **复制** | 插件加载时的 content-sync（默认）与 `postinstall` | `~/.dsh/skills/mint`（真实目录） | 插件**下次加载**时整树比对重同步 → 要重启 harness | 打包安装（离线、自包含、与 profile 无关） |
 
-- postinstall 调用 `dist/install-skill.js`，把 `dist/skill` 同步到
-  `$DSH_HOME/skills/mint`（缺省 `~/.dsh`；内容一致则跳过，升级自动刷新）。
-- pnpm 10+ 默认拦截依赖构建脚本（本仓库 `allowBuilds` 只放行了
-  esbuild/mint-faa），全局 add 时 postinstall 可能不跑——**插件每次加载时
-  （apply）会自动补同步**，skill-filesystem 每次 collect 现扫目录，首个会话
-  即可发现。postinstall 对 npm 及放行构建脚本的 pnpm 生效。
-- 目标已是 symlink 时不覆盖（dev 流程所有权），失败只告警、不阻断安装。
+- **symlink 只由显式命令创建**：运行时**永不覆盖 symlink**（dev 所有权）；悬挂或异主的只告警一行（#153）。
+- **复制的所有权**：写入前先落标记 `.dsh-mint-skill`；「是不是本插件那份」= 有标记，或
+  `SKILL.md` frontmatter `name: mint`（标记之前的老副本）。异主目录/普通文件一律保留 + 告警，
+  `--force` 才接管（#153）。标记只是所有权凭据，不参与整树比对，所以一致时**不写任何文件**。
+- **命令只有一个实现**：`scripts/install-dsh.sh` 是 `dist/install-skill.js` 的薄委派（默认
+  `--link`），模式为 `--link` / `--copy` / `--uninstall` / `--status`，配 `--force`；等价写法
+  `pnpm skill --<mode>`。`DSH_HOME` 生效；skill 由 `dsh-skill-filesystem` 以 `user-dsh` 源发现。
+- **发布包（pnpm add）无需手工步骤**：`postinstall` 与插件加载时（`apply`）都会做一次 content-sync；
+  pnpm 10+ 默认拦截依赖构建脚本（本仓库 `allowBuilds` 只放行 esbuild/mint-faa），postinstall 可能不跑，
+  **插件加载时的补同步是保证路径**（skill-filesystem 每次 collect 现扫目录，首个会话即可发现）。
+  任何失败只告警一行，绝不阻断安装或插件加载。
 
-**dev 流程**（仓库内）：`pnpm build` 产出 `dist/skill` 后：
+### 为什么保留落盘，而不是迁到随包 provider（#151）
+
+- `~/.dsh/skills`(user-dsh **400**) 与 `~/.agents/skills`(user-agents **500**) **在 preset 层同层**，
+  同层 rank 小者胜；随包 `ctx.skills.registerProvider` 落 **global 层**，**跨层被静默压过**，
+  调 rank 无用（`packages/skill/skill-filesystem/src/index.ts` 的 root 表；dsh-dev-dsh
+  `notes/evaluation.md` §8.11 探针表、`skill/references/develop/skill-plugins.md` §3–§4）。
+- mint 是「多宿主共用同名」的 skill（mint 上游仓自带 `.agents/skills/mint`），**遮蔽是其语义的一部分**；
+  dsh-dev-dsh 没有同名覆盖需求，才迁到随包 provider（其 plan #36 / #112–#114）。
+- **残余风险**：项目级 `.agents/skills`(200) 与 `customSkillDirs`(300) 在同层仍压过本产物——
+  在 mint 仓 cwd 的会话里生效的是项目版 skill。
+
+### 卸载：dsh 没有插件卸载钩子（#151 / dsh-dev-dsh #118）
+
+`dsh plugin remove` = 卸载 fiber + `pnpm remove`，之后**没有任何一方**清理 home；pnpm 不跑
+`preuninstall`（pnpm#3276），`link:` 依赖连生命周期脚本都不跑。所以卸载要显式收尾：
 
 ```sh
-scripts/install-dsh.sh          # symlink -> ~/.dsh/skills/mint（推荐）
-scripts/install-dsh.sh --copy   # 复制安装
-scripts/install-dsh.sh --uninstall
+# 1) 摘掉插件装的那份 skill（幂等；自家 symlink 只摘链，异主则保留并要求 --force）
+node ~/.dsh/profiles/<p>/node_modules/@yanqd0/dsh-mint/dist/install-skill.js --uninstall
+# 或仓库内：scripts/install-dsh.sh --uninstall / pnpm skill --uninstall
+# 2) 再移除插件
+dsh plugin --profile <p> remove @yanqd0/dsh-mint
 ```
 
-`DSH_HOME` 生效；skill 由 `dsh-skill-filesystem` 以 `user-dsh` 源发现。
+包已经删掉时用手动兜底：**先确认**是插件副本（`head -2 ~/.dsh/skills/mint/SKILL.md` 显示
+`name: mint`；若是 symlink 则只摘链接），再 `rm -rf ~/.dsh/skills/mint`。
+`--status` 可随时看形态与是否一致。
 
 ## 4. 验证
 
