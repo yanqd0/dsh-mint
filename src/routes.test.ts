@@ -4,7 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { applyDagWrite, emptyDag } from './dag.js';
 import { dagFilePath, updateDag } from './dag-store.js';
@@ -71,6 +71,8 @@ function harness(options: {
   dagDir?: string;
   /** Mount-line `openDagTab`, published in the DAG envelope. */
   openDagTab?: boolean;
+  /** Per-node live metrics seam for the DAG route (#162). */
+  readDagMetrics?: MintRouteDeps['readDagMetrics'];
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   runs: RecordedRun[];
@@ -89,6 +91,7 @@ function harness(options: {
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.dagDir === undefined ? {} : { dagDir: options.dagDir }),
     ...(options.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
+    ...(options.readDagMetrics === undefined ? {} : { readDagMetrics: options.readDagMetrics }),
   };
   return { handler: createMintHandler(deps), runs };
 }
@@ -878,6 +881,97 @@ describe('the plan DAG route (plan #31)', () => {
         edges: [],
       },
     });
+  });
+
+  it('publishes host-measured node metrics with the sample clock (#162)', async () => {
+    await seed('s1', '宿主面 DAG');
+    const asked: string[] = [];
+    const { handler } = harness({
+      cwd: '/proj',
+      dagDir: dir,
+      now: () => 1_700_000_000_000,
+      readDagMetrics: (sessionId) => {
+        asked.push(sessionId);
+        return Promise.resolve({ a: { tokens: 123, elapsed_ms: 4500 } });
+      },
+    });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      metrics: { a: { tokens: 123, elapsed_ms: 4500 } },
+      sampled_at: 1_700_000_000_000,
+    });
+    expect(typeof payload.sampled_at).toBe('number');
+    // The reader is asked about this session's DAG, once per request.
+    expect(asked).toEqual(['s1']);
+  });
+
+  it('omits metrics and sampled_at unless the host really measured something (#162)', async () => {
+    await seed('s1', '宿主面 DAG');
+    // The keys the envelope has when it carries no metrics: absent, never
+    // `{}` + 0, so an old panel and a lean host keep the same shape.
+    const withoutMetrics = ['autoOpen', 'dag', 'file', 'ok', 'revision'];
+
+    // Default: no reader at all (tests and lean hosts).
+    const plain = await invoke(
+      harness({ cwd: '/proj', dagDir: dir }).handler,
+      `${ROUTE_PREFIX}/dag?session=s1`
+    );
+    const plainPayload = plain.json();
+    expect(plainPayload.dag).not.toBeNull();
+    expect(Object.keys(plainPayload).sort()).toEqual(withoutMetrics);
+
+    // A reader that measured nothing is the same as no reader.
+    const empty = await invoke(
+      harness({ cwd: '/proj', dagDir: dir, readDagMetrics: () => Promise.resolve({}) }).handler,
+      `${ROUTE_PREFIX}/dag?session=s1`
+    );
+    const emptyPayload = empty.json();
+    expect(emptyPayload.dag).not.toBeNull();
+    expect(Object.keys(emptyPayload).sort()).toEqual(withoutMetrics);
+    expect(emptyPayload).not.toHaveProperty('metrics');
+    expect(emptyPayload).not.toHaveProperty('sampled_at');
+  });
+
+  it('keeps answering the graph when the metrics read throws (#162)', async () => {
+    await seed('s1', '宿主面 DAG');
+    const { handler } = harness({
+      cwd: '/proj',
+      dagDir: dir,
+      readDagMetrics: () => Promise.reject(new Error('projection registry gone')),
+    });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload).toMatchObject({ ok: true, revision: 2, dag: { nodes: [{ id: 'a' }] } });
+    expect(payload).not.toHaveProperty('metrics');
+    expect(payload).not.toHaveProperty('sampled_at');
+  });
+
+  it('does not read metrics for a session with nothing to measure (#162)', async () => {
+    const spy = vi.fn(() => Promise.resolve({ a: { tokens: 1 } }));
+    const { handler } = harness({ cwd: '/proj', dagDir: dir, readDagMetrics: spy });
+    // A missing document answers `dag: null` and asks the host nothing.
+    const missing = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
+    expect(missing.json()).toEqual({
+      ok: true,
+      dag: null,
+      revision: 0,
+      file: dagFilePath('s1', dir),
+      autoOpen: true,
+    });
+    // A stored document without a node has nothing to measure either.
+    const initialized = await updateDag(
+      's2',
+      () => ({ doc: emptyDag('s2', '空 DAG', '2026-01-01T00:00:00.000Z') }),
+      dir
+    );
+    expect(initialized.ok).toBe(true);
+    const empty = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s2`);
+    expect(empty.json()).toMatchObject({ ok: true, revision: 1, dag: { nodes: [] } });
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('is file-keyed: it answers without a live session and spawns no CLI', async () => {

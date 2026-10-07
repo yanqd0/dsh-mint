@@ -17,6 +17,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { isValidDagSession } from './dag.js';
+import { readDagMetrics } from './dag-metrics.js';
 import { DAG_DIR, readDag } from './dag-store.js';
 import type { DagRead } from './dag-store.js';
 import {
@@ -32,10 +33,10 @@ import {
 import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
-import type { IssuePlacement } from './records.js';
+import type { DagNodeMetrics, IssuePlacement } from './records.js';
 import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
 import { hasControlCharacter } from './text.js';
-import type { AgentsLike, DshContext, WebServerLike } from './types.js';
+import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from './types.js';
 
 /**
  * Re-exported from {@link ./route-paths.js}: the prefix is shared with the
@@ -141,6 +142,8 @@ export interface MintRouteDeps {
   dagDir?: string;
   /** Mount-line `openDagTab`, published in the DAG envelope; defaults to true. */
   openDagTab?: boolean;
+  /** Per-node live metrics for one session's DAG; absent in tests/lean hosts. */
+  readDagMetrics?(sessionId: string): Promise<Record<string, DagNodeMetrics>>;
 }
 
 /**
@@ -415,6 +418,19 @@ export function createMintHandler(
       throw new RouteRequestError('session must be a 1-64 char [A-Za-z0-9_-] id');
     }
     const read: DagRead = await readDag(sessionId, deps.dagDir ?? DAG_DIR);
+    // Host-measured usage is best-effort by design (#162): the panel must get
+    // its graph even when the projections cannot be read, so a failure here is
+    // the same as no metrics — and nothing is published unless something was
+    // really measured, so "absent" never has to mean "zero".
+    let metrics: Record<string, DagNodeMetrics> | undefined;
+    if (deps.readDagMetrics !== undefined && read.state === 'ok' && read.doc.nodes.length > 0) {
+      try {
+        const measured = await deps.readDagMetrics(sessionId);
+        if (Object.keys(measured).length > 0) metrics = measured;
+      } catch {
+        metrics = undefined;
+      }
+    }
     // `warnings` is declared rather than inferred: the payload it spreads into
     // is `unknown`-typed, and a lone inferred string[] would read as a mistake.
     const warnings: Record<string, unknown> =
@@ -427,6 +443,9 @@ export function createMintHandler(
       revision: read.state === 'ok' ? read.doc.revision : 0,
       file: read.file,
       autoOpen: deps.openDagTab ?? true,
+      // One sample clock for the whole answer: `sampled_at` is what the panel
+      // compares the per-node numbers against, so it is read once, here.
+      ...(metrics === undefined ? {} : { metrics, sampled_at: now() }),
       ...warnings,
     });
   };
@@ -748,6 +767,21 @@ export function installMintRoutes(
         // narrowing at the host boundary.
         const agents = ctx.get?.('agents') as AgentsLike | undefined;
         return agents?.get(sessionId)?.session.header.cwd;
+      },
+      // Same live lookup as `getCwd`, for the same reason: the projection
+      // registry may be mounted after this plugin starts. `projections` is
+      // forwarded even when absent — `readDagMetrics` owns the one degradation
+      // rule (`{}`), so there is no second place to keep in sync.
+      readDagMetrics: (sessionId) => {
+        const agents = ctx.get?.('agents') as AgentsLike | undefined;
+        const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+        return readDagMetrics({
+          sessionId,
+          ...(options?.dagDir === undefined ? {} : { dagDir: options.dagDir }),
+          agents,
+          projections,
+          sampledMs: Date.now(),
+        });
       },
       ...(entry === undefined ? {} : { entry }),
       ...(options?.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
