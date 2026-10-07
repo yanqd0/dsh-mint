@@ -55,12 +55,33 @@ export function isValidDagSession(id: string): boolean {
 export type DagNode = DagNodeView;
 
 /**
+ * One node's persisted host measurement (`samples[id]`): what the panel falls
+ * back to once the child session is gone. Not the node's self-reported `tokens`.
+ */
+export interface DagSample {
+  tokens?: number;
+  elapsed_ms?: number;
+  at: number;
+}
+
+/**
  * The stored document: {@link DagView} plus the fields that only make sense on
  * disk (the version that gates reading, and the session that owns the file).
  */
 export interface DagDoc extends DagView {
   version: typeof DAG_VERSION;
   session: string;
+  /**
+   * Host-measured samples, keyed by node id.
+   *
+   * Nothing in this module writes it: this batch only **reads and validates** it
+   * (see {@link parseDagDoc} / {@link sampleOf}), and `applyDagWrite` keeps
+   * whatever the current document already carries because it spreads it. The
+   * fallback persistence belongs to the lifecycle and merges into this key
+   * through `updateDag`, so a writer must merge by hand instead of expecting an
+   * action here to produce `samples` (#168).
+   */
+  samples?: Record<string, DagSample>;
 }
 
 /** A node as `add` supplies it; `status`/`updated_at` are the host's. */
@@ -163,12 +184,46 @@ function checkNote(raw: unknown): string | { error: string } {
   return raw;
 }
 
+/** A non-negative safe integer; the one shape every count this module keeps has. */
+function isCount(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
 /** A non-negative safe integer, e.g. a self-reported token count. */
 function checkCount(raw: unknown, name: string): number | { error: string } {
-  if (typeof raw !== 'number' || !Number.isSafeInteger(raw) || raw < 0) {
-    return { error: `${name} 必须是非负整数` };
-  }
+  if (!isCount(raw)) return { error: `${name} 必须是非负整数` };
   return raw;
+}
+
+/**
+ * One node's sample, built from a raw reading: `at` must be a usable stamp, and
+ * the two numbers are validated field by field so that a malformed one is
+ * dropped — but at least one must survive for the reading to be worth storing.
+ *
+ * Field-wise on purpose: a live reading is the one source where a single number
+ * can be junk while the other was really measured, and throwing the good one away
+ * would be the same guess this module refuses to make. (Reading a *stored* entry
+ * is stricter — see {@link parseDagDoc}.)
+ *
+ * @param metrics - the measured numbers, from a projection or from a file.
+ * @param at - the host clock (epoch ms) the measurement was sampled at.
+ * @returns the sample to store, or `undefined` when nothing is storable.
+ */
+export function sampleOf(
+  metrics: { tokens?: number; elapsed_ms?: number },
+  at: number
+): DagSample | undefined {
+  if (!isCount(at)) return undefined;
+  const kept: { tokens?: number; elapsed_ms?: number } = {};
+  if (isCount(metrics.tokens)) kept.tokens = metrics.tokens;
+  if (isCount(metrics.elapsed_ms)) kept.elapsed_ms = metrics.elapsed_ms;
+  if (kept.tokens === undefined && kept.elapsed_ms === undefined) return undefined;
+  return { ...kept, at };
+}
+
+/** True for a stored sample field that is either absent or a usable count. */
+function isSampleField(value: unknown): boolean {
+  return value === undefined || isCount(value);
 }
 
 /** One `add` node entry, validated against the shape rules (not the graph). */
@@ -547,7 +602,9 @@ export function applyDagWrite(
  *
  * Reading is the untrusted direction (the file lives in `/tmp`), so a malformed
  * or future-versioned document becomes a named error the route turns into a
- * warning rather than a crash.
+ * warning rather than a crash. `samples` is the deliberate exception: a bad
+ * entry there is dropped on its own (see the loop below), because a measurement
+ * the host can no longer trust must not take a readable plan down with it.
  */
 export function parseDagDoc(raw: unknown): { doc: DagDoc } | { error: string } {
   if (!isRecord(raw)) return { error: 'document must be an object' };
@@ -582,6 +639,26 @@ export function parseDagDoc(raw: unknown): { doc: DagDoc } | { error: string } {
     if ('error' in edge) return edge;
     edges.push(edge);
   }
+  // `samples` is the one lenient field: it is a measurement, not a rule, so an
+  // unusable entry costs only itself instead of making the whole plan unreadable
+  // (a non-object container is still a malformed document, though).
+  let samples: Record<string, DagSample> | undefined;
+  if (raw.samples !== undefined) {
+    if (!isRecord(raw.samples)) return { error: 'samples must be an object' };
+    const kept: Record<string, DagSample> = {};
+    for (const [id, entry] of Object.entries(raw.samples)) {
+      if (!isRecord(entry)) continue;
+      const at = entry.at;
+      if (!isCount(at)) continue;
+      // A stored entry is trusted whole: a field that is present but unusable
+      // means the writer and this reader disagree, so none of it is kept. An
+      // entry with no number at all is not a measurement either.
+      if (!isSampleField(entry.tokens) || !isSampleField(entry.elapsed_ms)) continue;
+      const sample = sampleOf(entry, at);
+      if (sample !== undefined) kept[id] = sample;
+    }
+    samples = kept;
+  }
   return {
     doc: {
       version: DAG_VERSION,
@@ -592,6 +669,9 @@ export function parseDagDoc(raw: unknown): { doc: DagDoc } | { error: string } {
       updated_at: raw.updated_at,
       nodes,
       edges,
+      // Absent stays absent: an old document round-trips unchanged, and the key's
+      // presence is what tells a reader that samples were ever taken.
+      ...(samples === undefined ? {} : { samples }),
     },
   };
 }

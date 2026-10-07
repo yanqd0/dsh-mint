@@ -4,10 +4,21 @@ import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { activeElapsedMs, nodeMetrics, readDagMetrics, tokenTotal } from './dag-metrics.js';
+import {
+  activeElapsedMs,
+  clearMeasurements,
+  lastMeasurement,
+  measureDagNodes,
+  mergeMetrics,
+  nodeMetrics,
+  readDagMetrics,
+  rememberMeasurement,
+  tokenTotal,
+} from './dag-metrics.js';
 import { dagFilePath } from './dag-store.js';
-import type { DagMetricsInput } from './dag-metrics.js';
-import type { DagStatus } from './records.js';
+import type { DagDoc, DagSample } from './dag.js';
+import type { DagMetricsInput, MeasureDagNodesInput } from './dag-metrics.js';
+import type { DagNodeMetrics, DagNodeView, DagStatus } from './records.js';
 import type { AgentCwdLike, AgentsLike, SessionProjectionsLike } from './types.js';
 
 const NOW = '2026-10-07T00:00:00.000Z';
@@ -203,7 +214,70 @@ describe('nodeMetrics', () => {
   });
 });
 
-describe('readDagMetrics', () => {
+describe('mergeMetrics', () => {
+  /** One document node; a merge only reads its id. */
+  function view(id: string): DagNodeView {
+    return {
+      id,
+      label: id.slice(0, 6),
+      title: `node ${id}`,
+      phase: 'exec',
+      status: 'done',
+      depends_on: [],
+      updated_at: NOW,
+    };
+  }
+
+  const nodes = [view('a'), view('b'), view('c')];
+
+  it('prefers the live measurement, which carries no `at` of its own', () => {
+    const merged = mergeMetrics({
+      live: { a: { tokens: 1, elapsed_ms: 2, at: 99 } },
+      stored: { a: { tokens: 9, elapsed_ms: 9, at: 7 } },
+      nodes,
+    });
+    expect(merged).toEqual({ a: { tokens: 1, elapsed_ms: 2 } });
+    expect(Object.keys(merged['a'] ?? {})).toEqual(['tokens', 'elapsed_ms']);
+  });
+
+  it('falls back to the stored sample, stamped with the `at` it was persisted at', () => {
+    expect(
+      mergeMetrics({
+        live: { a: { tokens: 1 } },
+        stored: { b: { tokens: 8, at: 7 }, c: { elapsed_ms: 6, at: 5 } },
+        nodes,
+      })
+    ).toEqual({ a: { tokens: 1 }, b: { tokens: 8, at: 7 }, c: { elapsed_ms: 6, at: 5 } });
+  });
+
+  it('does not answer an id the document no longer declares', () => {
+    expect(
+      mergeMetrics({
+        live: { ghost: { tokens: 1 } },
+        stored: { ghost: { tokens: 2, at: 3 } },
+        nodes,
+      })
+    ).toEqual({});
+  });
+
+  it('drops a stored entry with nothing trustworthy left', () => {
+    expect(
+      mergeMetrics({
+        live: {},
+        stored: { a: { tokens: -1, at: 3 }, b: { at: 3 }, c: { elapsed_ms: 4, at: 5 } },
+        nodes,
+      })
+    ).toEqual({ c: { elapsed_ms: 4, at: 5 } });
+  });
+
+  it('answers nothing when there is neither a live nor a stored measurement', () => {
+    expect(mergeMetrics({ live: {}, stored: undefined, nodes })).toEqual({});
+    expect(mergeMetrics({ live: {}, stored: {}, nodes })).toEqual({});
+    expect(mergeMetrics({ live: {}, stored: undefined, nodes: [] })).toEqual({});
+  });
+});
+
+describe('reading DAG metrics', () => {
   let dir: string;
 
   beforeEach(() => {
@@ -220,8 +294,8 @@ describe('readDagMetrics', () => {
     status?: DagStatus;
   }
 
-  /** Write a valid document holding `nodes`, in the temp directory. */
-  function writeDag(nodes: NodeSpec[]): void {
+  /** Write a valid document holding `nodes` and, when a case gives them, `samples`. */
+  function writeDag(nodes: NodeSpec[], samples?: Record<string, DagSample>): void {
     mkdirSync(dir, { recursive: true });
     writeFileSync(
       dagFilePath(SESSION, dir),
@@ -243,6 +317,7 @@ describe('readDagMetrics', () => {
           ...(spec.agent === undefined ? {} : { agent: spec.agent }),
         })),
         edges: [],
+        ...(samples === undefined ? {} : { samples }),
       }),
       'utf8'
     );
@@ -260,11 +335,18 @@ describe('readDagMetrics', () => {
     });
   }
 
-  it('returns nothing without a projection registry, without reading the file', async () => {
+  it('returns nothing without a projection registry and without a file to fall back to', async () => {
     rmSync(dir, { recursive: true, force: true });
     expect(await read({ projections: undefined, agents: agentsFrom({ a: child('a') }) })).toEqual(
       {}
     );
+  });
+
+  it('falls back to a stored sample even without a projection registry', async () => {
+    writeDag([{ id: 'a', agent: 'child-a' }], { a: { tokens: 9, at: 5 } });
+    expect(
+      await read({ projections: undefined, agents: agentsFrom({ 'child-a': child('a') }) })
+    ).toEqual({ a: { tokens: 9, at: 5 } });
   });
 
   it('returns nothing when the document is missing', async () => {
@@ -367,5 +449,130 @@ describe('readDagMetrics', () => {
     const found = await read({ projections, agents });
     expect(Object.keys(found)).toEqual(['a']);
     expect(Object.keys(found['a'] ?? {})).toEqual(['tokens']);
+  });
+
+  describe('measureDagNodes', () => {
+    /** One measure over the temp directory, with every host service a case supplies. */
+    function measure(
+      over: Partial<MeasureDagNodesInput> = {}
+    ): Promise<{ metrics: Record<string, DagNodeMetrics>; doc: DagDoc | undefined }> {
+      return measureDagNodes({
+        sessionId: SESSION,
+        dagDir: dir,
+        agents: undefined,
+        projections: undefined,
+        sampledMs: SAMPLED_MS,
+        ...over,
+      });
+    }
+
+    it('answers no document and no metric when the file is missing', async () => {
+      expect(await measure()).toEqual({ metrics: {}, doc: undefined });
+    });
+
+    it('answers the document it read, even when nothing could be measured', async () => {
+      writeDag([{ id: 'a' }]);
+      const { metrics, doc } = await measure();
+      expect(metrics).toEqual({});
+      expect(doc?.nodes.map((node) => node.id)).toEqual(['a']);
+    });
+
+    it('falls back to the stored sample when the composition has no projections', async () => {
+      writeDag([{ id: 'a', agent: 'child-a' }], { a: { tokens: 9, at: 5 } });
+      const { metrics } = await measure({ agents: agentsFrom({ 'child-a': child('a') }) });
+      expect(metrics).toEqual({ a: { tokens: 9, at: 5 } });
+    });
+
+    it('falls back to the stored sample for a node whose child session is gone', async () => {
+      writeDag([{ id: 'a', agent: 'child-a' }], { a: { elapsed_ms: 4, at: 5 } });
+      const { metrics } = await measure({
+        agents: agentsFrom({}),
+        projections: projectionsFor({}),
+      });
+      expect(metrics).toEqual({ a: { elapsed_ms: 4, at: 5 } });
+    });
+
+    it('prefers a live measurement over the stored sample', async () => {
+      writeDag([{ id: 'a', agent: 'child-a' }], { a: { tokens: 9, at: 5 } });
+      const a = child('a');
+      const agents = agentsFrom({ 'child-a': { session: a } });
+      const projections = projectionsBySession(
+        new Map<unknown, Record<string, unknown>>([[a, { tokenUsage: { totals: totals() } }]])
+      );
+      expect((await measure({ agents, projections })).metrics).toEqual({ a: { tokens: 10 } });
+    });
+
+    it('answers nothing for a node with neither an agent nor a stored sample', async () => {
+      writeDag([{ id: 'a' }, { id: 'b', agent: 'child-b' }], { b: { tokens: 2, at: 3 } });
+      const { metrics } = await measure({
+        agents: agentsFrom({}),
+        projections: projectionsFor({}),
+      });
+      expect(Object.keys(metrics)).toEqual(['b']);
+    });
+  });
+});
+
+describe('the measurement cache', () => {
+  afterEach(() => {
+    clearMeasurements();
+  });
+
+  it('remembers a measurement and answers it back per session and node', () => {
+    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2 });
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2 });
+    expect(lastMeasurement(SESSION, 'b')).toBeUndefined();
+    expect(lastMeasurement('session-2', 'a')).toBeUndefined();
+  });
+
+  it('ignores a reading with nothing usable in it', () => {
+    rememberMeasurement(SESSION, 'a', {});
+    rememberMeasurement(SESSION, 'b', { tokens: -1 });
+    rememberMeasurement(SESSION, 'c', { elapsed_ms: 1.5 });
+    for (const id of ['a', 'b', 'c']) expect(lastMeasurement(SESSION, id), id).toBeUndefined();
+  });
+
+  it('keeps exactly what a stored sample would accept', () => {
+    rememberMeasurement(SESSION, 'a', { tokens: 1, elapsed_ms: 2, at: 99 });
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2 });
+    rememberMeasurement(SESSION, 'b', { tokens: Number.NaN, elapsed_ms: 3 });
+    expect(lastMeasurement(SESSION, 'b')).toEqual({ elapsed_ms: 3 });
+  });
+
+  it('evicts the oldest entry once a session holds the 200 most recent', () => {
+    for (let index = 0; index <= 200; index += 1) {
+      rememberMeasurement(SESSION, `n${String(index)}`, { tokens: index });
+    }
+    expect(lastMeasurement(SESSION, 'n0')).toBeUndefined();
+    expect(lastMeasurement(SESSION, 'n1')).toEqual({ tokens: 1 });
+    expect(lastMeasurement(SESSION, 'n200')).toEqual({ tokens: 200 });
+  });
+
+  it('re-remembering a node makes it the newest instead of a second entry', () => {
+    for (let index = 0; index < 200; index += 1) {
+      rememberMeasurement(SESSION, `n${String(index)}`, { tokens: 1 });
+    }
+    rememberMeasurement(SESSION, 'n0', { tokens: 2 });
+    rememberMeasurement(SESSION, 'n201', { tokens: 1 });
+    expect(lastMeasurement(SESSION, 'n0')).toEqual({ tokens: 2 });
+    expect(lastMeasurement(SESSION, 'n1')).toBeUndefined();
+  });
+
+  it('clears one session, or everything, as the seam is asked to', () => {
+    rememberMeasurement(SESSION, 'a', { tokens: 1 });
+    rememberMeasurement('session-2', 'a', { tokens: 1 });
+    clearMeasurements(SESSION);
+    expect(lastMeasurement(SESSION, 'a')).toBeUndefined();
+    expect(lastMeasurement('session-2', 'a')).toEqual({ tokens: 1 });
+    clearMeasurements();
+    expect(lastMeasurement('session-2', 'a')).toBeUndefined();
+  });
+
+  it('answers a copy, so a caller cannot stamp the remembered live reading', () => {
+    rememberMeasurement(SESSION, 'a', { tokens: 1 });
+    const found = lastMeasurement(SESSION, 'a');
+    if (found === undefined) throw new Error('expected a remembered measurement');
+    found.at = 123;
+    expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1 });
   });
 });

@@ -16,9 +16,10 @@ import {
   isValidDagSession,
   parseDagAction,
   parseDagDoc,
+  sampleOf,
   unknownDependencies,
 } from './dag.js';
-import type { DagAddNode, DagDoc, DagNode } from './dag.js';
+import type { DagAddNode, DagDoc, DagNode, DagSample } from './dag.js';
 
 const NOW = '2026-10-07T00:00:00.000Z';
 const SESSION = 'session-1';
@@ -460,6 +461,104 @@ describe('parseDagDoc', () => {
       if (!('error' in parsed)) throw new Error(`expected a refusal for ${JSON.stringify(raw)}`);
       expect(parsed.error, JSON.stringify(raw)).toContain(needle);
     }
+  });
+});
+
+describe('sampleOf', () => {
+  it('stamps the numbers it was given with the sample clock', () => {
+    expect(sampleOf({ tokens: 1, elapsed_ms: 2 }, 3)).toEqual({ tokens: 1, elapsed_ms: 2, at: 3 });
+    expect(sampleOf({ tokens: 1 }, 3)).toEqual({ tokens: 1, at: 3 });
+    expect(sampleOf({ elapsed_ms: 2 }, 0)).toEqual({ elapsed_ms: 2, at: 0 });
+    // A legitimate zero is a measurement, not a missing one.
+    expect(sampleOf({ tokens: 0, elapsed_ms: 0 }, 0)).toEqual({ tokens: 0, elapsed_ms: 0, at: 0 });
+  });
+
+  it('keeps the one field it can trust and drops the other', () => {
+    expect(sampleOf({ tokens: -1, elapsed_ms: 2 }, 3)).toEqual({ elapsed_ms: 2, at: 3 });
+    expect(sampleOf({ tokens: 1.5, elapsed_ms: 2 }, 3)).toEqual({ elapsed_ms: 2, at: 3 });
+  });
+
+  it('refuses a reading with no trustworthy number left', () => {
+    expect(sampleOf({}, 3)).toBeUndefined();
+    expect(sampleOf({ tokens: -1 }, 3)).toBeUndefined();
+    expect(
+      sampleOf({ tokens: Number.NaN, elapsed_ms: Number.MAX_SAFE_INTEGER + 1 }, 3)
+    ).toBeUndefined();
+  });
+
+  it('refuses a clock that is not a non-negative safe integer', () => {
+    for (const at of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY]) {
+      expect(sampleOf({ tokens: 1 }, at), String(at)).toBeUndefined();
+    }
+  });
+});
+
+describe('parseDagDoc samples', () => {
+  /** One raw document carrying `samples`, however malformed the case is about. */
+  function withSamples(samples: unknown): unknown {
+    return { ...doc(), samples };
+  }
+
+  it('round-trips a well-formed map, with one or both numbers per entry', () => {
+    const samples: Record<string, DagSample> = {
+      a: { tokens: 3, elapsed_ms: 4, at: 1 },
+      b: { tokens: 5, at: 2 },
+      c: { elapsed_ms: 6, at: 3 },
+    };
+    const subject = doc({ samples });
+    expect(parseDagDoc(JSON.parse(JSON.stringify(subject)) as unknown)).toEqual({ doc: subject });
+  });
+
+  it('omits the key for a document that never carried samples', () => {
+    const parsed = parseDagDoc(JSON.parse(JSON.stringify(doc())) as unknown);
+    expect(parsed).toEqual({ doc: doc() });
+    if ('error' in parsed) throw new Error(`expected a document, got: ${parsed.error}`);
+    expect('samples' in parsed.doc).toBe(false);
+  });
+
+  it('refuses the whole document when samples is not an object', () => {
+    for (const samples of [7, 'x', [], true, null]) {
+      const parsed = parseDagDoc(withSamples(samples));
+      if (!('error' in parsed))
+        throw new Error(`expected a refusal for ${JSON.stringify(samples)}`);
+      expect(parsed.error, JSON.stringify(samples)).toContain('samples');
+    }
+  });
+
+  it('drops only the entries it cannot trust, keeping every good sibling', () => {
+    const parsed = parseDagDoc(
+      withSamples({
+        good: { tokens: 1, elapsed_ms: 2, at: 3 },
+        'no-at': { tokens: 1 },
+        // A stored entry is trusted whole: one unusable field costs the entry.
+        'at-negative': { tokens: 1, at: -1 },
+        'at-fraction': { tokens: 1, at: 1.5 },
+        'at-string': { tokens: 1, at: '7' },
+        'tokens-negative': { tokens: -1, at: 1 },
+        'tokens-fraction': { elapsed_ms: 1, tokens: 1.5, at: 1 },
+        'no-number': { at: 1 },
+        'not-an-object': 7,
+      })
+    );
+    expect(parsed).toEqual({
+      doc: doc({ samples: { good: { tokens: 1, elapsed_ms: 2, at: 3 } } }),
+    });
+  });
+
+  it('keeps the key when every entry was dropped, so an empty map stays readable', () => {
+    expect(parseDagDoc(withSamples({ a: { tokens: -1, at: 1 } }))).toEqual({
+      doc: doc({ samples: {} }),
+    });
+    expect(parseDagDoc(withSamples({}))).toEqual({ doc: doc({ samples: {} }) });
+  });
+
+  it('leaves the write path alone: an applied write keeps the samples it read', () => {
+    const stored = doc({ nodes: [node({ id: 'a' })], samples: { a: { tokens: 1, at: 2 } } });
+    const written = applyDagWrite({ action: 'set', id: 'a', status: 'done' }, stored, SESSION, NOW);
+    if ('error' in written) throw new Error(`expected a document, got: ${written.error}`);
+    expect(written.doc.samples).toEqual({ a: { tokens: 1, at: 2 } });
+    // Nothing here invents the key either: an empty document stays without one.
+    expect(emptyDag(SESSION, '', NOW)).not.toHaveProperty('samples');
   });
 });
 

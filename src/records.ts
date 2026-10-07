@@ -216,6 +216,11 @@ export interface DagNodeMetrics {
   tokens?: number;
   /** Active-turn duration in milliseconds, from the host's own timing projection. */
   elapsed_ms?: number;
+  /**
+   * Epoch ms the host sampled this entry at — present only on a stored sample
+   * (a live one carries the answer's `sampled_at`).
+   */
+  at?: number;
 }
 
 /**
