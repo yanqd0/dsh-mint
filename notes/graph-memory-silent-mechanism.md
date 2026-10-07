@@ -55,28 +55,28 @@ DSH 的沙箱/授权只包裹特定工具（bash/shell/file 这类会执行外�
 dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 
 - `src/mint/mint.ts runMint()`：`spawn(process.execPath, [mint-faa/run-mint.js, ...args], {cwd})`，
-  在**插件自身进程**里直跑 mint CLI（源码注释 + `notes/mint-sandbox.md` #18：插件子进程不经会话文件沙箱）。
+  在**插件自身进程**里直跑 mint CLI（源码注释 + `notes/mint-sandbox.md`「根因链」：插件子进程不经会话文件沙箱）。
 - 已在三处复用、全部**零授权运行**：
   - `src/host/context.ts`：`agent/session-start` 时 `runMint(... list --json)` 注入 `[Mint]` 概览（等价 graph-memory 注入）；
   - `src/host/planbind.ts`：`tools/pre-execute` 对 `exit_plan_mode` 用 `runMint(plan list)` 做绑定门禁；
   - `src/mint/mint-tool.ts`：注册宿主工具 `mint`（args 透传全命令面），execute 内 `runMint`
     （注释：plugin 进程不被会话沙箱约束）。
 
-**缺口一（已修复，#34）：宿主工具曾只有 `mint_query` 一个只读工具。** 其余 model 日常要跑的
+**缺口一（已修复）：宿主工具曾只有 `mint_query` 一个只读工具。** 其余 model 日常要跑的
 `issue add / state start|commit|close / plan create / plan attach / milestone create ...`
 等状态操作没有任何宿主工具 → 模型只能退回 bash 跑 `mint <子命令>`。
 现由 `mint` 工具覆盖全命令面（危险子命令白名单拒绝）。
 
-**缺口二（已修复，#38/#35）：行为曾被 skill/检查清单「焊死」在 bash 上。** 自动安装的 `mint` skill
+**缺口二（已修复）：行为曾被 skill/检查清单「焊死」在 bash 上。** 自动安装的 `mint` skill
 （当时源自 `mint/` 子模块，dsh-mint 只 content-sync `dist/skill` → `~/.dsh/skills/mint`）以及
 `notes/install-check.md`、`AGENTS.md` 全都指示「用 bash 跑 `mint ...`」。
 现 skill 源已迁入本仓 `skill/`（与上游子模块 git 层解耦），并重写为 DSH 单宿主、以 `mint`
-工具为唯一操作面；install-check/AGENTS 口径同步过渡（#36）。
+工具为唯一操作面；install-check/AGENTS 口径同步过渡。
 
 ### 为什么 B-v2 之后「仍有授权问题」（治标）
 - mint 所有子命令都以**读写模式**打开 db，落点在 workspace 外 → 模型 bash 跑 `mint` 必被
   `workspace-write` 沙箱拒 → 只能预置 `danger-full-access` 提权 → `approval/request`。
-- `src/mint/approval-gate.ts`（B-v2，#25）把这段从「每次弹窗」降到「**每会话首条真人批一次 + 会话内
+- `src/mint/approval-gate.ts`（B-v2）把这段从「每次弹窗」降到「**每会话首条真人批一次 + 会话内
   自动放行**」，但：
   - 每条 mint 命令仍落 `approval/asked` + `approval/decided` 审计对（只是 1–2ms 自动批）；
   - **跨新会话**首条仍要真人批准，除非 `config.autoApprove: true`；
@@ -101,7 +101,7 @@ graph-memory 的做法对 mint 不能字面照搬：mint 项目硬约束是**依
 
 因此 dsh-mint 对齐 graph-memory 的落地 = **把 model 日常要跑的 mint 子命令全部注册成宿主工具
 （execute 内 `runMint`），并让 skill / 检查清单改走工具而不是 bash**。工具一经注册就由 agent loop
-在宿主内执行、不进沙箱、**零授权**。**（已落地，#34 起为 `mint` 工具——单个 argv 透传工具覆盖
+在宿主内执行、不进沙箱、**零授权**。**（已落地：`mint` 工具——单个 argv 透传工具覆盖
 mint 全命令面，取代原先只读的 `mint_query`。）**
 
 > 落地实况（2026-09）：`mint` 工具为**薄透传**——不注入也不改写任何 flag，输出即 mint 原生
@@ -112,7 +112,7 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 
 | 方案 | 做法 | 授权体验 | 代价 / 风险 |
 |---|---|---|---|
-| **A（对齐 graph-memory，推荐；已落地为 plan #7）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 install-check 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已随 #38 解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
+| **A（对齐 graph-memory，推荐；已落地）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 install-check 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
 | **B（现状，最小改）** | 沿用 B-v2，把挂载行 `config.autoApprove: true` 打开 | 跨会话免批、会话内自动 | 仍逐条落 ask/decided 审计；只认单条裸 mint；子代理/复合命令不管；治标 |
 | C（上游根治） | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项） | 最正统、全项目受益 | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 mint-sandbox） |
 
@@ -122,18 +122,18 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 
 ---
 
-## 5. 落地记录（方案 A 已实施，plan #7）
+## 5. 落地记录（方案 A 已实施）
 
 1. ~~抽通用宿主工具 + 类型化高频工具二选一~~ → **已定案：单一 `mint` 工具、argv 透传**，
-   不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint/mint-tool.ts`（#34）。
-2. ~~改 skill 说明并重新 content-sync 子模块~~ → **skill 源已迁入本仓 `skill/`**（#38 取消子模块），
-   并重写为 DSH 单宿主、工具优先（#35）。
-3. `notes/install-check.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」（#36）。
-4. 回归：新会话不 bash、纯工具跑完整 dogfood，取证看 session JSONL（telemetry 默认关）——见 #37。
+   不做类型化工具组（避免与 CLI 演进漂移）；参考模板已从 `query.ts` 演化为 `src/mint/mint-tool.ts`。
+2. ~~改 skill 说明并重新 content-sync 子模块~~ → **skill 源已迁入本仓 `skill/`**（取消子模块），
+   并重写为 DSH 单宿主、工具优先。
+3. `notes/install-check.md` §5 已从「bash 放行验证」过渡为「**工具零授权验证**」。
+4. 回归：新会话不 bash、纯工具跑完整 dogfood，取证看 session JSONL（telemetry 默认关）。
 
 ## 速查（证据位置）
 - graph-memory 入口：`~/.dsh/profiles/web/node_modules/graph-memory/{dsh.ts,index.ts}`（dsh.ts=DSH 适配）；
   事件挂接与召回注入见 `dsh.ts` 的 `session/event`/`agent/pre-step`/`compactBeforeStep`/`insertDshRecallBeforeCurrentUser`；
   运行库 `~/.dsh/graph-memory/graph-memory.db(-wal/-shm)`。
 - dsh-mint：`src/mint/mint.ts`（runMint）、`src/query.ts`（宿主工具范式）、`src/mint/approval-gate.ts`（B-v2 兜底）、
-  `notes/mint-sandbox.md`（#23/#24 调研与四方案，本文承接其「工具化」被搁置项）。
+  `notes/mint-sandbox.md`（沙箱放行调研与四方案，本文承接其「工具化」被搁置项）。

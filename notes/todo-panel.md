@@ -1,4 +1,4 @@
-# 宿主 todo 面板契约（#119）
+# 宿主 todo 面板契约
 
 > 实测版本：DSH `0.2.0-rc.2`（本地检出 `@deepseek-ai/dsh-tool-todo`、
 > `dsh-client-ui-conversation`、`dsh-plan-mode`、`dsh-session`）。
@@ -22,7 +22,7 @@
 - 渲染位置：`dsh-client-ui-conversation` 的 `conversation.input.dock`
   （`conversation-todo-dock`，order 0），只读，折叠态标题显示各状态计数。空表渲染 `null`（面板消失）。
 
-## 3. 本插件的分工（#119）
+## 3. 本插件的分工
 
 - **只提醒，不代写**：`issue state` / `plan plan` / `plan close` 成功后，在工具结果末尾追加一行
   「同步 todo」（`src/host/reminders.ts` 的 `TODO_SYNC_REMINDER`）；失败结果与**子代理会话**

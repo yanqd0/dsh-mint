@@ -63,7 +63,7 @@ dsh: plugin tree failed to load: failed to apply loader entry mint (@yanqd0/dsh-
 invalid config: - Required (at )
 ```
 
-### 遗留：手写 profile patch（#5 时代的做法）
+### 遗留：手写 profile patch（早期做法）
 
 `~/.dsh/profiles/<profile>/cordis.patch.yml` 里手写的同一段 `insert` 仍然有效，
 但**与 bundle 声明并存会重复挂载**，profile 直接起不来：
@@ -107,19 +107,19 @@ dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
 
 ## 3. 安装 skill（两种形态，同一机制）
 
-> skill 单一真源是**本仓 `skill/`**（#38 起与 mint 子模块 git 层解耦）：`pnpm build` 把它拷进
+> skill 单一真源是**本仓 `skill/`**（与 mint 子模块 git 层解耦）：`pnpm build` 把它拷进
 > `dist/skill`，再由落盘同步写到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的
-> `~/.agents/skills`）。**机制只有一种，形态按场景分两种**（#151 / plan #32）：
+> `~/.agents/skills`）。**机制只有一种，形态按场景分两种**：
 
 | 形态 | 谁创建 | 目标 | 生效方式 | 场景 |
 | --- | --- | --- | --- | --- |
 | **symlink** | 显式命令（`scripts/install-dsh.sh` / `pnpm skill --link`） | `~/.dsh/skills/mint -> <repo>/dist/skill` | 改仓库 + `pnpm build` 即被读到，**无需重启**（provider 每次 `get()` 重读；watcher 默认 `followSymlinks`） | 本机 dev / dogfood |
 | **复制** | 插件加载时的 content-sync（默认）与 `postinstall` | `~/.dsh/skills/mint`（真实目录） | 插件**下次加载**时整树比对重同步 → 要重启 harness | 打包安装（离线、自包含、与 profile 无关） |
 
-- **symlink 只由显式命令创建**：运行时**永不覆盖 symlink**（dev 所有权）；悬挂或异主的只告警一行（#153）。
+- **symlink 只由显式命令创建**：运行时**永不覆盖 symlink**（dev 所有权）；悬挂或异主的只告警一行。
 - **复制的所有权**：写入前先落标记 `.dsh-mint-skill`；「是不是本插件那份」= 有标记，或
   `SKILL.md` frontmatter `name: mint`（标记之前的老副本）。异主目录/普通文件一律保留 + 告警，
-  `--force` 才接管（#153）。标记只是所有权凭据，不参与整树比对，所以一致时**不写任何文件**。
+  `--force` 才接管。标记只是所有权凭据，不参与整树比对，所以一致时**不写任何文件**。
 - **命令只有一个实现**：`scripts/install-dsh.sh` 是 `dist/install-skill.js` 的薄委派（默认
   `--link`），模式为 `--link` / `--copy` / `--uninstall` / `--status`，配 `--force`；等价写法
   `pnpm skill --<mode>`。`DSH_HOME` 生效；skill 由 `dsh-skill-filesystem` 以 `user-dsh` 源发现。
@@ -128,18 +128,18 @@ dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
   **插件加载时的补同步是保证路径**（skill-filesystem 每次 collect 现扫目录，首个会话即可发现）。
   任何失败只告警一行，绝不阻断安装或插件加载。
 
-### 为什么保留落盘，而不是迁到随包 provider（#151）
+### 为什么保留落盘，而不是迁到随包 provider
 
 - `~/.dsh/skills`(user-dsh **400**) 与 `~/.agents/skills`(user-agents **500**) **在 preset 层同层**，
   同层 rank 小者胜；随包 `ctx.skills.registerProvider` 落 **global 层**，**跨层被静默压过**，
   调 rank 无用（`packages/skill/skill-filesystem/src/index.ts` 的 root 表；dsh-dev-dsh
   `notes/evaluation.md` §8.11 探针表、`skill/references/develop/skill-plugins.md` §3–§4）。
 - mint 是「多宿主共用同名」的 skill（mint 上游仓自带 `.agents/skills/mint`），**遮蔽是其语义的一部分**；
-  dsh-dev-dsh 没有同名覆盖需求，才迁到随包 provider（其 plan #36 / #112–#114）。
+  dsh-dev-dsh 没有同名覆盖需求，才迁到随包 provider（其自身的迁移记录）。
 - **残余风险**：项目级 `.agents/skills`(200) 与 `customSkillDirs`(300) 在同层仍压过本产物——
   在 mint 仓 cwd 的会话里生效的是项目版 skill。
 
-### 卸载：dsh 没有插件卸载钩子（#151 / dsh-dev-dsh #118）
+### 卸载：dsh 没有插件卸载钩子
 
 `dsh plugin remove` = 卸载 fiber + `pnpm remove`，之后**没有任何一方**清理 home；pnpm 不跑
 `preuninstall`（pnpm#3276），`link:` 依赖连生命周期脚本都不跑。所以卸载要显式收尾：
@@ -169,7 +169,7 @@ dsh plugin --profile <p> remove @yanqd0/dsh-mint
 **隔离验证法（不污染真实环境）**：`DSH_HOME=$(mktemp -d) dsh plugin --profile web
 add link:<repo>`，再 `dsh --profile web --dump-config` / `dsh web --help`。空
 DSH_HOME 会在临时目录里初始化 profile，安装、挂载、skill 同步全在 /tmp 内完成
-（本次 #50 的 bundle 自挂载即用此法实测：装完自动进 `dsh.profile.bundles`，
+（bundle 自挂载即用此法实测：装完自动进 `dsh.profile.bundles`，
 boot 正常，skill 落到 `$DSH_HOME/skills/mint`）。
 
 ## 5. workspace-write 会话与 mint CLI
@@ -205,7 +205,7 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 
 | 模式 | 写法 | 实际跑什么 |
 | --- | --- | --- |
-| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 按需下载——见下方 #45 口径） |
+| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 按需下载——见下方冷启动口径） |
 | 本地构建 | `mintEntry: ~/bin/mint`、绝对路径、或裸名 `mint`（走 `PATH`） | 直接 spawn 该可执行程序 |
 
 - `dependency` 是哨兵：任一旋钮写了它都强制走依赖链，即使另一个旋钮有路径（开发 profile 钉在本地构建、
@@ -214,7 +214,7 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 - 依赖区间 `>=0.8.0 <1.0.0`：用户升级/新装即可取到区间内的新 `mint-faa`，无需本插件跟发；但 mint 仓库
   HEAD 的新子命令（尚未发布）经工具执行仍报 `unrecognized subcommand`——默认跑的是「插件依赖的 mint」，
   不是「你在开发的 mint」。
-- **冷启动口径（#45）**：全新安装后 `mint-faa` 没有二进制，首次 `run()` 会 `rmSync` 安装目录再下载（该惰性
+- **冷启动口径**：全新安装后 `mint-faa` 没有二进制，首次 `run()` 会 `rmSync` 安装目录再下载（该惰性
   路径不打进度日志），而 mint-faa 的安装**没有锁**——插件在会话启动时并行发 3 个 mint 调用（overview 的
   list / milestone list / -V），并发首次安装会互相破坏。故 `runMint` 取进程内「冷槽」：**首个**调用拿
   180 s 预算（`MINT_COLD_TIMEOUT_MS`），并发调用等它 settle 后才允许 spawn；只有冷启动**成功**才转热
@@ -228,7 +228,7 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
     # mintEntry: dependency    # 反例：强制已发布的 mint-faa 链路
 ```
 
-**解析口径（#66 起）**：插件先探测**自身包根**下的 `node_modules/mint-faa/run-mint.js`，再回落
+**解析口径**：插件先探测**自身包根**下的 `node_modules/mint-faa/run-mint.js`，再回落
 `require.resolve('mint-faa/run-mint.js')`。原因是 DSH 下插件的裸包名由 harness/profile 解析作用域决定
 （见 `dsh-plugin-dev.md`），`link:` 安装又不会把被 link 包的依赖装进 profile——只靠 `require.resolve`
 曾导致工具直接报 `Cannot find module 'mint-faa/run-mint.js'`。探测失败时报错带可行动指引，`[Mint]` 概览
@@ -246,4 +246,4 @@ node dist/check-mint-entry.js --mode local --entry ~/bin/mint
 ## 发布
 
 同名双注册表发布（`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages）——见
-`docs/RELEASING.md`（#8，未来 docs 工程）。
+`docs/RELEASING.md`。

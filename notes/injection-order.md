@@ -1,7 +1,7 @@
-# 注入顺序与 KV cache：#63 前提核验（dsh 0.2.0-rc.2 实测）
+# 注入顺序与 KV cache：前提核验（dsh 0.2.0-rc.2 实测）
 
-> 触发：怀疑「动态概览排在静态指引之前 → 其后前缀缓存每轮失效」（#63）。
-> 结论：**在 dsh 0.2.0-rc.2 上该前提不成立**，无需改码。本文是核验依据；结论已回写 #63 并 drop。
+> 触发：怀疑「动态概览排在静态指引之前 → 其后前缀缓存每轮失效」。
+> 结论：**在 dsh 0.2.0-rc.2 上该前提不成立**，无需改码。本文是核验依据；结论已回写对应 issue 并 drop。
 
 ## 1. 结论
 
@@ -53,4 +53,4 @@ grep -n "runtimeContext.project\|\[\.\.\.claimed, context\]" "$A/lib/index.js"
 ```
 
 判定规则：只要 `renderPrompt` 仍只吃 `sections`、且 `preStep` 仍把快照追加在 `claimed` 之后，
-#63 的前提就不成立；若未来宿主改成「快照原地替换/插到 system prompt 之前」，再重开该 issue。
+该前提就不成立；若未来宿主改成「快照原地替换/插到 system prompt 之前」，再重开该 issue。

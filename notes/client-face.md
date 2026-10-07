@@ -115,12 +115,12 @@ dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint
 均带 `session=<SessionId>`，宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录
 （**不接受浏览器给的路径**）。**前缀与路由名单只有一份**：`src/shared/route-paths.ts`（`ROUTE_PREFIX` /
 `ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/host/routes.ts` 与浏览器 `src/client/api.ts` 各自
-派生——`tests/unit/shared/route-paths.test.ts` 比对两表防漂移（#104）。每次 CLI run 共享**本请求的一个
+派生——`tests/unit/shared/route-paths.test.ts` 比对两表防漂移。每次 CLI run 共享**本请求的一个
 AbortController**（`RequestScope`），
 浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
 `MaxListeners`，且只能取消其中一个。
 
-> **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由（plan #31）**：它读
+> **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由**：它读
 > `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
 > ——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验后拼路径，非法即 400。信封
 > `{ ok:true, dag: DagView|null, revision, file, autoOpen, metrics?, sampled_at?, warnings? }`：**文件缺失 → 200 + `dag:null`**
@@ -128,13 +128,13 @@ AbortController**（`RequestScope`），
 > 「DAG 不可读 + 路径」而不是空白。`autoOpen` 是宿主把挂载行 `openDagTab` 回传给浏览器半边的地方
 > （客户端只有这一次机会知道开关，见下）。
 
-> **落盘样本（plan #35）**：实测值会**写进 DAG 文档**的 `samples`（`subagent/end` 与 `mint_plan_dag`
+> **落盘样本**：实测值会**写进 DAG 文档**的 `samples`（`subagent/end` 与 `mint_plan_dag`
 > 的 `set → done` 各落一次，路由对「仍 running 但已测不到 agent」的节点兜底补一次）。信封里
 > **有 `at` 的条目 = 落盘样本**（钟是 `at`）、**没有 `at` = 本轮实测**（钟是 `sampled_at`）；因此子代理
 > 结束后仍然有实测 token/时长可显示，只是不再增长（客户端不跑秒，详情卡用 `dag.measuredAt` 标出采样时刻）。
 > 实现与边界见 [plan-dag.md](plan-dag.md) §1.4.1/§4.7。
 
-> **实时指标（plan #34）**：宿主为**每个有 `agent` 的节点**读子会话的会话投影——`tokenUsage`
+> **实时指标**：宿主为**每个有 `agent` 的节点**读子会话的会话投影——`tokenUsage`
 > （四桶之和）与 `subagentTiming`（`settledMs + max(0, end - active.since)`，与 dsh 子代理 UI 同式），
 > 路径是 `ctx.get('agents').get(childId).session` + `ctx.get('sessionProjections').stateOf(session, key)`
 > （**两个服务都在每次请求时解引用**，与 `getCwd` 同风格；都属可选服务）。**只在实测到东西时**才发
@@ -143,7 +143,7 @@ AbortController**（`RequestScope`），
 > 用 `sampled_at` 当锚做 1 s 走秒，故宿主与浏览器时钟无需同源。实现与降级口径见
 > [plan-dag.md](plan-dag.md) §4.7。
 
-**自动打开 tab 的契约（plan #31；`notes/plan-dag.md` §4.7 的实现细节）**：
+**自动打开 tab 的契约（`notes/plan-dag.md` §4.7 的实现细节）**：
 
 - 页面类型（无 `patterns`）由 `ctx.sidebarRight.openTab(kind)` 打开；`TabDefinitionLike.multiple !== true`
   时该 kind 的地址是**每会话固定**的（`pageAddress(kind)`），所以重复 `openTab` 只会聚焦同一个 tab、
@@ -159,13 +159,13 @@ AbortController**（`RequestScope`），
   真实定时器；`document.visibilityState === 'hidden'` 时不请求。
 - 面板**数据**更新与自动打开解耦：`DagBody` 在 `useTabInfo().tab.visible` 为真时每 2s 拉一次
   `/dsh-mint/dag`；跳过写的判据是**整份读数**相同（`revision` + `sampled_at` + 逐字段 `metrics`），
-  只比 `revision` 会让实时数字停住。`running` 且有实测时长时另起 1s 本地定时器走秒（plan #34）。
+  只比 `revision` 会让实时数字停住。`running` 且有实测时长时另起 1s 本地定时器走秒。
 
 `/dsh-mint/meta` 是面板的**字典路由**（一次响应替代 N 次读）：`plan list --all-states`、
 `milestone list --all-states`、`label list`（均 `--no-page`），加上 `placement`（issue → effective
 milestone + 是否直连）。
 
-> **容器列表的结束态默认（#88）**：`plan list` / `milestone list` 自己只隐藏 `done`，`partial`
+> **容器列表的结束态默认**：`plan list` / `milestone list` 自己只隐藏 `done`，`partial`
 > （issue 已全部收口但未 released）与 `dropped` 仍会出现；而 `--status` 只接受单值（重复即 usage
 > error），"open 或 running" 无法表达。所以 `/dsh-mint/plans` 与 `/dsh-mint/milestones` 的**默认**
 > 路径读全表（`{kind} list --all-states --json --no-page`）→ 宿主按 `CONTAINER_END_STATES`
@@ -179,14 +179,14 @@ milestone + 是否直连）。
 > **`list --json` 也不含 issue 的 effective milestone**（0.9.0-alpha.1 实测：只有 `plan_id`），
 > label 的 color 更是只存在于 `label list`。所以 meta 的 placement 目前**逐 milestone 反查**
 > （`list --all-states --milestone <M>`，上限 30，M 次 spawn），上游 mint 在 list 输出补上该字段即可
-> 删除——已跨项目登记 **mint #503**（本项目 plan #15 记录，dsh-mint #90/#105 关联）。**当前缓解
-> （#105）**：三张字典表每次请求实读，placement 这张昂贵的表按 (entry, cwd) 在宿主进程内缓存
+> 删除——已跨项目登记到上游 mint。**当前缓解机制**：
+> 三张字典表每次请求实读，placement 这张昂贵的表按 (entry, cwd) 在宿主进程内缓存
 > `PLACEMENT_TTL_MS`（默认 10s，`MintRouteDeps.now` 是测试时钟缝）；面板的显式刷新走
 > `/dsh-mint/meta?...&refresh=1` 强制重扫（`createApi` 的 `meta(signal, fresh)`）。milestone 详情的
 > 「包含 plan」仍用 meta 的 all-states plans 按 `milestone_id` 过滤，而不是再打一次计划路由（那里
 > 只回应当前筛选下的分页，已收口的 plan 会消失）。
 
-> **mint 的可空字段是「合法答案」，不是形状漂移（#94/#95/#96/#107/#108）**：`show --json` 的 issue /
+> **mint 的可空字段是「合法答案」，不是形状漂移**：`show --json` 的 issue /
 > container `body`、plan/milestone 的 `version`、`label list` 的 `color` 都来自 `Option<…>`，未设时为
 > `null`。守卫（`src/mint/mint-json.ts` 的 `isStringOrNull`）接受 `null`，路由**原样透传**（`truncateBody(null)`
 > 返回 `{body:null,truncated:false}`），由展示层消化：`hasBody(null)`/`BodyView` 显示空态、
@@ -262,7 +262,7 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 ```
 
 **改 `package.json`（exports / files / description）后必须重启 harness**：Node 内置 resolver 把解析过的
-`package.json` 按**进程**缓存，mtime 变更不会让它失效（#127 的实测坑：磁盘上已修好，headless 复现通过，
+`package.json` 按**进程**缓存，mtime 变更不会让它失效（实测坑：磁盘上已修好，headless 复现通过，
 但运行中的 harness 仍返回旧的 `ERR_PACKAGE_PATH_NOT_EXPORTED`）。**只改字典文本**（已导出子路径下的
 `locale/*.json` 内容）才是按请求读盘、刷新页面即可。缓存实测（临时包，同进程内先失败后改写再解析）：
 
@@ -274,7 +274,7 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 
 （`ls -1d` 的 `-d` 不能省：少了它会列目录内容，拿到 `package.json` 这种行。）
 
-**而且要把浏览器页面真的重载一次**（#127 的第二个坑）：harness 重启期间旧页面只会自动重连，
+**而且要把浏览器页面真的重载一次**（第二个坑）：harness 重启期间旧页面只会自动重连，
 插件面板的列表是**页面加载时取的快照**（`ensure()` 仅在 `idle` 时读、`load()` 不清缓存），
 不重载就不会重取——实测「磁盘已修好 + headless 通过 + harness 重启过」之后页面仍为空，**F5 后才出现**。
 判据（在出问题的那个页面上跑，浏览器自带登录态）：
@@ -297,10 +297,10 @@ console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存
 - **React 绝不能打进包**：身份必须与 shell 的模块表一致，否则 hooks/context 立刻炸。
 - **`dsh.client.inject` 缺失项静默跳过**：不要把它当门禁；真正的门禁是插件自身的 `exports.inject`。
 - **CI 先测后构建**：任何「读 dist 产物」的测试都必须在测试内自行构建到临时目录（并清理）。
-- **声明 `exports` 就等于给展示元数据上门禁**（#127）：`readPluginMeta` 用 Node resolver 解析
+- **声明 `exports` 就等于给展示元数据上门禁**：`readPluginMeta` 用 Node resolver 解析
   `<pkg>/package.json` 与 `<pkg>/locale/en.json`，缺这两个子路径时 `ERR_PACKAGE_PATH_NOT_EXPORTED`
   被 `optionalResourcePath` **静默吞掉**（无报错、无 placeholder），插件页只剩包名。见 §8。
-- **修完 exports 必须重启 harness 才生效**（#127）：resolver 的 `package.json` 缓存按进程存活，
+- **修完 exports 必须重启 harness 才生效**：resolver 的 `package.json` 缓存按进程存活，
   **磁盘改好 + headless 复核通过 ≠ 运行中的 harness 变了**——「headless 已好、页面仍空」时先重启，别怀疑 UI。见 §6.5。
 
 ## 8. 插件展示元数据（插件页的标题/描述/图标）
@@ -321,7 +321,7 @@ console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存
   `locale.resolveText` 按当前语种取值；**没有 `meta` 时**客户端 `packageText` 退回完整包名、描述不渲染。
 - **`exports` 是硬门禁**：包一旦声明 `exports`（本插件有 `"."` / `"./client"`），就必须显式加
   `"./package.json": "./package.json"` 与 `"./locale/*.json": "./locale/*.json"`，并把 `locale/*.json`
-  写进 `files`；否则解析失败被静默吞掉（#127）。无 `exports` 的老包（如 `dsh-whale-widget`）
+  写进 `files`；否则解析失败被静默吞掉。无 `exports` 的老包（如 `dsh-whale-widget`）
   走 legacy 解析反而正常——**「隔壁能显示」不代表自己的写法对**。
 - 渲染落点：侧栏插件面板 `PackageDetail` 的 `<p class="detailDesc">`（根节点 `[data-plugin-detail="<包名>"]`）、
   标题行下的 `<code data-plugin-name>`；设置里的卡片是 `cardDescription`（2 行截断）。

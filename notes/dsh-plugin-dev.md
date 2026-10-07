@@ -21,32 +21,32 @@
 - `name` 模块解析（`vendor/cordis` loader import()）：`cordis:` 内置 → 以 `.` 开头按 profile baseUrl 解析 → **其余直接 `import(name)`**：
   - 目录 specifier 报 `ERR_UNSUPPORTED_DIR_IMPORT`——绝对/相对路径必须指向**文件**（如 `dist/index.js`）
   - 裸包名走 harness internal loader（从 harness 自身 node_modules 解析）
-  - **教训（#66）**：`@deepseek-ai/dsh-app-boot` 的 profile-resolution bootstrap 会把插件（profiles 树内或 linked root）的**裸包名解析**路由到 harness/profile 的包表（harness 自带 `zod` 能解析，插件自己的 `mint-faa` 不能）。所以**插件运行时的自身依赖不能只靠 `require.resolve`**：要么 bundling 进 dist，要么按 `import.meta.url` 推出包根做文件系统探测（`node_modules/<pkg>/…`，pnpm isolated/hoisted 与 npm 都成立）。本仓 `src/mint/mint.ts` 的 `resolveDependencyEntry()` 即此模式，`require.resolve` 只作兜底。
+  - **教训**：`@deepseek-ai/dsh-app-boot` 的 profile-resolution bootstrap 会把插件（profiles 树内或 linked root）的**裸包名解析**路由到 harness/profile 的包表（harness 自带 `zod` 能解析，插件自己的 `mint-faa` 不能）。所以**插件运行时的自身依赖不能只靠 `require.resolve`**：要么 bundling 进 dist，要么按 `import.meta.url` 推出包根做文件系统探测（`node_modules/<pkg>/…`，pnpm isolated/hoisted 与 npm 都成立）。本仓 `src/mint/mint.ts` 的 `resolveDependencyEntry()` 即此模式，`require.resolve` 只作兜底。
 - 验证：`dsh --profile web --dump-config`（组合树 + 补丁警告一次看清）；`--dump-default-config` 不含用户层。
 
 ## inject 与 DI（cordis）
 
 - 插件**自身 ctx** 上访问服务必须先声明：`export const inject = ['tools', ...]`，否则运行时 `cannot get property "shell" without inject`（单测 mock 测不出，实载必炸）。
 - agent 作用域的服务（如 `systemPrompt`）挂在 `agent.ctx` 上，**不要**加进 root inject（root 上没有该服务会直接 apply 失败）；agent 创建事件到达时该服务未必已就绪，注册前先判空，**不要**提前把该 session 记为已注册。
-- 教训：`inject = {}` 占位符 + mock 单测 = 实载全工具瘫痪（#16）。
+- 教训：`inject = {}` 占位符 + mock 单测 = 实载全工具瘫痪。
 
 ## 真实事件/工具签名（实载验证过，勿凭示例）
 
 - `agent/created`（**0.2.0-rc.2 的唯一 agent 生命周期事件**）：payload `{ agent, source, signal? }`，`source` 取 `startup|resume|clear|compact`；用 `agent.ctx`（作用域 ctx）+ `agent.session.header.cwd`（项目目录）。是 **serial** 事件：监听器抛错会 reject agent 创建（`dsh-agent/lib/index.js` `Registry.announce`），必须自带 try/catch。
-  - ⚠️ `agent/session-start` 在 0.2.0-rc.2 **不存在**（两个 v11 store 全树无该字面，同名只出现在第三方 graph-memory 源码里）——本插件挂它挂了整个 0.2.x，`[Mint]` 注入从未生效（#113）；旧名只作兼容回退保留。
+  - ⚠️ `agent/session-start` 在 0.2.0-rc.2 **不存在**（两个 v11 store 全树无该字面，同名只出现在第三方 graph-memory 源码里）——本插件挂它挂了整个 0.2.x，`[Mint]` 注入从未生效；旧名只作兼容回退保留。
   - 子代理会话靠 `session.header.delegationDepth > 0`（日志首行 `origin: 'subagent'`）分辨。
-- `tools/pre-execute`（allow/deny/ask 门禁）：`(exec, next)`；**在检查工具名前不要碰任何服务**（监听器抛错会打断所有工具调用，见 #16）。
+- `tools/pre-execute`（allow/deny/ask 门禁）：`(exec, next)`；**在检查工具名前不要碰任何服务**（监听器抛错会打断所有工具调用）。
 - `tools/post-execute`（enrich）：`(exec, result, next)` → `{ kind: 'accept', content: [...result.content, 追加块] }`；实测 commit 提醒生效。
 - `tools/result`：emit-only 观察，失败信号写 stderr。
 - `ctx.tools.register(definition)`：`definition.execute(args, exec)` 有**第二参数 exec**；项目目录取 `exec.agent.session.header.cwd`。
-- **`output.schema` 是运行时契约，不是文档**（#100 实测）：execute 的返回值先 `snapshotToolValue` → 按 `output.schema` 校验，**违规抛 `ToolOutputError`（`INVALID_TOOL_OUTPUT`）且 `render` 根本不被调用**；`additionalProperties: false` 下任何未声明键都是硬违规（`@deepseek-ai/dsh-tools` 0.2.0-rc.2 `lib/index.js:3542-3548, 467-469`）。`render(args, value)` 拿到的是原始（快照+deepFreeze）值，不是裁剪副本。改 `execute` 返回形状时**必须同步 schema**，并留「返回键集 ⊆ schema properties」的测试。
+- **`output.schema` 是运行时契约，不是文档**（实测）：execute 的返回值先 `snapshotToolValue` → 按 `output.schema` 校验，**违规抛 `ToolOutputError`（`INVALID_TOOL_OUTPUT`）且 `render` 根本不被调用**；`additionalProperties: false` 下任何未声明键都是硬违规（`@deepseek-ai/dsh-tools` 0.2.0-rc.2 `lib/index.js:3542-3548, 467-469`）。`render(args, value)` 拿到的是原始（快照+deepFreeze）值，不是裁剪副本。改 `execute` 返回形状时**必须同步 schema**，并留「返回键集 ⊆ schema properties」的测试。
 - 写码前先 grep 本机 lib（或 clone 的 TS 源）核对签名，`cordis_inspect_list/query` 本机未见，需要时从源码仓找。
 
 ## 沙箱（dsh-sandbox / sandbox-policy / sandbox-local）
 
 - **文件效应策略，无命令白名单**；workspace-write 可写根硬编码 `[session.cwd, /tmp, tmpdir()]`（writableRoots）。
 - 每会话边界 = **会话 cwd**（`resolve()` 用 `session.header.cwd ?? config.workspaceRoot`）；config `workspaceRoot` 只是无 cwd 会话的 fallback——patch 它不影响普通会话。
-- 沙箱只缝在 `ctx.shell`（bash/pwsh）与 fs 工具上；**插件直 `node:child_process` spawn 不经 confine**（宿主信任代码）——dsh-mint 已用此路径（#18）。
+- 沙箱只缝在 `ctx.shell`（bash/pwsh）与 fs 工具上；**插件直 `node:child_process` spawn 不经 confine**（宿主信任代码）——dsh-mint 已用此路径。
 - 升级阶梯：`read-only → workspace-write → danger-full-access`；`DSH_PERMISSION_MODE` 改部署默认。
 - 「当前目录 + ~/.local/share/mint」双根不可表达；要双根须上游 PR 加额外可写根配置。
 
@@ -78,6 +78,6 @@ package.json 对宿主面只需 `"type": "module"` + `exports` 指向 ESM 入口
 
 ## 历史教训
 
-- 调研结论两处被证伪（裸 id 行可挂载新插件、绝对路径目录可导入）→ 结论必须回到源码复核（#14 修 skill，#774f688 修文档）。
-- mock 单测覆盖不了 DI 约束与真实 payload 形状 → **实机验证是 dogfooding 不可省的环节**（#7 因此抓出 4 个 bug：inject、schema 超集、planbind 顺序、session-start payload）。
-- ~~mint 子模块~~ **（已废弃，#38）**：dsh-mint 曾以 `mint/` 子模块承载 skill 源，带来「子模块内 commit 只存在于本地 detached HEAD → CI checkout 报 not our ref」的流程约束。现已取消子模块，skill 源迁入本仓 `skill/`，二者 git 层完全解耦。
+- 调研结论两处被证伪（裸 id 行可挂载新插件、绝对路径目录可导入）→ 结论必须回到源码复核（据此修过 skill 与文档，#774f688）。
+- mock 单测覆盖不了 DI 约束与真实 payload 形状 → **实机验证是 dogfooding 不可省的环节**（因此抓出 4 个 bug：inject、schema 超集、planbind 顺序、session-start payload）。
+- ~~mint 子模块~~ **（已废弃）**：dsh-mint 曾以 `mint/` 子模块承载 skill 源，带来「子模块内 commit 只存在于本地 detached HEAD → CI checkout 报 not our ref」的流程约束。现已取消子模块，skill 源迁入本仓 `skill/`，二者 git 层完全解耦。

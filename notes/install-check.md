@@ -11,12 +11,12 @@
 - 插件本地源：`/home/user/yanqd0/dsh-mint`（profile 里是 `link:` 指向本仓库）。
 - mint CLI：入口优先级 = 挂载行 `mintEntry` > `MINT_ENTRY` > 依赖链；依赖链**先探测插件包根**
   的 `node_modules/mint-faa/run-mint.js`，再回落 `require.resolve`（`src/mint/mint.ts`，不依赖 PATH）。
-  为什么不能只靠 `require.resolve`：#66——DSH 下插件裸包名由 harness/profile 作用域解析，
+  为什么不能只靠 `require.resolve`：DSH 下插件裸包名由 harness/profile 作用域解析，
   `link:` 安装不把被 link 包的依赖装进 profile，曾直接报 `Cannot find module 'mint-faa/run-mint.js'`。
   两条链各一条命令自检：`node dist/check-mint-entry.js --mode dependency` /
   `node dist/check-mint-entry.js --mode local --entry ~/bin/mint`。
   mint-faa 内嵌二进制走 GitHub release postinstall，失败可忽略：首次运行按需下载，插件给冷启动
-  首调 180 s 预算并串行化并发首调（#45，详见 `mounting.md` §5.1）。
+  首调 180 s 预算并串行化并发首调（详见 `mounting.md` §5.1）。
 
 ## 1. 安装：包在 profile 依赖里（预期：link 行）
 
@@ -39,7 +39,7 @@ dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
 
 坑（历史教训，别再踩）：
 - 挂载行由**包自带的 bundle patch** 提供（包根 `cordis.patch.yml` + `package.json` 的
-  `dsh.bundle.patch`，见 #50）：`dsh plugin add` 成功即把本包写进 profile 的 `dsh.profile.bundles`，
+  `dsh.bundle.patch`）：`dsh plugin add` 成功即把本包写进 profile 的 `dsh.profile.bundles`，
   **不需要**手写 `insert:`；手写 insert 与 bundle 并存会**重复挂载**。
 - 裸 `- id/name` 是**覆盖**语义（profile 里那行 `- id: mint` 只用来放 `config`），
   行不存在时会报 `patch: entry not found`——所以别把它当成新增挂载的手段。
@@ -49,7 +49,7 @@ dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
 
 ```bash
 ls /home/user/yanqd0/dsh-mint/dist/index.js /home/user/yanqd0/dsh-mint/dist/skill/SKILL.md
-ls /home/user/yanqd0/dsh-mint/dist/client.js                # #9：client 半边预构建产物
+ls /home/user/yanqd0/dsh-mint/dist/client.js                # client 半边预构建产物
 head -c 60 /home/user/yanqd0/dsh-mint/dist/client.js        # 应为 window.__ModuleLoader__.load(
 ls -ld ~/.dsh/skills/mint                      # 本机 dev 预期：symlink -> <repo>/dist/skill
 node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
@@ -67,7 +67,7 @@ node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
   失败会让 install 非零退出 → 本机用
   `pnpm install --frozen-lockfile --ignore-scripts && pnpm build`。
 - 仓库 **无 node_modules** → zod/mint-faa 解析失败（本仓库曾因从未 install 而全工具瘫痪）。
-- **skill 单一真源 = 本仓 `skill/`**（#38 起与 mint 子模块 git 层解耦）：构建拷入 `dist/skill`，
+- **skill 单一真源 = 本仓 `skill/`**（与 mint 子模块 git 层解耦）：构建拷入 `dist/skill`，
   由落盘同步写到 `~/.dsh/skills/mint`（rank 400 `user-dsh`）；dev 走 symlink
   （`scripts/install-dsh.sh`），改完 `pnpm build` 即被读到、**无需重启**。
 - **形态与一致性只看 `--status`**：别再拿 `diff -rq` 对账——复制形态多一个所有权标记
@@ -80,7 +80,7 @@ node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
   skill）。rank 400 本已遮蔽 rank 500，但删掉可避免两个 mint skill 同时在目录里造成困惑。
   **注意别删 `~/.dsh/skills/mint`**——那是插件的同步产物。
 
-## 3.1 客户端面：右侧边栏第三张 guide 卡片（#11/#12/#79）
+## 3.1 客户端面：右侧边栏第三张 guide 卡片
 
 重启 harness 并刷新页面后：
 
@@ -95,8 +95,8 @@ node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
 
 ## 4. 生效判定（自动使用，预期：工具/上下文出现）
 
-- 会话工具列表出现 **`mint`**（宿主面 #34；旧的 `mint_query` 已删除）。
-- systemPrompt 注入 `[Mint]` 概览块（宿主面 #3）+ 一条「工具优先」指引段落（#39）。
+- 会话工具列表出现 **`mint`**（宿主面工具；旧的 `mint_query` 已删除）。
+- systemPrompt 注入 `[Mint]` 概览块（宿主面）+ 一条「工具优先」指引段落。
 - 概览里出现 `[Mint] WARNING: mint 入口解析失败…` = 入口不可解析（修复见 §0 与 `mounting.md`
   §5.1），**不是**「项目里没有 issue」；概览首行的 `via …` 标签直接告诉你跑的是哪个 mint。
 - 会话日志取证：`~/.dsh/sessions/<proj>/<id>/session.jsonl.zstd` 里查工具调用与上下文。
