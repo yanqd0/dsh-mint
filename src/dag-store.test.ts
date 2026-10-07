@@ -31,7 +31,11 @@ function dir(): string {
 async function write(where: string, action: unknown, session = SESSION): Promise<DagDoc> {
   const parsed = parseDagAction(action);
   if ('error' in parsed) throw new Error(parsed.error);
-  if (parsed.action === 'get') throw new Error('get is not a write');
+  // #172: `wt`/`merge` change the filesystem, not the document, so a stored-write
+  // test may only drive the three document actions.
+  if (parsed.action !== 'init' && parsed.action !== 'add' && parsed.action !== 'set') {
+    throw new Error(`${parsed.action} is not a document write`);
+  }
   const result = await updateDag(
     session,
     (state) => {

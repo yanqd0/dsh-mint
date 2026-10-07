@@ -13,7 +13,15 @@
  */
 import { isRecord } from './mint-json.js';
 import { hasControlCharacter } from './text.js';
-import type { DagNodeView, DagPhase, DagStatus, DagVerdict, DagView } from './records.js';
+import type {
+  DagNodeView,
+  DagPhase,
+  DagStatus,
+  DagVerdict,
+  DagView,
+  DagWorktree,
+  DagWorktreeState,
+} from './records.js';
 
 /** The only document version this build reads or writes. */
 export const DAG_VERSION = 1;
@@ -94,6 +102,26 @@ export interface DagAddNode {
   issue?: number;
 }
 
+/**
+ * One node-level worktree operation (#172).
+ *
+ * `create` and `remove` name a node; `list` reports every worktree of the
+ * session. `base` is explicit for a parallel batch: every node must start from
+ * the same commit, or the merges stop being independent.
+ */
+export type DagWorktreeOp = 'create' | 'list' | 'remove';
+
+/** The worktree operations `mint_plan_dag` accepts (#172). */
+export const DAG_WORKTREE_OPS: readonly DagWorktreeOp[] = ['create', 'list', 'remove'];
+
+/** The worktree states a stored document may carry (#172). */
+export const DAG_WORKTREE_STATES: readonly DagWorktreeState[] = [
+  'active',
+  'merged',
+  'conflict',
+  'removed',
+];
+
 /** One validated `mint_plan_dag` call. */
 export type DagAction =
   | { action: 'init'; title: string }
@@ -106,10 +134,20 @@ export type DagAction =
       note?: string;
       tokens?: number;
       agent?: string;
+      /** Persisted by the worktree actions; an ordinary `set` leaves it alone. */
+      worktree?: DagWorktree;
     }
+  | { action: 'wt'; op: DagWorktreeOp; node?: string; base?: string; force?: boolean }
+  | { action: 'merge'; node: string }
   | { action: 'get' };
 
-/** The three actions that write a document. */
+/**
+ * The actions that write a document.
+ *
+ * `wt` and `merge` are absent on purpose: they change the **filesystem** (git
+ * worktrees), and the tool persists the resulting node state as a follow-up
+ * `set`, so a failed git command never leaves a claim in the document.
+ */
 export type DagWrite = Extract<DagAction, { action: 'init' | 'add' | 'set' }>;
 
 /** A document mutation's outcome: the new document, or why nothing changed. */
@@ -193,6 +231,42 @@ function isCount(value: unknown): value is number {
 function checkCount(raw: unknown, name: string): number | { error: string } {
   if (!isCount(raw)) return { error: `${name} 必须是非负整数` };
   return raw;
+}
+
+/**
+ * One node's worktree record (#172).
+ *
+ * Strict on read and on write for the same reason the rest of this module is: a
+ * path or branch the panel would print is either a plain string this host wrote
+ * or it is not data worth keeping. Empty strings are refused because they would
+ * render as a blank line where a path belongs.
+ */
+function checkWorktree(raw: unknown, where: string): DagWorktree | { error: string } {
+  if (!isRecord(raw)) return { error: `${where}: worktree 必须是对象` };
+  for (const field of ['path', 'branch', 'base'] as const) {
+    const value = raw[field];
+    if (typeof value !== 'string' || value.length === 0) {
+      return { error: `${where}: worktree.${field} 必须是非空字符串` };
+    }
+    if (hasControlCharacter(value)) return { error: `${where}: worktree.${field} 含控制字符` };
+  }
+  if (!isDagWorktreeState(raw.state)) {
+    return { error: `${where}: worktree.state 必须是 ${DAG_WORKTREE_STATES.join(' | ')}` };
+  }
+  if (raw.merged_sha !== undefined && typeof raw.merged_sha !== 'string') {
+    return { error: `${where}: worktree.merged_sha 必须是字符串` };
+  }
+  return {
+    path: raw.path as string,
+    branch: raw.branch as string,
+    base: raw.base as string,
+    state: raw.state,
+    ...(raw.merged_sha === undefined ? {} : { merged_sha: raw.merged_sha }),
+  };
+}
+
+function isDagWorktreeState(value: unknown): value is DagWorktreeState {
+  return typeof value === 'string' && (DAG_WORKTREE_STATES as readonly string[]).includes(value);
 }
 
 /**
@@ -354,6 +428,12 @@ export function parseDagAction(raw: unknown): DagAction | { error: string } {
       if (raw.agent.length > AGENT_ID_MAX) return { error: `agent 过长（>${String(AGENT_ID_MAX)} 字）` };
       agent = raw.agent;
     }
+    let worktree: DagWorktree | undefined;
+    if (raw.worktree !== undefined) {
+      const checked = checkWorktree(raw.worktree, `node ${id}`);
+      if ('error' in checked) return checked;
+      worktree = checked;
+    }
     return {
       action: 'set',
       id,
@@ -362,9 +442,48 @@ export function parseDagAction(raw: unknown): DagAction | { error: string } {
       ...(note === undefined ? {} : { note }),
       ...(tokens === undefined ? {} : { tokens }),
       ...(agent === undefined ? {} : { agent }),
+      ...(worktree === undefined ? {} : { worktree }),
     };
   }
-  return { error: `action 必须是 init | add | set | get：${JSON.stringify(action)}` };
+  if (action === 'wt') {
+    if (typeof raw.op !== 'string' || !(DAG_WORKTREE_OPS as readonly string[]).includes(raw.op)) {
+      return { error: `wt 需要 op=${DAG_WORKTREE_OPS.join(' | ')}：${JSON.stringify(raw.op)}` };
+    }
+    const op = raw.op as DagWorktreeOp;
+    let node: string | undefined;
+    if (raw.node !== undefined) {
+      const checked = checkNodeId(raw.node);
+      if (typeof checked !== 'string') return checked;
+      node = checked;
+    }
+    if (op !== 'list' && node === undefined) return { error: `wt op=${op} 需要 node` };
+    let base: string | undefined;
+    if (raw.base !== undefined) {
+      if (typeof raw.base !== 'string' || raw.base.trim() === '') {
+        return { error: 'base 必须是非空字符串（commit / ref）' };
+      }
+      if (hasControlCharacter(raw.base)) return { error: 'base 含控制字符' };
+      base = raw.base;
+    }
+    let force: boolean | undefined;
+    if (raw.force !== undefined) {
+      if (typeof raw.force !== 'boolean') return { error: 'force 必须是布尔值' };
+      force = raw.force;
+    }
+    return {
+      action: 'wt',
+      op,
+      ...(node === undefined ? {} : { node }),
+      ...(base === undefined ? {} : { base }),
+      ...(force === undefined ? {} : { force }),
+    };
+  }
+  if (action === 'merge') {
+    const node = checkNodeId(raw.node);
+    if (typeof node !== 'string') return node;
+    return { action: 'merge', node };
+  }
+  return { error: `action 必须是 init | add | set | get | wt | merge：${JSON.stringify(action)}` };
 }
 
 /**
@@ -592,6 +711,9 @@ export function applyDagWrite(
   if (action.note !== undefined) rewritten.note = action.note;
   if (action.tokens !== undefined) rewritten.tokens = action.tokens;
   if (action.agent !== undefined) rewritten.agent = action.agent;
+  // 与 agent/tokens 相反：worktree 是持久事实（git 里真有这棵树），普通 `set`
+  // 不传就保持原样，不能被清空——只有 wt/merge 动作会带新值进来覆盖。
+  if (action.worktree !== undefined) rewritten.worktree = action.worktree;
   const nodes = [...current.nodes];
   nodes[index] = rewritten;
   return { doc: { ...current, nodes, revision: current.revision + 1, updated_at: now } };
@@ -706,6 +828,12 @@ function parseStoredNode(raw: unknown): DagNode | { error: string } {
   if (raw.note !== undefined && typeof raw.note !== 'string') {
     return { error: `node ${id}: note must be a string` };
   }
+  let worktree: DagWorktree | undefined;
+  if (raw.worktree !== undefined) {
+    const checked = checkWorktree(raw.worktree, `node ${id}`);
+    if ('error' in checked) return { error: checked.error };
+    worktree = checked;
+  }
   return {
     id,
     label,
@@ -718,6 +846,7 @@ function parseStoredNode(raw: unknown): DagNode | { error: string } {
     ...(raw.agent === undefined ? {} : { agent: raw.agent }),
     ...(raw.tokens === undefined ? {} : { tokens: raw.tokens }),
     ...(raw.note === undefined ? {} : { note: raw.note }),
+    ...(worktree === undefined ? {} : { worktree }),
     updated_at: raw.updated_at,
   };
 }

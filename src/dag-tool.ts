@@ -25,9 +25,20 @@
  * action's own document, so a measurement can never delay or fail the answer.
  */
 import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf } from './dag.js';
+import type { DagAction, DagDoc, DagWrite, DagWorktreeOp } from './dag.js';
+import {
+  createWorktree,
+  mergeWorktree,
+  removeWorktree,
+  worktreeBranch,
+  worktreePath,
+} from './dag-worktree.js';
+import type { WorktreeDeps, WorktreeNode } from './dag-worktree.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
-import type { DagDoc, DagWrite } from './dag.js';
+import { runGit } from './git.js';
+import type { GitRunResult } from './git.js';
+import type { DagNodeView, DagWorktree } from './records.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
   AgentsLike,
@@ -86,11 +97,24 @@ const DAG_TOOL_PARAMETERS: Record<string, unknown> = {
   properties: {
     action: {
       type: 'string',
-      enum: ['init', 'add', 'set', 'get'],
-      description: '要执行的动作：init 新建/重置，add 加节点连边，set 改节点状态，get 取摘要',
+      enum: ['init', 'add', 'set', 'get', 'wt', 'merge'],
+      description:
+        '要执行的动作：init 新建/重置，add 加节点连边，set 改节点状态，get 取摘要，' +
+        'wt 建/列/删节点 worktree，merge 把节点分支合回主线',
     },
     title: { type: 'string', description: 'init 的文档标题' },
     id: { type: 'string', description: 'set 的目标节点 id（须已由 add 建立）' },
+    op: {
+      type: 'string',
+      enum: ['create', 'list', 'remove'],
+      description: 'wt 的子操作：create 建 worktree，list 列出，remove 删除',
+    },
+    node: { type: 'string', description: 'wt/merge 的目标节点 id' },
+    base: {
+      type: 'string',
+      description: 'wt create 的起点 commit（缺省 HEAD；一批并行节点必须传同一个 base）',
+    },
+    force: { type: 'boolean', description: 'wt remove 时强制删除未合并的 worktree' },
     status: {
       type: 'string',
       enum: ['pending', 'running', 'done'],
@@ -214,6 +238,109 @@ function setHeadline(action: Extract<DagWrite, { action: 'set' }>): string {
   return `${action.id} → ${action.status}${verdict}`;
 }
 
+/** The one-line report a `wt`/`merge` answer carries back to the model. */
+function worktreeLine(node: string, path: string, branch: string, state: string, note?: string): string {
+  const extra = note === undefined ? '' : ` · ${note}`;
+  return `wt ${node} ${state} · ${branch} · ${path}${extra}`;
+}
+
+/**
+ * Execute one `wt` / `merge` call (#172).
+ *
+ * The git side lives in `dag-worktree.ts`; this decides what the graph does with
+ * the outcome. `state` is persisted as a **follow-up `set`**, which is what makes
+ * `wt`/`merge` non-writing on the document (`DagWrite` excludes them): a refused
+ * git command therefore cannot leave a worktree claim in the stored graph.
+ */
+async function executeWorktreeAction(
+  input: { dagDir?: string; repo?: string; git?: (cwd: string, args: readonly string[]) => Promise<GitRunResult> },
+  parsed: Extract<DagAction, { action: 'wt' | 'merge' }>,
+  sessionId: string,
+  dir: string
+): Promise<DagToolOutcome> {
+  const repo = input.repo;
+  if (repo === undefined || repo === '') {
+    return refusal('无法确定仓库根目录（会话 cwd 未就绪）：worktree 需要 git 仓库');
+  }
+  const read = await readDag(sessionId, dir);
+  // `wt create` may be the first call of a session that has a graph only on the
+  // panel's side; every action still requires a graph to hang the node on.
+  if (read.state !== 'ok') {
+    return refusal('本会话暂无 DAG；先 action="init" 建立 DAG，再用 wt/merge');
+  }
+  const deps: WorktreeDeps = { git: input.git ?? runGit, repo, session: sessionId };
+  const find = (id: string | undefined): WorktreeNode | { error: string } => {
+    if (id === undefined) return { error: '该动作需要 node' };
+    const node = read.doc.nodes.find((candidate) => candidate.id === id);
+    if (node === undefined) return { error: `节点不存在：${id}` };
+    return { id: node.id, ...(node.issue === undefined ? {} : { issue: node.issue }) };
+  };
+
+  const persist = async (node: WorktreeNode, worktree: DagWorktree): Promise<void> => {
+    await updateDag(
+      sessionId,
+      (state) => {
+        if (state.state !== 'ok') return { skip: true };
+        const index = state.doc.nodes.findIndex((candidate) => candidate.id === node.id);
+        if (index < 0) return { skip: true };
+        const previous = state.doc.nodes[index] as DagNodeView;
+        const nodes = [...state.doc.nodes];
+        nodes[index] = { ...previous, worktree };
+        return { doc: { ...state.doc, nodes, revision: state.doc.revision + 1 } };
+      },
+      dir
+    );
+  };
+
+  if (parsed.action === 'merge') {
+    const node = find(parsed.node);
+    if ('error' in node) return refusal(node.error);
+    const outcome = await mergeWorktree(deps, node);
+    if (!outcome.ok) {
+      // A conflict is a real state, not a refusal to hide: record it so the panel
+      // shows the node as conflicted, then answer with the actionable text.
+      if (outcome.conflict !== undefined) {
+        await persist(node, {
+          path: worktreePath(deps, node),
+          branch: worktreeBranch(deps, node),
+          base: '',
+          state: 'conflict',
+        });
+      }
+      return refusal(outcome.error);
+    }
+    await persist(node, outcome.worktree);
+    const sha = outcome.worktree.merged_sha ?? '';
+    return answer(
+      `${worktreeLine(node.id, outcome.worktree.path, outcome.worktree.branch, 'merged', outcome.note)}` +
+        (sha === '' ? '' : `；主分支 ${sha}`)
+    );
+  }
+
+  // parsed.action === 'wt'
+  const op: DagWorktreeOp = parsed.op;
+  if (op === 'list') {
+    const lines = read.doc.nodes
+      .filter((node) => node.worktree !== undefined)
+      .map((node) => {
+        const tree = node.worktree as DagWorktree;
+        return `${node.id} ${tree.state} · ${tree.branch}`;
+      });
+    return answer(lines.length === 0 ? '本会话还没有 worktree' : lines.join('\n'));
+  }
+  const node = find(parsed.node);
+  if ('error' in node) return refusal(node.error);
+  const outcome =
+    op === 'create'
+      ? await createWorktree(deps, node, parsed.base)
+      : await removeWorktree(deps, node, parsed.force === true);
+  if (!outcome.ok) return refusal(outcome.error);
+  await persist(node, outcome.worktree);
+  return answer(
+    worktreeLine(node.id, outcome.worktree.path, outcome.worktree.branch, outcome.worktree.state, outcome.note)
+  );
+}
+
 /** Everything one `set`-to-`done` measurement needs. */
 export interface DagSampleInput {
   sessionId: string;
@@ -312,6 +439,10 @@ export async function executeDagTool(
     dagDir?: string;
     agents?: AgentsLike;
     projections?: SessionProjectionsLike;
+    /** Absolute working directory of the root session; the worktree repo root (#172). */
+    repo?: string;
+    /** Git runner override for tests; defaults to {@link runGit}. */
+    git?: (cwd: string, args: readonly string[]) => Promise<GitRunResult>;
   },
   rawArgs: unknown
 ): Promise<DagToolOutcome> {
@@ -334,6 +465,12 @@ export async function executeDagTool(
       return { ok: false, summary: `${PREFIX}DAG 不可读：${read.error}（${read.file}）` };
     }
     return answer(dagSummary(read.doc));
+  }
+  // #172: the two worktree actions change the filesystem, not the document. The
+  // git result becomes a follow-up `set` (the only writer of `worktree`), so a
+  // failed command leaves no claim behind in the stored graph.
+  if (parsed.action === 'wt' || parsed.action === 'merge') {
+    return executeWorktreeAction(input, parsed, sessionId, dir);
   }
   // The write actions are one read-modify-write each: `applyDagWrite` owns the
   // graph rules and refuses without touching the file.
@@ -416,12 +553,17 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
       // The sample step reads the same two host services the DAG route does,
       // resolved per call because a composition may mount them after this tool.
       const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+      // #172: a worktree is created inside the root session's working directory
+      // (the same cwd the panel's project reads), so the git runs where the
+      // agents that use it can reach the path.
+      const repo = exec?.agent?.session?.header?.cwd;
       return executeDagTool(
         {
           sessionId,
           ...(dagDir === undefined ? {} : { dagDir }),
           ...(agents === undefined ? {} : { agents }),
           ...(projections === undefined ? {} : { projections }),
+          ...(typeof repo === 'string' && repo !== '' ? { repo } : {}),
         },
         rawArgs
       );

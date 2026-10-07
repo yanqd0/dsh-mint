@@ -196,6 +196,36 @@ export type DagStatus = 'pending' | 'running' | 'done';
  */
 export type DagVerdict = 'pass' | 'fail';
 
+/**
+ * Where a node's isolated working tree stands (#172).
+ *
+ * `active` — the worktree exists and its branch is not merged yet.
+ * `merged` — the branch is in the main branch; the worktree may still exist.
+ * `conflict` — a merge stopped on conflicts and was left for a decision.
+ * `removed` — the worktree is gone (merged first, or removed by hand).
+ */
+export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
+
+/**
+ * The node-level git worktree a plan's parallel issue develops in (#172).
+ *
+ * One node may own one worktree, based on one commit. It is a **collaboration**
+ * boundary, not a security one: the subagent's file sandbox is still the session
+ * workspace, so isolation comes from the path the work happens in (`.worktrees/`
+ * inside the workspace) plus file whitelists, not from confinement.
+ */
+export interface DagWorktree {
+  /** Absolute path, always under the session workspace (`.worktrees/<s8>/<node>`). */
+  path: string;
+  /** The branch the worktree is checked out on. */
+  branch: string;
+  /** The commit the worktree (and its branch) started from. */
+  base: string;
+  state: DagWorktreeState;
+  /** Short main-branch commit the merge produced, once `merged`. */
+  merged_sha?: string;
+}
+
 /** One node of the plan DAG, as the panel renders it. */
 export interface DagNodeView {
   id: string;
@@ -217,6 +247,8 @@ export interface DagNodeView {
   tokens?: number;
   /** The conclusion text a node's own agent reported (tooltip, scrollable). */
   note?: string;
+  /** The node's isolated working tree, when one was created (#172). */
+  worktree?: DagWorktree;
   updated_at: string;
 }
 
