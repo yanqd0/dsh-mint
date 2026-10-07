@@ -25,7 +25,7 @@ import type {
 } from '../shared/types.js';
 
 /**
- * The cross-project write gate (#80).
+ * The cross-project write gate.
  *
  * Reads of another project's ledger are ordinary work, so they pass. A **write**
  * to another project moves someone else's state machine, so the first one per
@@ -41,7 +41,7 @@ import type {
  * 1. Different semantics: that one governs the *sandbox write permission* a bash
  *    command needs; this one governs *whose ledger* gets written.
  * 2. Reusing its once-per-session grant would make every later cross-project
- *    write unconfirmed, which is exactly what #80 forbids.
+ *    write unconfirmed, which is exactly what this gate forbids.
  * 3. Disjoint channels: it only inspects bash sandbox escalations, while the
  *    `mint` tool never escalates.
  *
@@ -62,7 +62,7 @@ const KEY_SEPARATOR = '\u0000';
  * out a fresh `Agent` object per dispatch, so only the session id is stable —
  * without one, no grant is remembered and the next write asks again.
  *
- * Re-exported from `session-id.ts` (#113): the rule is shared with the injection
+ * Re-exported from `session-id.ts`: the rule is shared with the injection
  * channel's dedup and the mint-write ledger, so it lives in one place.
  */
 
@@ -101,7 +101,7 @@ async function decide(
   if (!isWriteInvocation(invocation)) return undefined;
   // `-p <本项目>` is the session's own ledger under an explicit name: it writes
   // exactly where the default path writes, so it is not a cross-project write
-  // and must not ask (#114). An unknown own name keeps the ask — the caller
+  // and must not ask. An unknown own name keeps the ask — the caller
   // fails closed. The `mint` tool separately answers with a correction hint.
   if (isOwnProject(cwd, entry, project)) return undefined;
   const sessionId = sessionIdOf(exec?.agent);

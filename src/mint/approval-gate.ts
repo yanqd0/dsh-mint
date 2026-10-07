@@ -62,7 +62,7 @@ export interface GateConfig {
 }
 
 /**
- * Approval gate (B-v2, #25): after the user allows ONE mint escalation for an
+ * Approval gate (B-v2): after the user allows ONE mint escalation for an
  * agent session, later mint escalation asks for that session resolve
  * `allowed-once` immediately — no prompt, no repeat denials, and every grant
  * still lands the seam's `approval/asked` + `approval/decided` audit pair.

@@ -26,7 +26,7 @@ import {
  *
  * Why the guards live here and not in the shell script: removing the skill must
  * be as safe as installing it (dsh has no plugin uninstall hook, so a leftover
- * copy is normal — dsh-dev-dsh #118). Every mode refuses to touch a path it
+ * copy is normal). Every mode refuses to touch a path it
  * cannot identify as this plugin's own, a symlink is only ever unlinked (never
  * followed), and `--force` is the single way to take such a path over.
  *
@@ -240,7 +240,7 @@ export interface SkillCliIo extends SkillOptions {
  *
  * A **bare** invocation only installs (the copy form, the packaged-install
  * shape) and always answers 0: skill installation is best-effort and must never
- * fail `pnpm install` (#28). Explicit modes carry a real code instead, so a
+ * fail `pnpm install`. Explicit modes carry a real code instead, so a
  * script can tell a guarded refusal (1) from success (0); a usage error is 2.
  *
  * @param argv - arguments without the `node script` prefix.

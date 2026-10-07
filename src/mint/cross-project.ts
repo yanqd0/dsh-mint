@@ -5,14 +5,14 @@ import { hasControlCharacter, isControlChar } from '../shared/text.js';
 
 /**
  * Cross-project mint calls: `--project` parsing, read/write classification and
- * the existence probe (#55, #80).
+ * the existence probe.
  *
  * `mint -p <name>` does not "fail" for an unknown name — it **creates** the
  * project (`projects/<name>/<machine_id>.db`) and registers a row whose
  * `abs_dir` is the *session cwd* (`src/cli/run.rs`, `src/db/mod.rs`,
  * `src/project.rs` upstream). A typo therefore lands as a phantom project
  * pointing at this repository, so the tool resolves the target against the real
- * project list **before** spawning anything (#80).
+ * project list **before** spawning anything.
  *
  * Everything here is a thin, testable layer over mint's own flags: no format
  * logic (mint's TSV/JSON goes through verbatim) and no data access other than
@@ -20,7 +20,7 @@ import { hasControlCharacter, isControlChar } from '../shared/text.js';
  * (`needs_conn = false` for `project list`).
  */
 
-/** Audited-prefix of the approval reason this module asks with (#80). */
+/** Audited-prefix of the approval reason this module asks with. */
 export const CROSS_PROJECT_REASON_PREFIX = 'cross-project write → project ';
 
 /** How many candidate project names an actionable error may carry. */
@@ -76,7 +76,7 @@ export interface Invocation {
   readonly rest: readonly string[];
   /**
    * Explicit target project (a `-p`/`--project` value, else `MINT_PROJECT`).
-   * Absent means "the session's own project" — the pre-#55 behaviour.
+   * Absent means "the session's own project" (the default).
    */
   readonly project?: string;
   /** Where {@link Invocation.project} came from. */
@@ -245,12 +245,12 @@ function isProjectFlagToken(token: string): boolean {
  * the caller asked for the CLI's version/help — or for nothing at all, which is
  * a usage error (exit 2) that touches no ledger. Classifying either as a write
  * asked the user to confirm a pure read, and a subagent (approvals pinned to
- * `never`) could not run it at all (#99).
+ * `never`) could not run it at all.
  *
  * A help token **inside** `rest` never downgrades the call: the leading scan has
  * already taken the root-level ones, so anything left is an argument of the
  * subcommand and may be a value — `issue add -- --help` creates an issue titled
- * `--help` (#98). Such a call stays a write.
+ * `--help`. Such a call stays a write.
  */
 export function isWriteInvocation(invocation: Invocation): boolean {
   const { rest } = invocation;
@@ -258,7 +258,7 @@ export function isWriteInvocation(invocation: Invocation): boolean {
   const leaf = rest[1];
   if (root === undefined) return false;
   if (root === 'list' || root === 'show' || root === 'search') return false;
-  // `doctor` is a read-only health check (#126): it touches no ledger, so a
+  // `doctor` is a read-only health check: it touches no ledger, so a
   // cross-project `-p <other> doctor` is not something to confirm.
   if (root === 'doctor') return false;
   if (root === 'help') return false;
@@ -274,7 +274,7 @@ export function isWriteInvocation(invocation: Invocation): boolean {
 }
 
 /**
- * Extract the mint invocations of a **simple** shell command (#80, bash
+ * Extract the mint invocations of a **simple** shell command (the bash
  * channel). Only commands whose tokens this layer can read are returned:
  * quotes, substitutions, redirects and globbing make a command uninterpretable
  * here, and shell shapes it cannot read keep the pre-existing behaviour (the
@@ -380,7 +380,7 @@ export function projectProbeFailureMessage(project: string): string {
  * One cross-project tool call probes **twice** by design — the gate decides
  * before execution and the tool re-checks before spawning — so a successful
  * answer is remembered for {@link PROJECT_LIST_TTL_MS} and both callers share
- * one child process (#106). Only successful reads are memoized: a failure still
+ * one child process. Only successful reads are memoized: a failure still
  * means "fail closed", and a name that is not in the memoized answer is still
  * refused. The window is short by design: the probe is inherently a
  * time-of-check/time-of-use answer, so the cache does not widen the gap beyond
@@ -413,7 +413,7 @@ export async function listProjects(
   return names as string[];
 }
 
-/** How long one successful project-list read answers both callers (#106). */
+/** How long one successful project-list read answers both callers. */
 export const PROJECT_LIST_TTL_MS = 5_000;
 
 /** The probe's answer, remembered per (cwd, entry) for {@link PROJECT_LIST_TTL_MS}. */
@@ -435,7 +435,7 @@ export function projectCacheKey(cwd: string, entry: string | undefined): string 
   return `${entry ?? ''}\u0000${cwd}`;
 }
 
-/** True when the invocation can change what `project list` answers (#106). */
+/** True when the invocation can change what `project list` answers. */
 export function mutatesProjectList(invocation: Invocation): boolean {
   const [root, leaf] = invocation.rest;
   return root === 'project' && (leaf === 'create' || leaf === 'set');

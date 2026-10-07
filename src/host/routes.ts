@@ -1,5 +1,5 @@
 /**
- * Read-only HTTP routes backing the right-sidebar mint panel (#10).
+ * Read-only HTTP routes backing the right-sidebar mint panel.
  *
  * An installed (static) plugin's browser half cannot reach the host through the
  * Typert Remote assembly — `dsh-api-remotes` fixes its capability set at build
@@ -42,13 +42,13 @@ import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } fr
 
 /**
  * Re-exported from {@link ./route-paths.js}: the prefix is shared with the
- * browser half, which builds the same paths for its `fetch`es (#104).
+ * browser half, which builds the same paths for its `fetch`es.
  */
 export { ROUTE_PREFIX };
 
 /**
  * How far a running node's measured time may move before its stored sample is
- * rewritten (#166). The document lives on `/tmp`, so this is churn control, not
+ * rewritten. The document lives on `/tmp`, so this is churn control, not
  * a size limit: a shorter interval buys nothing the live read does not already
  * show the panel.
  */
@@ -112,9 +112,9 @@ export interface MintRouteDeps {
   entry?: string;
   /** Defaults to {@link runMint}; tests replace it. */
   run?: MintRunner;
-  /** DAG 应答里 `sampled_at` 的时钟缝（#162）；默认 `Date.now`。 */
+  /** DAG 应答里 `sampled_at` 的时钟缝；默认 `Date.now`。 */
   now?: () => number;
-  /** DAG directory override (plan #31); defaults to {@link DAG_DIR}. */
+  /** DAG directory override; defaults to {@link DAG_DIR}. */
   dagDir?: string;
   /** Mount-line `openDagTab`, published in the DAG envelope; defaults to true. */
   openDagTab?: boolean;
@@ -343,7 +343,7 @@ function failure(result: MintRunResult): Record<string, unknown> {
 /**
  * Truncate a body on a UTF-8 boundary, reporting whether it was cut.
  *
- * `null` is mint's own "no body" answer (#94/#95) and passes through untouched:
+ * `null` is mint's own "no body" answer and passes through untouched:
  * the panel already renders both `null` and `''` as the empty state, so there is
  * nothing to normalize here and nothing to fabricate.
  *
@@ -368,7 +368,7 @@ export function truncateBody(text: string | null): { body: string | null; trunca
 
 /**
  * Persist the readings this process remembers that the document does not carry
- * yet (#168/#166).
+ * yet.
  *
  * The real host keeps a finished child's session readable for a while — long
  * enough that the live read keeps answering `metrics` and the panel never loses
@@ -459,7 +459,7 @@ export function createMintHandler(
   const now = deps.now ?? Date.now;
 
   /**
-   * Answer the plan DAG route (plan #31).
+   * Answer the plan DAG route.
    *
    * This route is **file-keyed, not project-keyed**: the DAG lives next to the
    * session id, no mint CLI runs, and the browser half polls it while its tab is
@@ -474,7 +474,7 @@ export function createMintHandler(
       throw new RouteRequestError('session must be a 1-64 char [A-Za-z0-9_-] id');
     }
     const read: DagRead = await readDag(sessionId, deps.dagDir ?? DAG_DIR);
-    // Host-measured usage is best-effort by design (#162): the panel must get
+    // Host-measured usage is best-effort by design: the panel must get
     // its graph even when the projections cannot be read, so a failure here is
     // the same as no metrics — and nothing is published unless something was
     // really measured, so "absent" never has to mean "zero".
@@ -489,7 +489,7 @@ export function createMintHandler(
     }
     // The reading the host just took is also the durable one: persist it (spaced
     // out for a running node) so the number survives a restart, however long the
-    // host happens to keep the finished child's session readable (#166).
+    // host happens to keep the finished child's session readable.
     await flushRememberedSample(sessionId, read, deps.dagDir ?? DAG_DIR);
     // `warnings` is declared rather than inferred: the answer below carries the
     // wire type the browser half reads, where `warnings` is an optional
@@ -497,7 +497,7 @@ export function createMintHandler(
     const warnings: Pick<MintDagPayload, 'warnings'> =
       read.state === 'unreadable' ? { warnings: [`unreadable dag: ${read.error}`] } : {};
     // 声明的类型就是面板读的那份线格式：节点视图因此逐字段受编译期约束，含可选的
-    // 节点级 `worktree`（#173）。路由只把**已解析**的文档原样交出去，不在这里重新
+    // 节点级 `worktree`。路由只把**已解析**的文档原样交出去，不在这里重新
     // 投影——多一处投影就是多一个会悄悄漏字段的地方。
     const payload: MintDagPayload = {
       ok: true,
@@ -597,10 +597,10 @@ export function createMintHandler(
    * The three dictionaries are independent whole-table reads, so they run in
    * parallel; a per-table shape warning is carried, a failure answers for all.
    *
-   * 这里刻意**不再**做 issue→milestone 反查（#90）：mint 0.9.0-alpha.1 已把
-   * `milestone_id` / `milestone_direct` 写在每个 `list --json` 行上（mint #503），
+   * 这里刻意**不再**做 issue→milestone 反查：mint 0.9.0-alpha.1 已把
+   * `milestone_id` / `milestone_direct` 写在每个 `list --json` 行上，
    * 归属只随面板本就要读的 issue 列表到达，本路由不再有额外开销。这也顺带退掉了反查
-   * 所需的按 milestone 缓存（#105），`refresh=1` 随之成为空操作。
+   * 所需的按 milestone 缓存，`refresh=1` 随之成为空操作。
    */
   const sendMeta = async (scope: RequestScope): Promise<void> => {
     const [milestones, plans, labels] = await Promise.all([
@@ -750,7 +750,7 @@ export function createMintHandler(
  * @param ctx - the plugin's root context.
  * @param entry - `mintEntry` from the mount line, forwarded to every run.
  * @param options - mount-line client knobs: the DAG tab's auto-open default and
- *   the DAG directory override (plan #31; tests point the latter at a temp dir).
+ *   the DAG directory override.
  */
 export function installMintRoutes(
   ctx: DshContext,

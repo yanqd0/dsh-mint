@@ -107,7 +107,7 @@ export interface LinkLine {
  * "what relation, to which issue"; a shape this does not recognize is dropped
  * rather than guessed at. mint 0.8+ names the cited issue `other_id` (serialized
  * straight from its `Link` struct, next to `other_title`); `id`/`uid` stay as
- * fallbacks for other answer shapes (#97).
+ * fallbacks for other answer shapes.
  *
  * @param value - one element of `IssueItem.links`.
  */
@@ -158,7 +158,7 @@ export interface PlacementView {
  *
  * A milestone answered without a version is the same "nothing to show" as an
  * absent one, so `null` collapses into `undefined` here and every row/detail
- * consumer keeps its single existing check (#96).
+ * consumer keeps its single existing check.
  */
 export function milestoneVersionOf(
   meta: MintMetaPayload | undefined,
@@ -172,7 +172,7 @@ export function milestoneVersionOf(
  * Resolve an issue row's placement.
  *
  * `list --json` now states the issue's effective milestone itself and whether it
- * is direct (mint 0.9.0-alpha.1, mint #503 → dsh-mint #90), so the row is
+ * is direct (as of mint 0.9.0-alpha.1), so the row is
  * believed first and `meta` only supplies the version label the panel prints.
  *
  * A row that carries **neither** field predates them (the published `mint-faa`
@@ -278,7 +278,7 @@ export interface ContainerTarget {
  * The open container that belongs to the tab being rendered.
  *
  * Plan ids and milestone ids are different namespaces, so an id opened under one
- * kind must never be read as the other (#82): a milestone tab asks for its own
+ * kind must never be read as the other: a milestone tab asks for its own
  * kind and shows its list when the open target belongs to the other one.
  */
 export function activeContainer(

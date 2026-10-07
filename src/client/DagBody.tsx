@@ -1,5 +1,5 @@
 /**
- * The plan DAG tab's body (plan #31 §4.3–4.6).
+ * The plan DAG tab's body (spec: `notes/plan-dag.md`).
  *
  * One SVG per document: nodes are `dag-model`'s boxes, edges its polylines, and
  * the status coloring comes from the same tone function the model tests cover.
@@ -566,12 +566,12 @@ interface NodeTooltipProps {
  * the card and the box read as one reading of the node. A card is DOM, not SVG:
  * the same palette is applied through `color`, not `fill`.
  *
- * The time line is also where a *stored* reading gets its date (#168): the
+ * The time line is also where a *stored* reading gets its date: the
  * number beside it was measured when the child was alive, so the card names that
  * moment in the local clock instead of letting the reader take it for now.
  *
  * The node's isolated working tree, when it has one, is the card's other chip
- * row (#173): the state is colored like a status pill, and the branch it works
+ * row: the state is colored like a status pill, and the branch it works
  * on sits beside it. Nothing here touches git or the file system — the branch,
  * the state and the path are all the route's own fields.
  */
@@ -733,7 +733,7 @@ function verdictLabel(copy: MintBodyProps['copy'], verdict: DagVerdict): string 
   }
 }
 
-/** As {@link phaseLabel}, for the state of a node's isolated working tree (#173). */
+/** As {@link phaseLabel}, for the state of a node's isolated working tree. */
 function worktreeStateLabel(copy: MintBodyProps['copy'], state: DagWorktreeState): string {
   switch (state) {
     case 'active':

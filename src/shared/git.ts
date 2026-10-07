@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 
 /**
- * The git runner behind the DAG worktree actions (#172).
+ * The git runner behind the DAG worktree actions.
  *
  * The plugin process spawns git the same way it spawns mint (`mint.ts`): no
  * shell, an argv array, and a hard wall-clock limit. Nothing here reads a config

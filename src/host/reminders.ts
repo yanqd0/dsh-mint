@@ -21,7 +21,7 @@ const FAILURE_HINT = (toolName: string): string =>
   `mint({args:["issue","add","<标题>","--kind","problem"]})\n`;
 
 /**
- * `git commit` inside a shell command line (#110).
+ * `git commit` inside a shell command line.
  *
  * The existing shape, plus the `-c <k=v>` / `-C <dir>` option pairs that
  * scripted commits use (`git -c user.name=… commit`). Options before `git`
@@ -31,7 +31,7 @@ const FAILURE_HINT = (toolName: string): string =>
 const COMMIT_IN_COMMAND = /\bgit\s+(?:-[cC]\s+\S+\s+)*commit\b/;
 
 /**
- * `git commit` as an argv array (#110).
+ * `git commit` as an argv array.
  *
  * `uv run git commit …` reaches the plugin as `['run','git','commit',…]`
  * (the `uv` tool is a foreign plugin's tool that spawns without a shell), so the
@@ -52,7 +52,7 @@ export function isCommitArgv(tokens: readonly string[]): boolean {
 }
 
 /**
- * True when a tool call ran a git commit (#110).
+ * True when a tool call ran a git commit.
  *
  * Two channels, by argument *shape* rather than by tool name:
  *
@@ -85,7 +85,7 @@ export function isGitCommit(exec: ToolExecutionLike): boolean {
  * `[exit code: N]` (`dsh-tool-bash` `renderResult`, and its own description tells
  * the model to check the marker). The `uv` tool — a foreign plugin — reports its
  * own failures the same way through `notes` (`dsh-dev-dsh` `src/uv/run.ts`), which
- * is how `uv run git commit` renders a rejected commit. Verified live (#110): a
+ * is how `uv run git commit` renders a rejected commit. Verified live: a
  * commit that failed with "nothing to commit" still carried no `isError`.
  */
 const RESULT_FAILURE =
@@ -109,7 +109,7 @@ export function isFailedResult(result: ToolResultLike): boolean {
  * reminder to the model-facing content. Accept + content keeps the original
  * tool value and content — only a text block is appended (enrich, not replace).
  *
- * A failed call is skipped (#110): a pre-commit hook, a rejected commit or
+ * A failed call is skipped: a pre-commit hook, a rejected commit or
  * "nothing to commit" all mean no commit was recorded, and the previous
  * unconditional reminder fired exactly then.
  */
@@ -131,21 +131,21 @@ export function installCommitReminder(ctx: DshContext): () => void {
 }
 
 /**
- * Reminder appended after a mint call that moves issue/plan state (#119).
+ * Reminder appended after a mint call that moves issue/plan state.
  *
  * The host's todo panel (`todo_write` → `conversation.input.dock`) is the
  * human's progress view inside a session, and its `todos` projection resets to
  * `null` on every `turn/start` (verified against `@deepseek-ai/dsh-tool-todo`
  * and `dsh-client-ui-conversation` in 0.2.0-rc.2): a list written once early in
  * a long turn drifts away from the mint ledger, which is exactly how a session
- * once reported `#54 in_progress` while mint already had it in `test`.
+ * once reported an issue as `in_progress` while mint already had it in `test`.
  *
  * The skill owns the discipline (`references/flow-impl.md`); this notice delivers
  * it at the moment the ledger changes, which is when the panel starts to
  * disagree. It only nudges — the list stays model-authored, because it is the
  * model's step breakdown, not a mirror of the issue rows.
  *
- * #159 在此补上粒度：清单**一项对应一个 issue**（条目只写 issue，不写批次名/DAG
+ * 粒度在此补上：清单**一项对应一个 issue**（条目只写 issue，不写批次名/DAG
  * 节点名），并点明重置时机——`todos` 投影每个 `turn/start` 都清空，所以不是写一次就够，
  * 每次状态变更后都要整份重写。
  */
@@ -175,8 +175,8 @@ export function todoSyncChanged(exec: ToolExecutionLike): boolean {
  * `plan plan` / `plan close` call, append the todo-sync reminder.
  *
  * Skipped when the call failed (a rejected transition moved nothing, the same
- * rule as the commit reminder #110) and for subagent sessions — the panel it
- * speaks about belongs to the root agent's session (#113).
+ * rule as the commit reminder) and for subagent sessions — the panel it
+ * speaks about belongs to the root agent's session.
  */
 export async function todoSyncReminderListener(
   exec: ToolExecutionLike,
@@ -197,8 +197,8 @@ export function installTodoSyncReminder(ctx: DshContext): () => void {
 }
 
 /**
- * Model-facing notice for a session that leaves plan mode with nothing recorded
- * (#111). It names the paths, not the workflow: the mint skill owns the flow
+ * Model-facing notice for a session that leaves plan mode with nothing recorded.
+ * It names the paths, not the workflow: the mint skill owns the flow
  * (`references/flow-impl.md`), and this text only has to make the gap visible at
  * the moment the work starts.
  */
@@ -211,7 +211,7 @@ export const SESSION_RECORD_REMINDER =
 
 /**
  * `tools/post-execute` listener: when `exit_plan_mode` is approved and this
- * session has performed no mint write, append the notice (#111).
+ * session has performed no mint write, append the notice.
  *
  * Why a notice and not a denial: the plan gate already requires a running mint
  * plan, but that is a project-level fact — a session can exit plan mode while
@@ -233,7 +233,7 @@ export async function sessionRecordReminderListener(
     return next();
   }
   const sessionId = sessionIdOf(exec.agent);
-  // #116: this delivery satisfies the overview channel's one-shot line too, so a
+  // This delivery satisfies the overview channel's one-shot line too, so a
   // single exit is never announced twice — marked on the call, because the host
   // appends the `plan/mode` event only at the next request assembly.
   noteRecordGapNotified(sessionId);
@@ -263,7 +263,7 @@ export function installFailureSignal(ctx: DshContext): () => void {
 }
 
 /**
- * 轮询子代理的词（#160）：命令文本或 argv token 里出现**独立**的 `list_agents`
+ * 轮询子代理的词：命令文本或 argv token 里出现**独立**的 `list_agents`
  * 才算命中（`\b` 把 `foo_list_agents` 这类同名前缀排除在外）。
  */
 const LIST_AGENTS_WORD = /\blist_agents\b/;
@@ -272,7 +272,7 @@ const LIST_AGENTS_WORD = /\blist_agents\b/;
 const SLEEP_COMMAND = /^sleep\s/;
 
 /**
- * 等待子代理时「不要 `sleep`、不要轮询」的提示文案（#160）。
+ * 等待子代理时「不要 `sleep`、不要轮询」的提示文案。
  *
  * skill 里的「不 sleep」口径是软约束，本轮实测被违反 3 次（共 ~9.3 min），
  * 所以加一道只提示不拦截的机器兜底：合法 `sleep`（等端口、重试）不该被拦，
@@ -289,7 +289,7 @@ function hasSleepPollText(text: string): boolean {
 }
 
 /**
- * argv 形态的命中判定（#160）：`['sleep', …]`、`['bash'|'sh','-c','…']` 里的命令，
+ * argv 形态的命中判定：`['sleep', …]`、`['bash'|'sh','-c','…']` 里的命令，
  * 以及数组里出现独立的 `list_agents` token。
  *
  * 相邻 token 拼接后再匹配，是为了不在「词被切成两段 token」这种构造上漏判；
@@ -310,7 +310,7 @@ export function isSleepPollArgv(tokens: readonly string[]): boolean {
 }
 
 /**
- * True when a tool call is a bash `sleep` or a `list_agents` poll (#160).
+ * True when a tool call is a bash `sleep` or a `list_agents` poll.
  *
  * 两个通道，按**参数形态**判定（与 {@link isGitCommit} 同一套口径）：
  *
@@ -338,7 +338,7 @@ export function isSleepPoll(exec: ToolExecutionLike): boolean {
 
 /**
  * `tools/post-execute` listener：调用里出现 `sleep` 空等或 `list_agents` 轮询时，
- * 在结果末尾追加 {@link sleepPollHint}（#160）。
+ * 在结果末尾追加 {@link sleepPollHint}。
  *
  * enrich 而非 deny：`sleep` 本身合法，这里只把「通知会被推迟」这条实测事实摆在模型眼前。
  * 失败调用（{@link isFailedResult}）不提示——那时代码根本没跑起来。检测或拼装出任何异常都
@@ -360,13 +360,13 @@ export async function sleepPollReminderListener(
   }
 }
 
-/** Register the sleep/poll hint on `tools/post-execute` (#160). */
+/** Register the sleep/poll hint on `tools/post-execute`. */
 export function installSleepHint(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', sleepPollReminderListener);
 }
 
 /**
- * mint 的 SQLite 报错原文（#60）。常量导出，好让测试与文档引用同一串，不各写一份。
+ * mint 的 SQLite 报错原文。常量导出，好让测试与文档引用同一串，不各写一份。
  *
  * 它是**症状**而非根因：workspace-write 沙箱下走 bash 跑 mint（连 `mint list` 这种只读命令）
  * 也会这么报——SQLite 连只读查询都要写 journal，所以看到它就说明「db 目录对本次执行只读」。
@@ -374,7 +374,7 @@ export function installSleepHint(ctx: DshContext): () => void {
 export const READONLY_DB_SYMPTOM = 'attempt to write a readonly database';
 
 /**
- * 看见 {@link READONLY_DB_SYMPTOM} 时追加的可诊断提示（#60）。
+ * 看见 {@link READONLY_DB_SYMPTOM} 时追加的可诊断提示。
  *
  * 模型最可能的误判是「mint 坏了 / db 损坏」，于是绕路重试甚至改写数据；这句话把它拉回
  * 正确的两条路：宿主 `mint` 工具（插件进程内 spawn，不受会话沙箱约束）或常规沙箱提权。
@@ -384,7 +384,7 @@ export const BASH_DIAGNOSTIC_HINT =
   '改用宿主 mint 工具；确需 bash 时按常规沙箱提权审批重试，或把 --db 指向可写目录。';
 
 /**
- * True when a tool result carries the SQLite readonly-db symptom (#60).
+ * True when a tool result carries the SQLite readonly-db symptom.
  *
  * 只认 `content` 里的文本：`bash` 把非零退出当**成功**调用返回（见 {@link isFailedResult}），
  * 而且这里不依赖工具名——同样的症状经别的构造出现时，提示一样成立。
@@ -396,7 +396,7 @@ export function isReadonlyDbFailure(result: ToolResultLike): boolean {
 }
 
 /**
- * `tools/post-execute` listener：结果里出现只读 db 症状时追加 {@link BASH_DIAGNOSTIC_HINT}（#60）。
+ * `tools/post-execute` listener：结果里出现只读 db 症状时追加 {@link BASH_DIAGNOSTIC_HINT}。
  *
  * 只 append 一块 text，原 content 与工具值都不动；任何异常都 `next()`，
  * 提示永远不能改变一次已经发生的失败。
@@ -417,7 +417,7 @@ export async function readonlyDbHintListener(
   }
 }
 
-/** Register the readonly-db diagnostic hint on `tools/post-execute` (#60). */
+/** Register the readonly-db diagnostic hint on `tools/post-execute`. */
 export function installReadonlyDbHint(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', readonlyDbHintListener);
 }

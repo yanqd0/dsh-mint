@@ -1,5 +1,5 @@
 /**
- * The plan DAG's file layer (plan #31): `/tmp/mint/dag/<sessionId>.json`.
+ * The plan DAG's file layer: `/tmp/mint/dag/<sessionId>.json`.
  *
  * The panel and the tool both read one small JSON document per session, and the
  * write side is a read-modify-write across an out-of-process boundary (the file

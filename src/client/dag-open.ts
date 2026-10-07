@@ -1,5 +1,5 @@
 /**
- * The DAG tab's auto-open prober (plan #31 §4.7).
+ * The DAG tab's auto-open prober (spec: `notes/plan-dag.md`).
  *
  * A session with a plan DAG should not need the user to know a tab exists for
  * it. The host cannot push (no SSE primitive), so the browser half asks at a low

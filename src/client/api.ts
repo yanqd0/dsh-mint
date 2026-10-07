@@ -1,6 +1,5 @@
 /**
- * The panel's transport: `fetch` against the host's read-only `/dsh-mint/` routes
- * (#10).
+ * The panel's transport: `fetch` against the host's read-only `/dsh-mint/` routes.
  *
  * Paths resolve against `document.baseURI` rather than the origin — the page can
  * be mounted under a prefix (reverse proxy, multiple deployments behind one
@@ -26,7 +25,7 @@ import { routePath } from '../shared/route-paths.js';
 import type { MintApiLike } from './types.js';
 
 /**
- * One route's path, derived from the host's own route table (#104).
+ * One route's path, derived from the host's own route table.
  *
  * Exported for the drift guard: the host's `ROUTE_NAMES` and this table must
  * describe the same seven paths, and only a comparison can keep it that way.

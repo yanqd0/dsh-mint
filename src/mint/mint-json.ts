@@ -3,7 +3,7 @@
  *
  * mint is a subprocess, so a `mint-faa` bump can rename a field without any
  * import failing. Every reader therefore validates the fields it renders and
- * reports a warning instead of letting a shrunken list read as real data (#65).
+ * reports a warning instead of letting a shrunken list read as real data.
  *
  * Two callers share this module with different appetites: the per-request
  * overview renders a handful of fields (`context.ts` keeps its own minimal
@@ -44,7 +44,7 @@ function isNumberOrNull(value: unknown): value is number | null {
  * mint serializes most optional columns straight from `Option<String>` /
  * `Option<i64>`, so `null` is a **declared** answer for them, not shape drift:
  * an issue or container without a `body`, a plan whose `version` follows an
- * absent `milestone_id`, a label without a recorded `color` (#94/#95/#96/#108).
+ * absent `milestone_id`, a label without a recorded `color`.
  * Requiring a string here dropped those whole records and reported them as
  * "missing required fields".
  */
@@ -60,10 +60,10 @@ function isBoolean(value: unknown): value is boolean {
 /**
  * **缺失**的可选字段通过校验；一旦出现，就必须满足其声明形状。
  *
- * issue 的 `milestone_id` / `milestone_direct` 自 mint 0.9.0-alpha.1 才有（mint
- * #503）：已发布的 `mint-faa`（0.8.1）两个键都不返回，而那是被支持的 CLI，不是坏
+ * issue 的 `milestone_id` / `milestone_direct` 自 mint 0.9.0-alpha.1 才有：已发布的
+ * `mint-faa`（0.8.1）两个键都不返回，而那是被支持的 CLI，不是坏
  * 掉的 CLI，所以字段缺失必须放行。但字段**存在**时仍要校验类型——`"4"` 或 `"yes"`
- * 是值得告警的重命名，而不是「当作没有 milestone」照常渲染的行（#90）。
+ * 是值得告警的重命名，而不是「当作没有 milestone」照常渲染的行。
  *
  * @param value - 解析出来的字段值，CLI 省略时为 `undefined`。
  * @param accepts - 该字段声明类型的校验函数。
@@ -88,7 +88,7 @@ export function isIssueItem(value: unknown): value is IssueItem {
     isNumber(value.priority) &&
     isStringArray(value.labels) &&
     isNumberOrNull(value.plan_id) &&
-    // mint 0.9.0-alpha.1 新增（#90）：已发布 CLI 不返回，故缺失放行、存在则校验。
+    // mint 0.9.0-alpha.1 新增：已发布 CLI 不返回，故缺失放行、存在则校验。
     isOptional(value.milestone_id, isNumberOrNull) &&
     isOptional(value.milestone_direct, isBoolean) &&
     Array.isArray(value.links) &&
@@ -169,10 +169,10 @@ export function isContainerDetail(value: unknown): value is ContainerDetail {
  *
  * `list --json` 从不带 body，老 CLI 上也不带有效 milestone，所以详情读是面板唯一
  * 能确定同时拿到两者的地方。创建时没给 `--body` 的 issue 会答 `"body": null`，面板
- * 显示为「无 body」，而不是当成读不出的记录丢掉（#94）。
+ * 显示为「无 body」，而不是当成读不出的记录丢掉。
  *
  * `milestone_id` 在这里保持**必到**——与 {@link isIssueItem} 上的可选新字段不同——
- * 因为详情读一直返回它（#90）。
+ * 因为详情读一直返回它。
  */
 export function isIssueDetail(value: unknown): value is IssueDetail {
   if (!isRecord(value)) return false;
@@ -199,7 +199,7 @@ export interface ParseNoun {
 }
 
 /**
- * Parse a `{ items: [...] }` CLI response, validating every item (#65).
+ * Parse a `{ items: [...] }` CLI response, validating every item.
  *
  * Mirrors the command-level failure contract: never throws, but never lets a
  * shape mismatch pass as real data either. Items that fail validation are

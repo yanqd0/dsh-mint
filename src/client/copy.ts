@@ -106,7 +106,7 @@ export const ZH = {
   // the label, never the timestamp.
   'dag.measuredAt': '实测于 {at}',
   'dag.note': '结果原文',
-  // A node's isolated working tree (#173): the branch it works on, and the state
+  // A node's isolated working tree: the branch it works on, and the state
   // of that workspace. The four states are mint's own vocabulary, so they read
   // the same in both locales (see `KEPT_IN_ENGLISH`).
   'dag.worktree.branch': '分支 {branch}',
@@ -220,7 +220,7 @@ export const EN = {
  * enumerated values a node carries — `pending` / `running` / `done`, `pass` /
  * `fail`, `research` / `exec` are mint's vocabulary, and a tooltip that renamed
  * them would disagree with the tool the reader just called. The worktree states
- * (`active` / `merged` / `conflict` / `removed`, #173) join the same group for
+ * (`active` / `merged` / `conflict` / `removed`) join the same group for
  * the same reason. The list is asserted in both directions by `copy.test.ts`, so
  * "kept in English" is a checked decision rather than a habit.
  */

@@ -1,5 +1,5 @@
 /**
- * One home for the text predicates more than one layer needs (#103).
+ * One home for the text predicates more than one layer needs.
  *
  * The cross-project classifier validates a project name with them, the route
  * layer validates a filter value with them, and the approval prompt strips them

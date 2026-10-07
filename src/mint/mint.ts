@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 export const MINT_TIMEOUT_MS = 30_000;
 
 /**
- * Wall-clock limit for the **first** mint run of a process (#45).
+ * Wall-clock limit for the **first** mint run of a process.
  *
  * A fresh install has no mint binary yet: `mint-faa` downloads the GitHub
  * release lazily on first use, and that download can exceed 30 s on a slow link.
@@ -25,7 +25,7 @@ export const MINT_ENTRY_ENV = 'MINT_ENTRY';
 
 /**
  * Sentinel `mintEntry`/`MINT_ENTRY` value that forces the dependency chain even
- * when the other knob carries a path override (#67) — what a user-env check
+ * when the other knob carries a path override — what a user-env check
  * needs while the dev profile is pinned to a local build.
  */
 export const MINT_ENTRY_DEPENDENCY = 'dependency';
@@ -37,7 +37,7 @@ const NODE_ENTRY = /\.(cjs|mjs|js)$/i;
 const MINT_FAA_ENTRY = join('node_modules', 'mint-faa', 'run-mint.js');
 
 /**
- * Actionable failure text for the tool channel (#66). A bare
+ * Actionable failure text for the tool channel. A bare
  * `Cannot find module 'mint-faa/run-mint.js'` reads like a plugin bug with no
  * way out; this names the two overrides and the profile-side fix.
  */
@@ -49,8 +49,8 @@ export const MINT_ENTRY_HINT =
   'dsh plugin --profile <p> approve-builds --all 后重装。';
 
 /**
- * One-line variant for the per-request `[Mint]` overview (#66). Only rendered on
- * failure, so it never enters the #61 every-request budget.
+ * One-line variant for the per-request `[Mint]` overview. Only rendered on
+ * failure, so it never enters the every-request budget.
  */
 export const MINT_ENTRY_WARNING =
   'mint 入口解析失败（mint-faa 不可见）→ 挂载行 mintEntry（如 ~/bin/mint）或 MINT_ENTRY，改后重启 harness';
@@ -82,7 +82,7 @@ export interface MintEntryOptions {
  * `src/<module>/` (depth 2), and under `pnpm dev`/vitest it is the source that
  * runs — counting levels would then probe `src/node_modules` and silently fall
  * back to a bare-specifier lookup, which is exactly the `mint-faa` failure this
- * probe exists to avoid (#66).
+ * probe exists to avoid.
  */
 function defaultPackageRoot(): string {
   const start = dirname(fileURLToPath(import.meta.url));
@@ -107,8 +107,8 @@ export function expandMintEntry(entry: string): string {
  *
  * DSH resolves a plugin's bare specifiers through the harness/profile package
  * table (`notes/dsh-plugin-dev.md`), where the plugin's own dependency is
- * invisible — that is the `Cannot find module 'mint-faa/run-mint.js'` outage
- * (#66). Probing the plugin's own package root works for pnpm (isolated and
+ * invisible — that is the `Cannot find module 'mint-faa/run-mint.js'` outage.
+ * Probing the plugin's own package root works for pnpm (isolated and
  * hoisted) and npm layouts alike; `require.resolve` stays as the fallback for
  * layouts this probe does not cover.
  */
@@ -173,8 +173,8 @@ export function mintCommand(entry: string): { command: string; prefix: string[] 
 }
 
 /**
- * Shorten an entry into something a session can afford to see on every request
- * (#58). `-V` reads the same for a debug and a release build, so the entry —
+ * Shorten an entry into something a session can afford to see on every request.
+ * `-V` reads the same for a debug and a release build, so the entry —
  * not just the version — is what tells the two apart; a symlinked launcher
  * (`~/bin/mint`) is resolved first so the label names the actual build
  * (`…/target/release/mint`).
@@ -216,17 +216,17 @@ export interface MintRunResult {
   /**
    * Raw stderr. On success this is *not* an error channel: mint writes
    * advisory lines there (`mint: hint: …`, e.g. a dedup merge suggestion or an
-   * unmerged-machine warning) and dropping them hides an actionable note
-   * (#56). The `list` pagination footer is no longer one of them — since mint
-   * 0.8 it is written to stdout (`# Page x/y`), so the stdout path carries it
-   * (#78). On failure the message also lands in {@link MintRunResult.error}.
+   * unmerged-machine warning) and dropping them hides an actionable note.
+   * The `list` pagination footer is no longer one of them — since mint
+   * 0.8 it is written to stdout (`# Page x/y`), so the stdout path carries it.
+   * On failure the message also lands in {@link MintRunResult.error}.
    */
   stderr?: string;
   error?: string;
   /** Process exit code when the CLI ran and failed; absent on abort/timeout. */
   exitCode?: number;
   /**
-   * True when the child was killed by the wall-clock limit (#45). Only set on the
+   * True when the child was killed by the wall-clock limit. Only set on the
    * failure path: a run that finished within its budget never carries it. Callers
    * turn it into the cold-download hint instead of a bare `exit timeout`.
    */
@@ -236,7 +236,7 @@ export interface MintRunResult {
 }
 
 /**
- * Process-wide cold-start bookkeeping (#45).
+ * Process-wide cold-start bookkeeping.
  *
  * The session-start overview fires three mint calls concurrently, and
  * `mint-faa`'s lazy installer removes the binary directory before downloading
@@ -288,13 +288,13 @@ function settleColdSlot(ok: boolean): void {
  *
  * Plugin code is host-trusted, and its own child processes do not pass through
  * the session file sandbox (`ctx.shell` / Seatbelt), so mint can read and write
- * its data directory even in `workspace-write` sessions (#18).
+ * its data directory even in `workspace-write` sessions.
  *
  * Nonzero exits and spawn failures resolve (not reject) with an error message,
  * matching the old shell-backed contract so callers never need to catch.
  *
  * `options.timeoutMs` is the caller's own budget and opts out of the cold-start
- * bookkeeping (#45); otherwise the first run of the process gets
+ * bookkeeping; otherwise the first run of the process gets
  * {@link MINT_COLD_TIMEOUT_MS} and later ones {@link MINT_TIMEOUT_MS}.
  */
 export async function runMint(
@@ -350,7 +350,7 @@ export async function runMint(
     // Armed before spawn so it is registered ahead of spawn's own timeout timer
     // for the same deadline: by the time the killed child closes, the flag is
     // already set and `code === null` can be reported as a timeout rather than a
-    // bare crash (#45).
+    // bare crash.
     timer = setTimeout(() => {
       timedOut = true;
     }, timeoutMs);

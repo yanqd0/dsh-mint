@@ -1,7 +1,7 @@
 /**
- * Plan-close sweep for leftover worktrees (#175).
+ * Plan-close sweep for leftover worktrees.
  *
- * The worktree actions (#172) leave a real directory and a real branch behind on
+ * The worktree actions leave a real directory and a real branch behind on
  * purpose: a merged node's tree is kept so its result can still be inspected, and
  * a conflicted one is kept because the decision is the model's. That makes the
  * **end** of a plan the moment someone is tempted to sweep it all away — the graph
@@ -13,7 +13,7 @@
  *
  * This listener is the soft nudge for that moment. It observes
  * `tools/post-execute` (enrich, never veto), skips subagent sessions the way every
- * other session-scoped notice does (#113), and only speaks when a `plan close`
+ * other session-scoped notice does, and only speaks when a `plan close`
  * succeeded and the session's DAG still holds worktrees that are not `removed`.
  */
 import { invocationsOf } from '../mint/cross-project-gate.js';

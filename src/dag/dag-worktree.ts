@@ -1,8 +1,8 @@
 /**
- * Node-level git worktrees for a plan DAG (#172).
+ * Node-level git worktrees for a plan DAG.
  *
  * Why this exists: a batch of parallel issues that share one working tree has one
- * git index, one branch and one staging area. The plan #33 session made that
+ * git index, one branch and one staging area. One batch session made that
  * concrete — a commit built from a partially finished tree was not the issue it
  * claimed to be, and re-cutting the range to restore "one issue, one verifiable
  * commit" cost several full test runs. A worktree per node removes the shared
@@ -11,7 +11,7 @@
  *
  * Two decisions shape everything below:
  *
- * - **Inside the workspace, under the git common dir (#177).** A worktree lives
+ * - **Inside the workspace, under the git common dir.** A worktree lives
  *   at `<common git dir>/dsh-mint/worktrees/<session8>/<node>`, never outside the
  *   repository: the bash tool resolves `workdir` against the sandbox's workspace
  *   root, so a path outside it is unreachable for the agents that are supposed to
@@ -37,7 +37,7 @@ const SESSION_PREFIX = 8;
 export const DEFAULT_WORKTREE_BRANCH_PREFIX = 'dsh-mint/wt';
 
 /**
- * Directory under the git common dir (#177).
+ * Directory under the git common dir.
  *
  * Deliberately **not** `.git/worktrees/`: that path is git's own metadata
  * directory for registered worktrees, and a worktree placed there collides with
@@ -48,8 +48,6 @@ export const WORKTREE_SUBDIR = 'dsh-mint/worktrees';
 /** The subset of a node a worktree operation needs. */
 export interface WorktreeNode {
   id: string;
-  /** The node's mint issue, used for the merge commit's subject. */
-  issue?: number;
 }
 
 /** What the caller supplies; everything has a default except the git runner and repo. */
@@ -63,7 +61,7 @@ export interface WorktreeDeps {
   worktreeDir?: string;
   branchPrefix?: string;
   /**
-   * 建树时记录的目标分支（#189），由调用方从节点存储的 worktree 记录带来。
+   * 建树时记录的目标分支，由调用方从节点存储的 worktree 记录带来。
    *
    * merge/remove 只拿到 `node`，文档里的 `worktree.target` 不在它们手里；契约是
    * 「merge 目标 = 建树时所在分支」，所以这个值必须由调用方回传，否则校验与
@@ -89,7 +87,7 @@ function sessionSlug(session: string): string {
 }
 
 /**
- * The repository's git common dir, absolute (#177).
+ * The repository's git common dir, absolute.
  *
  * `rev-parse --git-common-dir` answers relative to `cwd`, so `.git` at the repo
  * root and `../.git` from a subdirectory both have to be resolved against
@@ -174,7 +172,7 @@ export async function installedWorktrees(deps: WorktreeDeps): Promise<InstalledW
   if (typeof root !== 'string') return [];
   const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
   // 老 git（< 2.5）不认 `worktree` 子命令，与 {@link registeredWorktrees} 同样
-  // 落成空表（#187）：真正的失败在 `worktree add` 那步带降级文案暴露。
+  // 落成空表：真正的失败在 `worktree add` 那步带降级文案暴露。
   if (!result.ok) return [];
 
   const found: InstalledWorktree[] = [];
@@ -228,7 +226,7 @@ function isNodePath(root: string, path: string): boolean {
 /** Paths git currently registers as worktrees of this repository. */
 async function registeredWorktrees(deps: WorktreeDeps): Promise<string[]> {
   const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
-  // 老 git（< 2.5）不认 `worktree` 子命令，这里会落成空表（#187）。这是有意为之：
+  // 老 git（< 2.5）不认 `worktree` 子命令，这里会落成空表。这是有意为之：
   // 空表被调用方读成「还没建过」，真正的失败会在随后的 `worktree add` 上暴露，
   // 并带上 {@link degradationHint} 那条降级文案——所以别在这里补救。
   if (!result.ok) return [];
@@ -239,7 +237,7 @@ async function registeredWorktrees(deps: WorktreeDeps): Promise<string[]> {
 }
 
 /**
- * 本机 git 的版本行（`git version 2.43.0`），读不到时 `''`（#187）。
+ * 本机 git 的版本行（`git version 2.43.0`），读不到时 `''`。
  *
  * 只在**失败之后**调用：happy path 不该为一句提示多付一次进程开销（没坏就别查）。
  */
@@ -251,7 +249,7 @@ async function gitVersion(deps: WorktreeDeps): Promise<string> {
 }
 
 /**
- * `worktree add` / `worktree remove` 失败时追加的**单行**降级指引（#187）。
+ * `worktree add` / `worktree remove` 失败时追加的**单行**降级指引。
  *
  * 失败原因里最常见也最容易被误读成「仓库坏了」的一种，是本机 git 太老（`worktree`
  * 是 2.5 才有的子命令）：报错本身（`git: 'worktree' is not a git command`）既不点
@@ -285,7 +283,7 @@ async function fullHead(deps: WorktreeDeps): Promise<string> {
 }
 
 /**
- * 会话仓库当前签出的分支名（#189），读不到时 `''`。
+ * 会话仓库当前签出的分支名，读不到时 `''`。
  *
  * 这就是「开工时所在分支」的来源：worktree 建在这里的 HEAD 上，merge 也该合回
  * 这里。detached HEAD 时 git 答 `HEAD`，调用方据此走「不校验」分支。
@@ -312,7 +310,7 @@ async function resolveBase(
  * Idempotent: a path that is already a registered worktree of this repository is
  * returned as it is, so a retried call after a crash costs nothing.
  *
- * Every returned record carries `target` — the branch checked out **now** (#189),
+ * Every returned record carries `target` — the branch checked out **now**,
  * which is the branch this worktree is based on and therefore the branch a later
  * `merge` must land in. Recording it at creation time is the whole point: by
  * merge time the session may have checked out something else.
@@ -340,7 +338,7 @@ export async function createWorktree(
   if (typeof resolved !== 'string') return { ok: false, error: resolved.error };
   const added = await deps.git(deps.repo, ['worktree', 'add', '-b', branch, path, resolved]);
   if (!added.ok) {
-    // 失败才查版本（#187）：这里也是老 git 唯一会暴露的出口。
+    // 失败才查版本：这里也是老 git 唯一会暴露的出口。
     const hint = await degradationHint(deps);
     return { ok: false, error: `git worktree add 失败：${stderrOf(added)}${hint}` };
   }
@@ -350,7 +348,7 @@ export async function createWorktree(
 /**
  * True when the session working tree has nothing a merge would sweep in.
  *
- * 「会话工作树」就是 merge 目标分支所在的那棵树（#189：不是「主线」，见
+ * 「会话工作树」就是 merge 目标分支所在的那棵树（不是「主线」，见
  * {@link mergeWorktree}）。
  *
  * `--untracked-files=no` 是判据本身，不是省事：这里只关心会被 merge commit 卷走的
@@ -373,7 +371,7 @@ async function conflictedFiles(deps: WorktreeDeps): Promise<string[]> {
 }
 
 /**
- * Merge one node's branch back into the **target branch** (#189).
+ * Merge one node's branch back into the **target branch**.
  *
  * The target is the branch that was checked out when the worktree was created
  * (`createWorktree` records it on the node), *not* "main"/"master": a plan is
@@ -383,7 +381,10 @@ async function conflictedFiles(deps: WorktreeDeps): Promise<string[]> {
  * branch the caller did not expect is the mistake this guard prevents.
  *
  * `--no-ff` is deliberate: the merge is recorded even when it could fast-forward,
- * so the issue's work stays one identifiable unit on the target branch.
+ * so the issue's work stays one identifiable unit on the target branch. The
+ * subject is `merge <node id>` and carries **no** mint id: committed content must
+ * not name issue/plan/milestone numbers, and the issue ↔ commit link is registered
+ * with `mint issue state commit --sha` instead of the message.
  *
  * A conflict is **not** resolved here: the merge is left stopped, the conflicted
  * files are reported, and the caller decides (resolve inside the worktree and
@@ -426,12 +427,13 @@ export async function mergeWorktree(
       worktree: { path, branch, base, state: 'merged', target },
     };
   }
-  const issue = node.issue === undefined ? '' : ` (#${String(node.issue)})`;
+  // subject 只写节点 id：上库内容（含 commit message）不得出现 mint ID，issue ↔ commit
+  // 的关联由 `mint issue state commit --sha` 登记，不靠 message。
   const merged = await deps.git(deps.repo, [
     'merge',
     '--no-ff',
     '-m',
-    `merge ${node.id}${issue}`,
+    `merge ${node.id}`,
     branch,
   ]);
   if (!merged.ok) {
@@ -465,7 +467,7 @@ export async function mergeWorktree(
 /**
  * Remove one node's worktree.
  *
- * 「已合并」的判据是**目标分支**（#189：建树时所在的分支，由 `deps.target`
+ * 「已合并」的判据是**目标分支**（建树时所在的分支，由 `deps.target`
  * 传入），不是硬编码的 HEAD：会话可能已经 checkout 走了，那时按 HEAD 判定会把
  * 已合回目标分支的工作误报成未合并。缺记录（旧节点）时退回**当前分支**，读不到
  * 才落到字面 `HEAD`——字面 HEAD 只作「无从校验」的标记，不该被当成分支名写进文档。
@@ -485,7 +487,7 @@ export async function removeWorktree(
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
-  // 缺记录时先问当前分支（#189 之前的旧节点），问不到才用字面 `HEAD`：写进文档的
+  // 缺记录时先问当前分支（早期版本的旧节点），问不到才用字面 `HEAD`：写进文档的
   // target 必须是真分支名或明确的「无从校验」标记，不能被字面串悄悄顶上。
   const target = deps.target ?? ((await currentBranch(deps)) || 'HEAD');
   const worktree: DagWorktree = {
@@ -517,7 +519,7 @@ export async function removeWorktree(
     path,
   ]);
   if (!removed.ok) {
-    // 与 create 同一条降级文案（#187）：merge 的失败不混进来——冲突走 conflict
+    // 与 create 同一条降级文案：merge 的失败不混进来——冲突走 conflict
     // 分支，脏树有专门文案，那是另一类失败。
     const hint = await degradationHint(deps);
     return { ok: false, error: `git worktree remove 失败：${stderrOf(removed)}${hint}` };

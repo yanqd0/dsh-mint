@@ -1,6 +1,6 @@
 /**
  * The plan DAG's drawing model: status coloring, node geometry, and the
- * topological layout the panel renders as SVG (plan #31 §4.3).
+ * topological layout the panel renders as SVG (spec: `notes/plan-dag.md`).
  *
  * The host publishes no coordinates — the document is a graph, and one layout
  * here keeps the browser the single place that decides pixels. Everything in
@@ -92,7 +92,7 @@ export function dagStatusTone(node: DagNodeView): StatusTone {
 }
 
 /**
- * The tone the chip on a node's worktree state draws in (#173).
+ * The tone the chip on a node's worktree state draws in.
  *
  * The state is a fact about the branch, not about the node's own lifecycle, so
  * it is read on its own axis: an unmerged worktree is work that is still out
@@ -254,7 +254,7 @@ export function dagCounts(view: DagView): {
 /**
  * The copy keys the node's measured line is built from.
  *
- * `DagBody` is the only caller (issue #164) and is a `.tsx` this module cannot
+ * `DagBody` is the only caller and is a `.tsx` this module cannot
  * import from, so the keys are named once here instead of being spelled in two
  * files. It also answers the panel's copy guard, which reads source text: a key
  * the dictionary carries but no source ever quotes is a dead key.

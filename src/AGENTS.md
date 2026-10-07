@@ -24,7 +24,7 @@
 - **null/undefined**：内部只用 `undefined`，`null` 限 mint 线格式与 Node 回调并在边界收口；默认 `x?: T`，需显式传 `undefined` 才 `x?: T | undefined`，别用 `x: T | undefined` 表达可省略。
 - **模块**：相对导入带 `.js`；`src/**` 不用 default export；依赖单向，`shared/` 不反向依赖。
 - **异步/错误**：故意不等的 Promise 用 `void p.catch(...)` 并写理由；`catch` 按 `unknown` 收口；校验/解析层返回 `T | { error: string }`，到请求/宿主边界才 `throw`。
-- **注释**：新增与改动用中文（存量英文不回改）；只写「为什么/不变量/契约」，不重复类型；`#NN` 溯源。
+- **注释**：新增与改动用中文（存量英文不回改）；只写「为什么/不变量/契约」，不重复类型；溯源写描述性引用（文件名 / 小节名 / 机制名），不写 mint 的 issue/plan/milestone ID。
 
 ## 拆分与扩展
 

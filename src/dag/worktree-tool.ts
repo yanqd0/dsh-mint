@@ -320,16 +320,13 @@ export async function executeWorktreeTool(
   }
 
   const deps: WorktreeDeps = { git, repo, session: sessionId };
-  // 定位节点，并把它存储的 worktree 记录一并带出（#189）：merge/remove 的目标分支
+  // 定位节点，并把它存储的 worktree 记录一并带出：merge/remove 的目标分支
   // 不在 `WorktreeNode` 里，只能从文档节点的 `worktree.target` 取；这里一次读出。
   const node = read.doc.nodes.find((candidate) => candidate.id === parsed.node);
   if (node === undefined) return refusal(`节点不存在：${String(parsed.node)}`);
-  const target: WorktreeNode = {
-    id: node.id,
-    ...(node.issue === undefined ? {} : { issue: node.issue }),
-  };
-  // 把记录里的目标分支交给 worktree 层（#189）：契约「merge 目标 = 建树时所在分支」
-  // 靠这个字段落地；缺记录（#189 之前的旧节点）就不传，让 git 层退回按当前分支判定。
+  const target: WorktreeNode = { id: node.id };
+  // 把记录里的目标分支交给 worktree 层：契约「merge 目标 = 建树时所在分支」
+  // 靠这个字段落地；缺记录（早期版本的旧节点）就不传，让 git 层退回按当前分支判定。
   const stored: DagWorktree | undefined = node.worktree;
   const scopedDeps: WorktreeDeps =
     stored?.target === undefined ? deps : { ...deps, target: stored.target };
@@ -355,7 +352,7 @@ export async function executeWorktreeTool(
     if (!outcome.ok) {
       // A conflict is a real state, not a refusal to hide: record it so the panel
       // shows the node as conflicted, then answer with the actionable text. The
-      // outcome carries a complete record (path/branch/base, #177) — persisting
+      // outcome carries a complete record (path/branch/base) — persisting
       // an empty `base` here once made the whole stored DAG unreadable.
       if (outcome.conflict !== undefined && outcome.worktree !== undefined) {
         await persist(outcome.worktree);

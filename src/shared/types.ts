@@ -26,13 +26,13 @@ export interface ToolExecutionLike {
       header?: {
         cwd?: string;
         /**
-         * `> 0` for a subagent session (#113). The todo dock (#119) belongs to
+         * `> 0` for a subagent session. The todo dock belongs to
          * the root agent's session, so the reminder skips delegated ones.
          */
         delegationDepth?: number;
         /**
          * The session that delegated this one, absent at the top. The plan DAG
-         * (plan #31) walks it upward so a subagent writes the graph its main
+         * walks it upward so a subagent writes the graph its main
          * session's panel draws.
          */
         parentSession?: string;
@@ -117,12 +117,12 @@ export interface AgentLike {
       cwd?: string;
       /**
        * `0` or absent for a top-level session, `> 0` for a subagent session —
-       * the injection channel uses it to skip subagents (#113).
+       * the injection channel uses it to skip subagents.
        */
       delegationDepth?: number;
       /**
        * The session that delegated this one, absent at the top — the edge the
-       * plan DAG's root-session walk follows (plan #31).
+       * plan DAG's root-session walk follows.
        */
       parentSession?: string;
     };
@@ -130,7 +130,7 @@ export interface AgentLike {
 }
 
 /**
- * The host's `subagent/start` payload (plan #31).
+ * The host's `subagent/start` payload.
  *
  * `id` is the child **session** id (what a DAG node's `agent` records); `runId`
  * identifies the run itself and is what pairs `start` with `end`.
@@ -147,7 +147,8 @@ export interface SubagentRunInfoLike {
  *
  * `stopReason` is the host's own wording (`error`, `cancelled`, …) and
  * `lastAssistantMessage` the child's final message — together they are the only
- * outcome available when a subagent died before reporting one (plan #31 §3).
+ * outcome available when a subagent died before reporting one (spec:
+ * `notes/plan-dag.md`).
  */
 export interface SubagentRunEndInfoLike extends SubagentRunInfoLike {
   stopReason?: string;
@@ -167,7 +168,7 @@ export interface ApprovalRequestLike {
 export type ApprovalOutcomeLike = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
 
 /**
- * Subset of the host `Session` seen by `session/event` (#116).
+ * Subset of the host `Session` seen by `session/event`.
  *
  * Unlike {@link AgentLike}, the host hands the session itself to the listener,
  * so `id` and the durable `header` are read off it directly.
@@ -178,7 +179,7 @@ export interface SessionLike {
 }
 
 /**
- * Subset of the host `SessionEvent` (#116).
+ * Subset of the host `SessionEvent`.
  *
  * Only the plan-mode exit is consumed, and the event map entry it reads is
  * `{'plan/mode': {active: boolean}}` (`@deepseek-ai/dsh-plan-mode`). Every other
@@ -241,7 +242,7 @@ export interface DshContext {
  * The slice of a live Agent the client-face routes and the plan DAG need.
  *
  * `session.header.cwd` is where the agent's project lives; `id`/`parentSession`
- * are the delegation chain the DAG's root-session walk reads (plan #31).
+ * are the delegation chain the DAG's root-session walk reads.
  */
 export interface AgentCwdLike {
   id?: string;

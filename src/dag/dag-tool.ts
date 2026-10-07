@@ -1,5 +1,5 @@
 /**
- * The `mint_plan_dag` host tool (plan #31): the model's write face for a plan's
+ * The `mint_plan_dag` host tool: the model's write face for a plan's
  * execution DAG.
  *
  * Why a tool and not a shell command: the DAG document lives in
@@ -16,10 +16,10 @@
  *   shows the whole run instead of one fragment per child.
  * - **A bounded answer.** Every action returns at most a few lines
  *   ({@link dagSummary}); the full graph goes to the panel through the read-only
- *   route, never back into the model's context (#61).
+ *   route, never back into the model's context.
  *
  * Settling a node also persists the host's last measurement of its child
- * ({@link persistNodeSample}, #168): the `subagent/end` listener covers a child
+ * ({@link persistNodeSample}): the `subagent/end` listener covers a child
  * that died, and `set status="done"` covers the one that reported back before
  * its session went away. That step is a second, best-effort write *after* the
  * action's own document, so a measurement can never delay or fail the answer.
@@ -208,7 +208,7 @@ export interface DagSampleInput {
 }
 
 /**
- * Persist the node's last host measurement as the `set` settles it (#168).
+ * Persist the node's last host measurement as the `set` settles it.
  *
  * `set status="done"` is the moment the model reports a node finished, and it is
  * often the *last* moment the child session is still alive to be read — the
@@ -366,7 +366,7 @@ export async function executeDagTool(
   }
   // A node the model just settled is the host's last chance to measure its
   // child: the sample is written after the answer's own document, so it can
-  // never delay or fail the `set` itself (#168). 测量键取调用者自己的会话（子代理
+  // never delay or fail the `set` itself. 测量键取调用者自己的会话（子代理
   // 收尾自己的节点），退回节点 `agent` 只是旧路径，见 `measuredNode`。
   if (parsed.status === 'done') {
     const settled = measuredNode(doc, parsed, input.callerId, sessionId);

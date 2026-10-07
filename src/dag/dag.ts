@@ -1,5 +1,5 @@
 /**
- * The plan DAG's data layer (plan #31): document shape, argument validation,
+ * The plan DAG's data layer: document shape, argument validation,
  * cycle detection, and the topological layering the panel draws.
  *
  * Pure data and pure functions only — **no `node:` import**: the browser half
@@ -87,7 +87,7 @@ export interface DagDoc extends DagView {
    * whatever the current document already carries because it spreads it. The
    * fallback persistence belongs to the lifecycle and merges into this key
    * through `updateDag`, so a writer must merge by hand instead of expecting an
-   * action here to produce `samples` (#168).
+   * action here to produce `samples`.
    */
   samples?: Record<string, DagSample>;
 }
@@ -102,7 +102,7 @@ export interface DagAddNode {
   issue?: number;
 }
 
-/** The worktree states a stored document may carry (#172). */
+/** The worktree states a stored document may carry. */
 export const DAG_WORKTREE_STATES: readonly DagWorktreeState[] = [
   'active',
   'merged',
@@ -226,14 +226,14 @@ function checkCount(raw: unknown, name: string): number | { error: string } {
 }
 
 /**
- * One node's worktree record (#172).
+ * One node's worktree record.
  *
  * Strict on read and on write for the same reason the rest of this module is: a
  * path or branch the panel would print is either a plain string this host wrote
  * or it is not data worth keeping. Empty strings are refused because they would
  * render as a blank line where a path belongs.
  *
- * `target` 是可选字段（#189）：#189 之前的节点没有它，缺省必须可读；但一旦出现
+ * `target` 是可选字段：早期版本的节点没有它，缺省必须可读；但一旦出现
  * 就按同一标准校验。
  */
 function checkWorktree(raw: unknown, where: string): DagWorktree | { error: string } {

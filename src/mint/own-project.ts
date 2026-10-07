@@ -1,7 +1,7 @@
 import { projectCacheKey } from './cross-project.js';
 
 /**
- * The project a session's cwd already resolves to (#114).
+ * The project a session's cwd already resolves to.
  *
  * `-p <项目>` is only *cross-project* when `<项目>` is not the project the
  * session's own directory resolves to. mint has no "which project am I in?"

@@ -117,8 +117,8 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
     signal?.addEventListener('abort', abort);
     setMeta({ status: 'loading' });
-    // The panel's explicit refresh re-reads the same three dictionaries: #90 moved
-    // an issue's placement onto the row, so there is no memo left to bypass.
+    // The panel's explicit refresh re-reads the same three dictionaries: an issue's
+    // placement now arrives on the row itself, so there is no memo left to bypass.
     void api.meta(controller.signal).then((response) => {
       setMeta(toLoadState(response));
     });
