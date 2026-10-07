@@ -27,8 +27,12 @@
   2. **同一 milestone 内 `running` 的 plan 多于一个** → 拒并点名 id（#140）。mint 只守 milestone，这条纪律只能由本仓立；
      收敛路径（折进在跑的 plan / 停摆其 `planned` 子项 / `plan detach` 复活它的 open issue）写进拒绝文案，见 `flow-impl.md` §1。
      计数含「曾运行」派生的 running（子项混 `done/dropped` + `open`）。
-  3. **本会话不在计划模式**（宿主 `ctx.planMode.get(agent)` 报 `active === false` 且无 `pending`）→ 直接拒并给可行动文案，
-     **不再白跑一次 mint spawn**（#142）。服务缺失、判定抛错、`pending` 选择一律 fail-open 落到上面两条。
+  3. **本会话不在计划模式** → 直接拒并给可行动文案，**不再白跑一次 mint spawn**（#142）。判定源取
+     root 层能达到的那条：会话投影 `ctx.sessionProjections.stateOf(session,"plan").active`（宿主自己
+     `exit_plan_mode` 用的就是这个值，日志投影、恢复安全）；投影读不到时退回本插件从 `session/event`
+     观测到的 `plan/mode`（进程内；重启后的会话未知）。`ctx.planMode` **取不到**——plan-mode 挂在隔离的
+     cordis group 里（`presets/standard.patch.yml` 的 `isolate: { planMode: true }`），隔离服务对 root 层不可见。
+     两条都不可用时 fail-open，落到上面两条。
 - 门禁只管「项目里有没有已拆解的记录」与「一个 milestone 只跑一条 plan」；「是不是本会话的」交给下面两条软信号。
 - **会话级软信号（#111）**：`exit_plan_mode` 放行后，若**本会话**没有任何本项目 mint 写操作，
   结果里会追加一条补登记提示（项目里的 running plan 可能不是本次工作的记录）。它只提示、不拦；

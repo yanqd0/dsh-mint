@@ -6,6 +6,8 @@ import {
   installSessionLedger,
   isOwnProjectMintWrite,
   notePlanModeExit,
+  notePlanModeState,
+  planModeKnownState,
   recordMintWrite,
   resetSessionLedger,
   takeRecordGapNotice,
@@ -125,6 +127,27 @@ describe('session ledger', () => {
     expect(takeRecordGapNotice('sess-1')).toBe(false);
   });
 
+  it('keeps the observed plan-mode state bounded, exclusive and resettable (#142)', () => {
+    expect(planModeKnownState('sess-1')).toBeUndefined();
+    notePlanModeState(undefined, true);
+    expect(planModeKnownState(undefined)).toBeUndefined();
+
+    notePlanModeState('sess-1', true);
+    expect(planModeKnownState('sess-1')).toBe(true);
+    // The last value wins: the two directions are one slot, not two facts.
+    notePlanModeState('sess-1', false);
+    expect(planModeKnownState('sess-1')).toBe(false);
+
+    for (let index = 0; index < MAX_SESSIONS + 5; index += 1) {
+      notePlanModeState(`s-${index}`, true);
+    }
+    expect(planModeKnownState('s-0')).toBeUndefined();
+
+    resetSessionLedger();
+    expect(planModeKnownState('sess-1')).toBeUndefined();
+    expect(planModeKnownState(`s-${MAX_SESSIONS + 4}`)).toBeUndefined();
+  });
+
   // #116: the plan-mode exit is a session event, and the notice behind it is
   // one-shot per session and closed by any own-project mint write.
   it('hands out the record-gap notice once, only after a plan-mode exit (#116)', () => {
@@ -225,6 +248,25 @@ describe('installSessionLedger', () => {
     emitEvent({}, { type: 'plan/mode', data: { active: false } });
 
     expect(takeRecordGapNotice('sess-7')).toBe(false);
+  });
+
+  it('records both plan-mode directions off the session log (#142)', () => {
+    const { ctx, emitEvent } = makeCtx();
+    installSessionLedger(ctx);
+
+    expect(planModeKnownState('sess-7')).toBeUndefined();
+    emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: true } });
+    expect(planModeKnownState('sess-7')).toBe(true);
+    // Entering plan mode is still not a *record gap* (#116), only a state (#142).
+    expect(takeRecordGapNotice('sess-7')).toBe(false);
+
+    emitEvent({ id: 'sess-7' }, { type: 'plan/mode', data: { active: false } });
+    expect(planModeKnownState('sess-7')).toBe(false);
+    expect(takeRecordGapNotice('sess-7')).toBe(true);
+
+    // A payload without a boolean `active` is not evidence of either direction.
+    emitEvent({ id: 'sess-8' }, { type: 'plan/mode', data: {} });
+    expect(planModeKnownState('sess-8')).toBeUndefined();
   });
 
   it('treats an unreadable event as no evidence (#116)', () => {

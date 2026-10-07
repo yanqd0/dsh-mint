@@ -7,6 +7,7 @@ import {
   planBindListener,
 } from './planbind.js';
 import { runMint } from './mint.js';
+import { notePlanModeState, resetSessionLedger } from './session-ledger.js';
 import type { DshContext, ToolExecutionLike } from './types.js';
 
 vi.mock('./mint.js', () => ({ runMint: vi.fn() }));
@@ -14,24 +15,42 @@ const runMintMock = vi.mocked(runMint);
 
 beforeEach(() => {
   runMintMock.mockReset();
+  resetSessionLedger();
 });
 
-function makeExec(name: string, cwd?: string): ToolExecutionLike {
+function makeExec(name: string, cwd?: string, sessionId?: string): ToolExecutionLike {
   return {
     name,
     arguments: { command: '' },
-    ...(cwd ? { agent: { session: { header: { cwd } } } } : {}),
+    ...(cwd || sessionId
+      ? {
+          agent: {
+            session: { ...(sessionId ? { id: sessionId } : {}), header: { cwd: cwd ?? '/proj' } },
+          },
+        }
+      : {}),
   };
 }
 
 const next = () => Promise.resolve({ kind: 'allow' as const });
 
-/** A root-style context whose only service is the host's plan-mode controller (#142). */
-function makeCtx(planMode: unknown): DshContext {
+/**
+ * A root-style context (#142). `planMode` is passed through `sessionProjections`
+ * because that is the only plan-state source a root-layer plugin can reach: the
+ * plan-mode service sits in an isolated cordis group.
+ */
+function makeCtx(projections: unknown): DshContext {
   return {
     on: () => () => {},
-    get: (name: string) => (name === 'planMode' ? planMode : undefined),
+    get: (name: string) => (name === 'sessionProjections' ? projections : undefined),
   };
+}
+
+/** A `sessionProjections` stub answering one plan state for every session. */
+function projectionsReporting(state: unknown): {
+  stateOf: ReturnType<typeof vi.fn>;
+} {
+  return { stateOf: vi.fn(() => state as { active?: unknown } | undefined) };
 }
 
 describe('planBindListener', () => {
@@ -269,42 +288,29 @@ describe('planBindListener', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('denies a session that is not in plan mode, and reads no mint for it (#142)', async () => {
-    const get = vi.fn(() => ({ active: false, pending: false }));
-    const exec = makeExec('exit_plan_mode', '/proj');
+  it('denies a session outside plan mode, and reads no mint for it (#142)', async () => {
+    const projections = projectionsReporting({ active: false });
+    const exec = makeExec('exit_plan_mode', '/proj', 'sess-1');
     const spy = vi.fn(next);
-    const decision = await planBindListener(exec, spy, undefined, makeCtx({ get }));
+    const decision = await planBindListener(exec, spy, undefined, makeCtx(projections));
 
     expect(decision.kind).toBe('deny');
     expect(decision.reason).toContain('not in plan mode');
     // The host would reject this call anyway: the gate must not pay for a spawn.
     expect(runMintMock).not.toHaveBeenCalled();
     expect(spy).not.toHaveBeenCalled();
-    expect(get).toHaveBeenCalledWith(exec.agent);
+    // The projection the host's own `exit_plan_mode` reads.
+    expect(projections.stateOf).toHaveBeenCalledWith(exec.agent?.session, 'plan');
   });
 
-  it('checks the tool name before any plan-mode service access (#142)', async () => {
-    const get = vi.fn(() => ({ active: false }));
-    const exec = makeExec('bash', '/proj');
-    const spy = vi.fn(next);
-    const decision = await planBindListener(exec, spy, undefined, makeCtx({ get }));
+  it('reads plan state only after the tool name matches (#142)', async () => {
+    const projections = projectionsReporting({ active: false });
+    const exec = makeExec('bash', '/proj', 'sess-1');
+    const decision = await planBindListener(exec, vi.fn(next), undefined, makeCtx(projections));
 
     expect(decision).toEqual({ kind: 'allow' });
-    expect(get).not.toHaveBeenCalled();
+    expect(projections.stateOf).not.toHaveBeenCalled();
     expect(runMintMock).not.toHaveBeenCalled();
-  });
-
-  it('keeps the mint gate when a plan-mode selection is still pending (#142)', async () => {
-    runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
-    const exec = makeExec('exit_plan_mode', '/proj');
-    const ctx = makeCtx({ get: () => ({ active: false, pending: true }) });
-    const decision = await planBindListener(exec, vi.fn(next), undefined, ctx);
-
-    // `pending` means the host has not committed the selection yet: no evidence
-    // of an inactive session, so the pre-#142 behaviour stands.
-    expect(decision.kind).toBe('deny');
-    expect(decision.reason).toContain('mint({args:["plan","create"');
-    expect(runMintMock).toHaveBeenCalled();
   });
 
   it('keeps the mint gate while plan mode is active (#142)', async () => {
@@ -312,35 +318,66 @@ describe('planBindListener', () => {
       ok: true,
       text: '{"items":[{"id":5,"status":"running","issue_count":1,"milestone_id":4}]}',
     });
-    const exec = makeExec('exit_plan_mode', '/proj');
-    const ctx = makeCtx({ get: () => ({ active: true }) });
+    const exec = makeExec('exit_plan_mode', '/proj', 'sess-1');
     const spy = vi.fn(next);
+    const ctx = makeCtx(projectionsReporting({ active: true }));
     const decision = await planBindListener(exec, spy, undefined, ctx);
 
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
   });
 
-  it('falls back to the mint gate when the plan-mode service is absent or throws (#142)', async () => {
-    // `PlanModeController.get` is synchronous and answers from the logged
-    // projection; a lean context (no service) and a throw are the two ways the
-    // answer goes missing.
-    for (const planMode of [
+  it('falls back to the observed session event when the projection is unreachable (#142)', async () => {
+    // The plan-mode service is isolated from this layer, so a host whose
+    // projection key or registry drifts still gets a truthful answer whenever
+    // this process saw the session toggle plan mode off.
+    notePlanModeState('sess-1', false);
+    const exec = makeExec('exit_plan_mode', '/proj', 'sess-1');
+    const spy = vi.fn(next);
+    for (const projections of [
       undefined,
       {
-        get: () => {
+        stateOf: () => {
           throw new Error('no plan projection');
         },
       },
+      projectionsReporting(undefined),
     ]) {
+      const decision = await planBindListener(exec, spy, undefined, makeCtx(projections));
+      expect(decision.kind).toBe('deny');
+      expect(decision.reason).toContain('not in plan mode');
+    }
+    expect(runMintMock).not.toHaveBeenCalled();
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('keeps the mint gate when the ledger observed plan mode on, or knows nothing (#142)', async () => {
+    for (const sessionId of ['sess-on', 'sess-unknown']) {
+      notePlanModeState('sess-on', true);
       runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
-      const exec = makeExec('exit_plan_mode', '/proj');
-      const decision = await planBindListener(exec, vi.fn(next), undefined, makeCtx(planMode));
+      const exec = makeExec('exit_plan_mode', '/proj', sessionId);
+      const decision = await planBindListener(exec, vi.fn(next), undefined, makeCtx(undefined));
 
       expect(decision.kind).toBe('deny');
       expect(decision.reason).toContain('mint({args:["plan","create"');
       expect(runMintMock).toHaveBeenCalled();
     }
+  });
+
+  it('trusts the projection over the ledger (#142)', async () => {
+    notePlanModeState('sess-1', false);
+    runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
+    // The projection says active ⇒ the gate runs; the stale ledger must not deny.
+    const decision = await planBindListener(
+      makeExec('exit_plan_mode', '/proj', 'sess-1'),
+      vi.fn(next),
+      undefined,
+      makeCtx(projectionsReporting({ active: true }))
+    );
+
+    expect(decision.kind).toBe('deny');
+    expect(decision.reason).toContain('mint({args:["plan","create"');
+    expect(runMintMock).toHaveBeenCalled();
   });
 
   it('falls through to next() on mint failure', async () => {

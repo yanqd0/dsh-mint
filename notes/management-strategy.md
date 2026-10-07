@@ -31,8 +31,12 @@
   分桶，跨 milestone 是用户 `-f` 授权的并行版本，放行）。判据只能看**项目级事实**：非计划模式的写与
   `/plan off` 都拦不住，所以它是退出口的硬门禁 + 项目级软纪律，**不是**项目不变量。计数含「曾运行」派生的
   running（`{done|dropped} + open`），因此被新 `open` issue 复活的旧 plan 也算，用 `plan detach` 释放。
-- **非计划模式下的 `exit_plan_mode`**（#142）：插件按宿主 `ctx.planMode.get(agent)` 判会话状态，
-  `active === false` 且无 `pending` 时直接拒并给可行动文案（不白跑 mint）；服务缺失/判定异常一律 fail-open。
+- **非计划模式下的 `exit_plan_mode`**（#142）：插件判「本会话是否在计划模式」，`active === false` 时直接拒并给
+  可行动文案（不白跑 mint）。判定源只能是 root 层达到的两条——会话投影
+  `ctx.sessionProjections.stateOf(session,"plan").active`（宿主 `exit_plan_mode` 用的同一个值），
+  或本插件从 `session/event` 观测到的 `plan/mode`（进程内、重启后未知）；
+  **`ctx.planMode` 不可达**（plan-mode 挂在隔离的 cordis group 里，见 `presets/standard.patch.yml` 的
+  `isolate: { planMode: true }`）。两条都读不到即 fail-open。
 
 ## 4. 硬门禁管「有没有」，软信号管「是不是」（#111/#116）
 

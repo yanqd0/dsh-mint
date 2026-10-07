@@ -1,4 +1,5 @@
 import { runMint } from './mint.js';
+import { planModeKnownState } from './session-ledger.js';
 import type { DshContext, PreToolDecisionLike, ToolExecutionLike } from './types.js';
 
 /**
@@ -149,43 +150,65 @@ function multiRunningReason(cluster: readonly PlanListItem[]): string {
   );
 }
 
-/**
- * The slice of the host's `ctx.planMode` this gate consumes (#142).
- *
- * `@deepseek-ai/dsh-plan-mode` owns the logged plan state and exposes
- * `get(agent) → {active, pending?}`, folding the session log — so it survives
- * resume/fork and it is the *same* predicate the host's `exit_plan_mode.execute`
- * uses to refuse the call.
- */
+/** What the gate knows about the session's host plan state (#142). */
 interface PlanModeStateLike {
+  /**
+   * The plan value the session log carries. A *queued* selection is irrelevant
+   * here: the host's own `exit_plan_mode` refuses on the logged value only, so
+   * denying whenever the logged value is `false` matches the host exactly.
+   */
   active?: unknown;
-  pending?: unknown;
 }
 
-interface PlanModeLike {
-  get(agent: unknown): PlanModeStateLike;
+/**
+ * The slice of the host's `ctx.sessionProjections` this gate consumes (#142).
+ *
+ * `stateOf(session, '<key>')` is how host plugins read a session projection
+ * (`dsh-terminal-bash` reads `sandboxMode` the same way); the plan projection's
+ * key is `plan` and its state carries `active`.
+ */
+interface SessionProjectionsLike {
+  stateOf(session: unknown, key: string): { active?: unknown } | undefined;
 }
+
+/** The plan projection's key (`@deepseek-ai/dsh-plan-mode` `planProjectionDefinition`). */
+const PLAN_PROJECTION_KEY = 'plan';
 
 /**
  * The session's host plan state, or `undefined` when it cannot be read (#142).
  *
- * Looked up per call rather than declared in `inject`: a composition without
- * plan mode (or a lean test context) must keep working, and `inject` would hold
- * the whole `apply` back. A missing service, a throwing `get` (no agent, no plan
- * projection) and an unreadable answer are all "no evidence" — the caller then
- * falls through to the mint gate exactly as before.
+ * `ctx.planMode` — the obvious source — is **not reachable from this layer**: the
+ * plan-mode plugin is mounted inside an isolated cordis group
+ * (`@deepseek-ai/dsh-web-app` `presets/standard.patch.yml`: `isolate: { planMode:
+ * true }`), which was verified live on 0.2.0-rc.2 (the gate fell through to the
+ * mint read). The two routes here are what a root-layer plugin can actually see,
+ * in order of authority:
+ *
+ * 1. the session projection `plan` — the very state the host's `exit_plan_mode`
+ *    checks (`dsh-plan-mode` `loggedActive`), folded from the log, so it survives
+ *    resume and fork;
+ * 2. the session ledger's observed `plan/mode` events, which cover the common
+ *    case (this session entered or left plan mode in this process) but answer
+ *    `undefined` for a session restored from disk.
+ *
+ * Everything else — no projection registry, no `stateOf`, a throw, an unreadable
+ * answer — is "no evidence": the caller falls through to the mint gate exactly as
+ * before, so a host whose internals drift can never trap plan-mode exit.
  */
 function planModeState(
   ctx: DshContext | undefined,
   exec: ToolExecutionLike
 ): PlanModeStateLike | undefined {
+  const session = exec.agent?.session;
   try {
-    const service = ctx?.get?.('planMode') as PlanModeLike | undefined;
-    if (service === undefined || typeof service.get !== 'function') return undefined;
-    return service.get(exec.agent);
+    const projections = ctx?.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+    const state = projections?.stateOf?.(session, PLAN_PROJECTION_KEY);
+    if (state !== undefined && state !== null) return { active: state.active };
   } catch {
-    return undefined;
+    // Fall through to the ledger: an unreadable projection is not evidence.
   }
+  const observed = planModeKnownState(session?.id);
+  return observed === undefined ? undefined : { active: observed };
 }
 
 /**
@@ -224,11 +247,11 @@ export async function planBindListener(
   }
   // #142: the exit tool stays registered while plan mode is inactive. Refuse the
   // call here — with the actionable reason — instead of spawning mint for a
-  // decision the host is about to reject anyway. A pending selection (the host
-  // has not committed it yet) is *not* evidence of an inactive session, so it
-  // falls through to the mint gate and keeps the pre-#142 behaviour.
+  // decision the host is about to reject anyway. `undefined` (no reachable
+  // source, or nothing observed for this session) falls through to the mint gate,
+  // i.e. the pre-#142 behaviour.
   const mode = planModeState(ctx, exec);
-  if (mode !== undefined && mode.active === false && mode.pending !== true) {
+  if (mode !== undefined && mode.active === false) {
     return { kind: 'deny', reason: NOT_IN_PLAN_MODE_DENY_REASON };
   }
   try {

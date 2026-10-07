@@ -45,6 +45,17 @@ const writes = new Set<string>();
 const planModeExits = new Set<string>();
 
 /**
+ * Sessions whose log recorded plan mode **active** / **inactive** (#142).
+ *
+ * Two mutually exclusive sets rather than one map: they share the bounded
+ * insertion helper with every other session fact here, and "unknown" is then
+ * simply "in neither set" — the answer a session restored after a restart
+ * deserves, since its `plan/mode` events happened in the previous process.
+ */
+const planModeActive = new Set<string>();
+const planModeInactive = new Set<string>();
+
+/**
  * Sessions that were already told about the missing record — by the tool-result
  * notice (#111) or by the one-shot overview line (#116). Oldest first.
  */
@@ -95,6 +106,30 @@ export function notePlanModeExit(sessionId: string | undefined): void {
 }
 
 /**
+ * Record the plan-mode value a session's log last carried (#142).
+ *
+ * The plan-mode service lives in an **isolated cordis group**, so a plugin at
+ * the root layer cannot ask it anything; this ledger is the reachable fallback
+ * (see `planbind.ts`). Only transitions the host actually appended are known —
+ * a session that never toggled plan mode in *this* process answers
+ * `undefined`, and the caller must then stay out of the way (fail-open).
+ */
+export function notePlanModeState(sessionId: string | undefined, active: boolean): void {
+  if (sessionId === undefined) return;
+  const [add, drop] = active ? [planModeActive, planModeInactive] : [planModeInactive, planModeActive];
+  remember(add, sessionId);
+  drop.delete(sessionId);
+}
+
+/** The plan-mode value this process observed for a session, or `undefined`. */
+export function planModeKnownState(sessionId: string | undefined): boolean | undefined {
+  if (sessionId === undefined) return undefined;
+  if (planModeActive.has(sessionId)) return true;
+  if (planModeInactive.has(sessionId)) return false;
+  return undefined;
+}
+
+/**
  * Mark the record-gap notice as delivered for this session.
  *
  * The `exit_plan_mode` tool path appends its notice to the tool result (#111),
@@ -128,6 +163,8 @@ export function takeRecordGapNotice(sessionId: string | undefined): boolean {
 export function resetSessionLedger(): void {
   writes.clear();
   planModeExits.clear();
+  planModeActive.clear();
+  planModeInactive.clear();
   recordGapNotified.clear();
 }
 
@@ -163,7 +200,9 @@ export function isOwnProjectMintWrite(
  *
  * The `session/event` listener is the #116 coverage point: a user leaving plan
  * mode with `/plan off` or the GUI toggle produces no tool result at all, so the
- * signal has to come from the session log itself.
+ * signal has to come from the session log itself. It also records the direction
+ * of every `plan/mode` event, which is the reachable half of the #142 session
+ * state (the plan-mode service itself is isolated from this layer).
  */
 export function installSessionLedger(ctx: DshContext, entry?: string): () => void {
   const offResult = ctx.on('tools/result', (exec: ToolExecutionLike, result: ToolResultLike) => {
@@ -173,8 +212,10 @@ export function installSessionLedger(ctx: DshContext, entry?: string): () => voi
   });
   const offEvent = ctx.on('session/event', (session: SessionLike, event: SessionEventLike) => {
     try {
-      if (event?.type !== 'plan/mode' || event.data?.active !== false) return;
-      notePlanModeExit(session?.id);
+      if (event?.type !== 'plan/mode' || typeof event.data?.active !== 'boolean') return;
+      // #142: the gate needs both directions, not only the exit (#116).
+      notePlanModeState(session?.id, event.data.active);
+      if (event.data.active === false) notePlanModeExit(session?.id);
     } catch {
       // An unreadable event is not evidence of anything; stay silent.
     }
