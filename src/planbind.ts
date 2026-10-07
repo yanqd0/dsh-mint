@@ -47,6 +47,56 @@ export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown
 }
 
 /**
+ * One `plan list --json` row, as far as the gate reads it (#140).
+ *
+ * `milestone_id` is optional: a mint that omits it drops every plan into the
+ * same bucket, which is exactly the pre-#140 project-wide count.
+ */
+export interface PlanListItem {
+  id?: unknown;
+  status?: unknown;
+  issue_count?: unknown;
+  milestone_id?: unknown;
+}
+
+/** Milestone bucket of a plan row; rows without a numeric milestone share one. */
+function milestoneBucket(item: PlanListItem): string {
+  return typeof item.milestone_id === 'number' ? String(item.milestone_id) : 'none';
+}
+
+/**
+ * The first cluster of two or more **running** plans sharing a milestone (#140).
+ *
+ * The discipline is "one plan in flight per milestone", so the offence is a
+ * collision inside one bucket: plans in *different* milestones were parallelised
+ * deliberately by the user (`milestone set <id> --status running --force`), and
+ * the gate must not fight a sanctioned parallel version. A missing or unreadable
+ * `milestone_id` buckets as `none` rather than disarming the rule — such rows
+ * still collide with each other, and failing closed on an unreadable *key* would
+ * trap plan-mode exit on a mint whose list output drifted.
+ */
+export function multiRunningCluster(items: readonly PlanListItem[]): readonly PlanListItem[] {
+  const buckets = new Map<string, PlanListItem[]>();
+  for (const item of items) {
+    if (item.status !== 'running') continue;
+    const key = milestoneBucket(item);
+    const bucket = buckets.get(key);
+    if (bucket === undefined) {
+      buckets.set(key, [item]);
+      continue;
+    }
+    bucket.push(item);
+    if (bucket.length >= 2) return bucket;
+  }
+  return [];
+}
+
+/** The cluster's plan ids, for the denial message (`#?` when a row carries none). */
+function clusterIds(cluster: readonly PlanListItem[]): string {
+  return cluster.map((item) => (typeof item.id === 'number' ? `#${item.id}` : '#?')).join(', ');
+}
+
+/**
  * The plan read behind the gate (#93).
  *
  * `--no-page` is required: mint pages `plan list` at five rows with the newest
@@ -79,9 +129,31 @@ const UNDECOMPOSED_DENY_REASON =
   'lock the schedule with mint({args:["plan","plan","<id>"]}) when the work starts.';
 
 /**
+ * Denial used when one milestone already carries two running plans (#140).
+ *
+ * The message has to be action-capable, because this gate is the only place the
+ * rule is enforced (mint itself guards milestones, not plans): it names the
+ * colliding plans and all three convergent moves — fold this session's work into
+ * the running plan, park the other plan's `planned` issues, or detach the open
+ * issue that revived an already finished plan (`running` is also derived from a
+ * `{done|dropped} + open` child set, see `state-machine.md`).
+ */
+function multiRunningReason(cluster: readonly PlanListItem[]): string {
+  return (
+    `${clusterIds(cluster)} are running in the same milestone — this project works one plan at a time. ` +
+    'Attach this session\'s work to the running plan, or stop the other one first: ' +
+    'park its planned issues with mint({args:["issue","state","reset","<issue id>"]}) ' +
+    '(a plan already in dev/test belongs to another session — hand that back to the user); ' +
+    'a finished plan revived by a newly attached open issue is freed with ' +
+    'mint({args:["plan","detach","<plan>","<issue>"]}).'
+  );
+}
+
+/**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
- * decomposed mint plan ({@link isDecomposedPlan}), keeping the host plan
- * mechanism bound to a mint record.
+ * decomposed mint plan ({@link isDecomposedPlan}), and while one milestone
+ * already carries more than one running plan ({@link multiRunningCluster}, #140),
+ * keeping the host plan mechanism bound to a mint record.
  *
  * The tool name is checked BEFORE any service access, and the mint run sits
  * inside the try — a mint outage must never break an unrelated tool call
@@ -106,12 +178,21 @@ export async function planBindListener(
       return next();
     }
     const plans = JSON.parse(result.text ?? '{}') as {
-      items?: Array<{ status?: unknown; issue_count?: unknown }>;
+      items?: PlanListItem[];
     };
     const items = plans.items ?? [];
+    // #140: a milestone carries at most one running plan. Prove the offence from
+    // the rows the gate already sees, before any fail-open path can swallow it —
+    // an unreadable `status` on some other row cannot undo a collision.
+    const cluster = multiRunningCluster(items);
+    if (cluster.length >= 2) {
+      return { kind: 'deny', reason: multiRunningReason(cluster) };
+    }
     // Unknown shape (e.g. a mint whose `plan list --json` carries no derived
     // status yet) fails open: an unreadable answer must not trap plan-mode exit.
-    if (items.length > 0 && !items.some((plan) => typeof plan.status === 'string')) {
+    // Since #140 one unreadable row is enough to distrust the *count*, so this is
+    // `every readable` instead of the pre-#140 `at least one readable`.
+    if (items.some((plan) => typeof plan.status !== 'string')) {
       return next();
     }
     if (!items.some(isDecomposedPlan)) {

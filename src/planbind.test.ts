@@ -1,6 +1,11 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 
-import { installPlanBinding, isDecomposedPlan, planBindListener } from './planbind.js';
+import {
+  installPlanBinding,
+  isDecomposedPlan,
+  multiRunningCluster,
+  planBindListener,
+} from './planbind.js';
 import { runMint } from './mint.js';
 import type { DshContext, ToolExecutionLike } from './types.js';
 
@@ -73,6 +78,101 @@ describe('planBindListener', () => {
     expect(spy).toHaveBeenCalled();
     expect(decision).toEqual({ kind: 'allow' });
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
+  });
+
+  it('denies two running plans in the same milestone (#140)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          { id: 27, status: 'running', issue_count: 3, milestone_id: 4, title: 'a' },
+          { id: 31, status: 'running', issue_count: 1, milestone_id: 4, title: 'b' },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(decision.kind).toBe('deny');
+    expect(decision.reason).toContain('#27');
+    expect(decision.reason).toContain('#31');
+    // The only enforcement point is this gate, so the message must carry the
+    // convergent moves (park the other plan's planned issues / detach the issue
+    // that revived a finished plan).
+    expect(decision.reason).toContain('"issue","state","reset"');
+    expect(decision.reason).toContain('"plan","detach"');
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('allows two running plans in different milestones (sanctioned parallel versions, #140)', async () => {
+    // Only `milestone set --status running --force` puts two versions in flight;
+    // that is the user's call, so the plan gate must not fight it.
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          { id: 27, status: 'running', issue_count: 3, milestone_id: 4 },
+          { id: 31, status: 'running', issue_count: 1, milestone_id: 7 },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
+  });
+
+  it('denies two milestone-less running plans (they share the "none" bucket, #140)', async () => {
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          { id: 3, status: 'running', issue_count: 1 },
+          { id: 9, status: 'running', issue_count: 2 },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const decision = await planBindListener(exec, vi.fn(next));
+    expect(decision.kind).toBe('deny');
+  });
+
+  it('still denies a visible collision while another row is unreadable (#140)', async () => {
+    // Fail-open must not swallow a collision the gate has already proven.
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          { id: 27, status: 'running', issue_count: 3, milestone_id: 4 },
+          { id: 31, status: 'running', issue_count: 1, milestone_id: 4 },
+          { id: 32, title: 'shape drift' },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const decision = await planBindListener(exec, vi.fn(next));
+    expect(decision.kind).toBe('deny');
+  });
+
+  it('fails open when a row is unreadable and no collision is visible (#140)', async () => {
+    // One unreadable row means the *count* is untrustworthy: stay out of the way.
+    runMintMock.mockResolvedValueOnce({
+      ok: true,
+      text: JSON.stringify({
+        items: [
+          { id: 27, status: 'running', issue_count: 3, milestone_id: 4 },
+          { id: 32, title: 'shape drift' },
+        ],
+      }),
+    });
+    const exec = makeExec('exit_plan_mode', '/proj');
+    const spy = vi.fn(next);
+    const decision = await planBindListener(exec, spy);
+    expect(spy).toHaveBeenCalled();
+    expect(decision).toEqual({ kind: 'allow' });
   });
 
   it('allows an open plan that already has an issue attached (#135)', async () => {
@@ -227,5 +327,52 @@ describe('isDecomposedPlan (#135)', () => {
     }
     expect(isDecomposedPlan({ issue_count: 3 })).toBe(false);
     expect(isDecomposedPlan({ status: 7, issue_count: 3 })).toBe(false);
+  });
+});
+
+describe('multiRunningCluster (#140)', () => {
+  it('ignores single running plans and non-running rows', () => {
+    expect(multiRunningCluster([])).toEqual([]);
+    expect(multiRunningCluster([{ id: 1, status: 'running', milestone_id: 4 }])).toEqual([]);
+    expect(
+      multiRunningCluster([
+        { id: 1, status: 'open', issue_count: 2, milestone_id: 4 },
+        { id: 2, status: 'partial', milestone_id: 4 },
+      ])
+    ).toEqual([]);
+  });
+
+  it('clusters running plans by milestone, and only inside one bucket', () => {
+    const same = multiRunningCluster([
+      { id: 1, status: 'running', milestone_id: 4 },
+      { id: 2, status: 'running', milestone_id: 4 },
+    ]);
+    expect(same.map((item) => item.id)).toEqual([1, 2]);
+
+    expect(
+      multiRunningCluster([
+        { id: 1, status: 'running', milestone_id: 4 },
+        { id: 2, status: 'running', milestone_id: 7 },
+      ])
+    ).toEqual([]);
+  });
+
+  it('buckets a missing or unreadable milestone as the shared "none" bucket', () => {
+    // A text/non-numeric milestone is not a version identity, so it collides with
+    // the rows that carry no milestone at all — an unreadable key must not disarm
+    // the rule.
+    expect(
+      multiRunningCluster([
+        { id: 1, status: 'running' },
+        { id: 2, status: 'running', milestone_id: null },
+      ]).map((item) => item.id)
+    ).toEqual([1, 2]);
+
+    expect(
+      multiRunningCluster([
+        { id: 3, status: 'running', milestone_id: '4' },
+        { id: 4, status: 'running', milestone_id: 5 },
+      ])
+    ).toEqual([]);
   });
 });
