@@ -1,14 +1,14 @@
 /**
- * The session's host plan state, as this layer can observe it (#142, #169).
+ * The session's host plan state, as this layer can observe it.
  *
  * Extracted from `planbind.ts` so the plan-mode exit gate and the empty-DAG
  * reminder read **one** answer to "is this session in plan mode?" instead of
- * two drifting copies. Behaviour is byte-for-byte the pre-#169 gate logic.
+ * two drifting copies. Behaviour is byte-for-byte the extracted gate logic.
  */
 import { planModeKnownState } from './session-ledger.js';
 import type { DshContext, ToolExecutionLike } from '../shared/types.js';
 
-/** What a caller knows about the session's host plan state (#142). */
+/** What a caller knows about the session's host plan state. */
 export interface PlanModeStateLike {
   /**
    * The plan value the session log carries. A *queued* selection is irrelevant
@@ -19,7 +19,7 @@ export interface PlanModeStateLike {
 }
 
 /**
- * The slice of the host's `ctx.sessionProjections` consumed here (#142).
+ * The slice of the host's `ctx.sessionProjections` consumed here.
  *
  * `stateOf(session, '<key>')` is how host plugins read a session projection
  * (`dsh-terminal-bash` reads `sandboxMode` the same way); the plan projection's
@@ -33,7 +33,7 @@ interface SessionProjectionsLike {
 export const PLAN_PROJECTION_KEY = 'plan';
 
 /**
- * The session's host plan state, or `undefined` when it cannot be read (#142).
+ * The session's host plan state, or `undefined` when it cannot be read.
  *
  * `ctx.planMode` — the obvious source — is **not reachable from this layer**: the
  * plan-mode plugin is mounted inside an isolated cordis group

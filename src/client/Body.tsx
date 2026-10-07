@@ -4,7 +4,7 @@
  * These bodies are markdown, and 0.2.0 deliberately does not render them: it
  * shows the source in a highlighted `markdown` code block, which is easier to
  * compare against the CLI output and needs no sanitizing story. 0.3.0 adds the
- * rendered preview as a second mode of this same component (issue #87), over the
+ * rendered preview as a second mode of this same component, over the
  * same body string and the same copy seat.
  */
 import type { ReactElement } from 'react';

@@ -1,5 +1,5 @@
 /**
- * Empty-DAG reminder for plan mode (#169, tightened by #171).
+ * Empty-DAG reminder for plan mode.
  *
  * The `mint` skill's research discipline now starts a DAG the moment a session
  * enters plan mode (`references/plan-dag.md`), but the skill is prose: a session
@@ -10,10 +10,10 @@
  *
  * This listener is the host-side soft nudge for exactly that gap. It observes
  * `tools/post-execute` (so it can enrich, never veto) and skips subagent sessions
- * the way every other session-scoped notice does (#113): the graph belongs to the
+ * the way every other session-scoped notice does: the graph belongs to the
  * root session's panel.
  *
- * #171 tightened the rule **and** the wording. "Reminded" is now recorded only
+ * A later revision tightened the rule **and** the wording. "Reminded" is now recorded only
  * once the session has a DAG with ≥1 node — the state the panel exists in; a
  * still-empty graph (no document at all, or an `init` with zero nodes) keeps
  * answering every tool call, because the state it names is a state and not an
@@ -44,20 +44,20 @@ import type {
 } from '../shared/types.js';
 
 /**
- * The nudge for a session with **no DAG document at all** (#169).
+ * The nudge for a session with **no DAG document at all**.
  *
  * It names the two steps that make the panel exist (`init`, then one node) and
  * why an empty graph is the same as no graph — the skill owns the discipline
  * (`references/plan-dag.md`); this line only delivers it at the moment the
  * session is provably in plan mode without one. The node half leads, because
- * that is the half sessions actually forget (#171).
+ * that is the half sessions actually forget.
  */
 export const DAG_PLAN_REMINDER =
   '[mint] 本会话在计划模式但还没有 DAG：先 mint_plan_dag({action:"init",title:"<本计划>"})，' +
   '再给本轮要答的问题 add 节点（空图时 plan-dag 面板不会打开，调研也就没有留痕）。';
 
 /**
- * The nudge for a session whose DAG exists but still has **zero nodes** (#171).
+ * The nudge for a session whose DAG exists but still has **zero nodes**.
  *
  * `init` alone leaves no trace the panel can draw (see {@link DAG_PLAN_REMINDER}),
  * so this text does not suggest it again — it names the one step that is left.
@@ -83,7 +83,7 @@ export const MAX_REMINDED_SESSIONS = 100;
  *
  * Keyed by session, one entry per session, holding which of the two gaps that
  * session has already been told about: `'missing'` (no DAG document) or
- * `'empty'` (a document with zero nodes). The value is what makes #171 work:
+ * `'empty'` (a document with zero nodes). The value is what makes the two-stage nudge work:
  * `init` moves a session from `'missing'` to `'empty'`, which is a *different*
  * gap, so that session gets the second nudge ("add a node first") exactly once
  * while a session stuck in one state stays quiet after its single reminder. A
@@ -91,7 +91,7 @@ export const MAX_REMINDED_SESSIONS = 100;
  */
 const notified = new Map<string, DagReminderState>();
 
-/** The gaps this reminder knows how to name (#171). */
+/** The gaps this reminder knows how to name. */
 type DagReminderState = 'missing' | 'empty';
 
 /** Forget every remembered session (tests: state must not leak between cases). */
@@ -131,7 +131,7 @@ async function readDagState(
 
 /**
  * `tools/post-execute` listener: in plan mode, with no DAG — or with a DAG that
- * still has zero nodes — append the matching reminder once per gap (#169, #171).
+ * still has zero nodes — append the matching reminder once per gap.
  *
  * The guards run cheapest-first and every fall-through is `next()`; the whole
  * body is wrapped because a plan-mode read could throw on a host whose
@@ -162,7 +162,7 @@ export async function dagPlanReminderListener(
     // A node is the panel's own existence condition (`src/client/dag-open.ts`),
     // so a graph that has one is no longer this reminder's business.
     if (state.nodes > 0) return next();
-    // One nudge per gap (#171): a session told "no DAG" stays quiet about it, and
+    // One nudge per gap: a session told "no DAG" stays quiet about it, and
     // the `init` that turns the gap into "empty" earns the one follow-up.
     const gap: DagReminderState = state.exists ? 'empty' : 'missing';
     if (notified.get(sessionId) === gap) return next();

@@ -10,23 +10,23 @@ import type { DshContext, PreToolDecisionLike, ToolExecutionLike } from '../shar
 export const EXIT_PLAN_MODE = 'exit_plan_mode';
 
 /**
- * Plan statuses that satisfy the gate (#59, #135).
+ * Plan statuses that satisfy the gate.
  *
  * The gate's question is "did this project produce a decomposable mint record
  * before leaving plan mode?", so it accepts a plan that is **decomposed and not
  * terminal**:
  *
  * - `running` — mint derives it from an active child (planned/dev/test), so the
- *   plan is decomposed by construction (#59);
- * - `open` **with at least one attached issue** — the #128 registration shape: a
+ *   plan is decomposed by construction;
+ * - `open` **with at least one attached issue** — the registration shape: a
  *   freshly created plan whose children are all still `open` also derives `open`
  *   (`mint`'s `container/derive.rs`), and demanding `running` here deadlocked
  *   every new session that registered advice for another plan/milestone while
- *   leaving those issues `open` (#135).
+ *   leaving those issues `open`.
  *
  * `partial`/`done`/`dropped` are completion states and never satisfy the gate;
- * an **empty** plan stays out too — zero attached issues is exactly the hole #59
- * closed.
+ * an **empty** plan stays out too — zero attached issues is exactly the hole the
+ * `issue_count` check closes.
  */
 const DECOMPOSED_PLAN_STATUSES: ReadonlySet<string> = new Set(['running', 'open']);
 
@@ -38,8 +38,8 @@ const DECOMPOSED_PLAN_STATUSES: ReadonlySet<string> = new Set(['running', 'open'
  */
 export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown }): boolean {
   if (typeof item.status !== 'string' || !DECOMPOSED_PLAN_STATUSES.has(item.status)) return false;
-  // A derived `running` already proves an active child exists: keep the pre-#135
-  // verdict for it, byte for byte.
+  // A derived `running` already proves an active child exists: keep the
+  // short-circuit verdict for it, byte for byte.
   if (item.status === 'running') return true;
   // `open` covers both "nothing attached yet" and "all children open"; only the
   // former must keep the gate shut. An unreadable count fails open — like every
@@ -48,10 +48,10 @@ export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown
 }
 
 /**
- * One `plan list --json` row, as far as the gate reads it (#140).
+ * One `plan list --json` row, as far as the gate reads it.
  *
  * `milestone_id` is optional: a mint that omits it drops every plan into the
- * same bucket, which is exactly the pre-#140 project-wide count.
+ * same bucket, which is exactly the project-wide count.
  */
 export interface PlanListItem {
   id?: unknown;
@@ -66,7 +66,7 @@ function milestoneBucket(item: PlanListItem): string {
 }
 
 /**
- * The first cluster of two or more **running** plans sharing a milestone (#140).
+ * The first cluster of two or more **running** plans sharing a milestone.
  *
  * The discipline is "one plan in flight per milestone", so the offence is a
  * collision inside one bucket: plans in *different* milestones were parallelised
@@ -98,7 +98,7 @@ function clusterIds(cluster: readonly PlanListItem[]): string {
 }
 
 /**
- * The plan read behind the gate (#93).
+ * The plan read behind the gate.
  *
  * `--no-page` is required: mint pages `plan list` at five rows with the newest
  * id first, so a valid record older than the newest five read as "no plan at
@@ -117,12 +117,12 @@ const DENY_REASON =
   'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach at least one issue, before exiting plan mode.';
 
 /**
- * Denial used when plans exist but none is decomposed (#59): every plan is empty
+ * Denial used when plans exist but none is decomposed: every plan is empty
  * or already terminal.
  *
  * The gate asks for the **record**, not the schedule: `plan plan` is the
- * start-of-work action (#128), so the message names it as a separate step
- * instead of a prerequisite for exiting plan mode (#132).
+ * start-of-work action, so the message names it as a separate step
+ * instead of a prerequisite for exiting plan mode.
  */
 const UNDECOMPOSED_DENY_REASON =
   'The mint plans for this project have no issue attached — a plan only counts once it is decomposed: ' +
@@ -130,7 +130,7 @@ const UNDECOMPOSED_DENY_REASON =
   'lock the schedule with mint({args:["plan","plan","<id>"]}) when the work starts.';
 
 /**
- * Denial used when one milestone already carries two running plans (#140).
+ * Denial used when one milestone already carries two running plans.
  *
  * The message has to be action-capable, because this gate is the only place the
  * rule is enforced (mint itself guards milestones, not plans): it names the
@@ -151,7 +151,7 @@ function multiRunningReason(cluster: readonly PlanListItem[]): string {
 }
 
 /**
- * Denial used when the session is not in plan mode at all (#142).
+ * Denial used when the session is not in plan mode at all.
  *
  * The host keeps `exit_plan_mode` registered while plan mode is inactive and
  * throws `exit_plan_mode is only available in plan mode` from `execute` — after
@@ -167,13 +167,13 @@ const NOT_IN_PLAN_MODE_DENY_REASON =
 /**
  * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
  * decomposed mint plan ({@link isDecomposedPlan}), and while one milestone
- * already carries more than one running plan ({@link multiRunningCluster}, #140),
+ * already carries more than one running plan ({@link multiRunningCluster}),
  * keeping the host plan mechanism bound to a mint record.
  *
  * The tool name is checked BEFORE any service access, and the mint run sits
  * inside the try — a mint outage must never break an unrelated tool call
- * (fail-open; see #16). The session's project directory comes from the tool
- * execution; the plugin spawns mint directly, outside the session sandbox (#18).
+ * (fail-open). The session's project directory comes from the tool
+ * execution; the plugin spawns mint directly, outside the session sandbox.
  */
 export async function planBindListener(
   exec: ToolExecutionLike,
@@ -184,11 +184,11 @@ export async function planBindListener(
   if (exec.name !== EXIT_PLAN_MODE) {
     return next();
   }
-  // #142: the exit tool stays registered while plan mode is inactive. Refuse the
+  // The exit tool stays registered while plan mode is inactive. Refuse the
   // call here — with the actionable reason — instead of spawning mint for a
   // decision the host is about to reject anyway. `undefined` (no reachable
   // source, or nothing observed for this session) falls through to the mint gate,
-  // i.e. the pre-#142 behaviour.
+  // i.e. the behaviour before this check.
   const mode = planModeState(ctx, exec);
   if (mode !== undefined && mode.active === false) {
     return { kind: 'deny', reason: NOT_IN_PLAN_MODE_DENY_REASON };
@@ -206,7 +206,7 @@ export async function planBindListener(
       items?: PlanListItem[];
     };
     const items = plans.items ?? [];
-    // #140: a milestone carries at most one running plan. Prove the offence from
+    // A milestone carries at most one running plan. Prove the offence from
     // the rows the gate already sees, before any fail-open path can swallow it —
     // an unreadable `status` on some other row cannot undo a collision.
     const cluster = multiRunningCluster(items);
@@ -215,8 +215,8 @@ export async function planBindListener(
     }
     // Unknown shape (e.g. a mint whose `plan list --json` carries no derived
     // status yet) fails open: an unreadable answer must not trap plan-mode exit.
-    // Since #140 one unreadable row is enough to distrust the *count*, so this is
-    // `every readable` instead of the pre-#140 `at least one readable`.
+    // One unreadable row is enough to distrust the *count*, so this is
+    // `every readable` instead of `at least one readable`.
     if (items.some((plan) => typeof plan.status !== 'string')) {
       return next();
     }

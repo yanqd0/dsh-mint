@@ -1,5 +1,5 @@
 /**
- * Host-measured per-node usage for the plan DAG (#161, samples #167).
+ * Host-measured per-node usage for the plan DAG.
  *
  * The DAG document only carries what a child *reports about itself*; this module
  * is the host's second opinion. It reads the child session's own projection

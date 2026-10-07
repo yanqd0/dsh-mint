@@ -20,12 +20,12 @@ const TOOL_GUIDANCE_CONTEXT_ORDER = 61;
 /**
  * How many active issues the overview carries. Five matches mint's default
  * page size, and the header states the real total — the overview must never
- * look like the whole backlog (#61).
+ * look like the whole backlog.
  */
 const TOP_ISSUES = 5;
 
 /**
- * Static guidance pointing the model at the `mint` host tool (#39).
+ * Static guidance pointing the model at the `mint` host tool.
  *
  * This replaces the B-v2 escalation script that used to be injected here: that
  * text taught the model to preside over `sandbox_permissions: danger-full-access`
@@ -33,7 +33,7 @@ const TOP_ISSUES = 5;
  * bash path. The tool executes mint inside the plugin process instead — no bash,
  * no sandbox, no approval — so the guidance says exactly that.
  *
- * This is the **single source** of the tool-first policy (#62): the tool
+ * This is the **single source** of the tool-first policy: the tool
  * description documents the mechanism, `skill/SKILL.md` documents the workflow,
  * and neither restates this. Kept to one sentence on purpose — it is repeated on
  * every request.
@@ -52,7 +52,7 @@ interface OverviewIssue {
   /**
    * Project the item belongs to. Optional because an older/subset `list --json`
    * may omit it, but it is the **only** way this plugin learns its own project
-   * name without reading mint's database (#114).
+   * name without reading mint's database.
    */
   project?: string;
 }
@@ -60,7 +60,7 @@ interface OverviewIssue {
 interface OverviewMilestone {
   id: number;
   title: string;
-  /** `null` for a milestone mint has no version for (#107). */
+  /** `null` for a milestone mint has no version for. */
   version: string | null;
   status: string;
 }
@@ -85,7 +85,7 @@ function isOverviewIssue(value: unknown): value is OverviewIssue {
  *
  * `version` is optional in mint (the column is nullable), so `null` is a real
  * answer and must not drop the milestone from the overview: a version-less
- * running milestone is exactly the one the attachment advice has to name (#107).
+ * running milestone is exactly the one the attachment advice has to name.
  */
 function isOverviewMilestone(value: unknown): value is OverviewMilestone {
   if (!isRecord(value)) return false;
@@ -101,7 +101,7 @@ export interface MintOverview {
   issues: OverviewIssue[];
   milestones: OverviewMilestone[];
   /**
-   * Project the session's cwd resolves to, read off the issue rows (#114).
+   * Project the session's cwd resolves to, read off the issue rows.
    *
    * Absent when the project has no issues (nothing to read it from) — a real
    * "unknown", not "no project": the consumers (the injection line and the
@@ -113,7 +113,7 @@ export interface MintOverview {
   /** Short label for the entry that answered `-V` (build skew: debug vs release). */
   cliEntry?: string;
   /**
-   * Notes about CLI answers that did not match the expected JSON shape (#65).
+   * Notes about CLI answers that did not match the expected JSON shape.
    *
    * The dependency is a subprocess CLI, so a `mint-faa` bump can rename a field
    * without any import failing. Without these, the shrunken item list would
@@ -122,7 +122,7 @@ export interface MintOverview {
    */
   warnings?: string[];
   /**
-   * `mint doctor`'s verdict, only when the resolved CLI can answer it (#126).
+   * `mint doctor`'s verdict, only when the resolved CLI can answer it.
    *
    * Absent is the normal case for an old CLI and for a probe failure; the
    * injected line is only worth its bytes when there is a warning to report.
@@ -173,12 +173,12 @@ function isDoctorReport(value: unknown): value is DoctorReport {
 }
 
 /**
- * True when a CLI version is new enough to answer `doctor` (#126).
+ * True when a CLI version is new enough to answer `doctor`.
  *
  * The gate exists to avoid one guaranteed-failure spawn per session on older
  * mint: `doctor` arrived in the 0.9 line, and the prerelease suffix is
  * irrelevant (`0.9.0-alpha.1` already has it). An unparsable version answers
- * `false`, so the injection degrades to its pre-#126 shape.
+ * `false`, so the injection degrades to its pre-`doctor` shape.
  */
 export function supportsDoctor(version: string): boolean {
   const [core = ''] = version.split('-', 1);
@@ -189,7 +189,7 @@ export function supportsDoctor(version: string): boolean {
 }
 
 /**
- * Ask the entry for its version. Advisory only (#58): the overview is worth
+ * Ask the entry for its version. Advisory only: the overview is worth
  * rendering even when `-V` is unavailable, so every failure degrades to
  * `undefined` instead of failing {@link fetchOverview}.
  */
@@ -213,14 +213,14 @@ async function probeCliVersion(
 }
 
 /**
- * Ask mint for its own health check (#126).
+ * Ask mint for its own health check.
  *
  * Runs only behind {@link supportsDoctor}: an older CLI would answer
  * `unrecognized subcommand`, and paying one guaranteed-failure spawn per
  * session is exactly what the version gate avoids. Every other failure (timeout,
  * killed process, unreadable JSON) is advisory and degrades to "no doctor
  * line"; only a well-formed JSON payload with the wrong shape is worth a visible
- * note, matching the other reads' skew contract (#65).
+ * note, matching the other reads' skew contract.
  */
 async function probeDoctor(
   run: (args: string[]) => Promise<MintRunResult>,
@@ -300,7 +300,7 @@ export function latestVersion(milestones: readonly OverviewMilestone[]): string 
   let best = '';
   for (const milestone of milestones) {
     // A milestone without a version has nothing to compare; it also does not
-    // drag `best` down — the semver hint keeps working off the rest (#107).
+    // drag `best` down — the semver hint keeps working off the rest.
     if (milestone.version === null) continue;
     if (isNewer(milestone.version, best)) best = milestone.version;
   }
@@ -312,7 +312,7 @@ export function renderOverview(overview: MintOverview): string {
   const lines: string[] = [];
   // Identity line: the resolved project, then the CLI version. Both are optional
   // and independent — a failed `-V` probe still leaves the project name worth
-  // stating, and a project with no issues still has its CLI version (#114, #58).
+  // stating, and a project with no issues still has its CLI version.
   // The project name is what lets a session check "am I already in my project?"
   // instead of defensively prefixing `-p <self>`.
   const identity: string[] = [];
@@ -320,17 +320,17 @@ export function renderOverview(overview: MintOverview): string {
   if (overview.cliVersion !== undefined) {
     // One short line, first: a command that the running build does not know
     // ("unrecognized subcommand") is otherwise indistinguishable from a typo,
-    // and `-V` alone cannot tell a debug build from a release one (#58).
+    // and `-V` alone cannot tell a debug build from a release one.
     const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
     identity.push(`mint ${overview.cliVersion}${via}`);
   }
   if (identity.length > 0) lines.push(`[Mint] ${identity.join(' · ')}`);
-  // Surface a CLI shape mismatch instead of letting it read as "no issues" (#65).
+  // Surface a CLI shape mismatch instead of letting it read as "no issues".
   for (const warning of overview.warnings ?? []) {
     lines.push(`[Mint] WARNING: ${warning}`);
   }
   // One line for the ledger's own health check, and only when there is
-  // something to report (#126): an always-on line is per-request cost with no
+  // something to report: an always-on line is per-request cost with no
   // signal, and a zero-warning answer is the common case. The counts keep
   // mint's own check order (see {@link DoctorReport}).
   const doctor = overview.doctor;
@@ -344,7 +344,7 @@ export function renderOverview(overview: MintOverview): string {
   }
   // Top-N by (priority, id) — explicit so the "top" claim does not depend on
   // mint's default ordering. Labels are deliberately left out: they are a tool
-  // call away, and they cost the most bytes per line (#61).
+  // call away, and they cost the most bytes per line.
   const issues = [...overview.issues]
     .sort((a, b) => a.priority - b.priority || a.id - b.id)
     .slice(0, TOP_ISSUES);
@@ -372,7 +372,7 @@ export function renderOverview(overview: MintOverview): string {
   } else if (running.length >= 2) {
     // Two running milestones are no longer "fix this by hand": since mint 0.9.0
     // the CLI refuses any write that would add one, and `--force` is the only
-    // escape hatch (#104). The injected line must not tell the model to reopen a
+    // escape hatch. The injected line must not tell the model to reopen a
     // milestone when the CLI's own answer is "ask the user about parallel
     // versions"; the migration route stays as the non-parallel option.
     const names = running.map((m) => m.version || m.title).join(', ');
@@ -396,10 +396,9 @@ export function renderOverview(overview: MintOverview): string {
 }
 
 /**
- * One-shot overview line for a session that left plan mode with nothing recorded
- * (#116).
+ * One-shot overview line for a session that left plan mode with nothing recorded.
  *
- * The #111 notice rides on the `exit_plan_mode` tool result, so a session that
+ * The mint-write-ledger notice rides on the `exit_plan_mode` tool result, so a session that
  * left plan mode any other way (`/plan off`, the GUI toggle) had no signal at
  * all — yet that is a host-provided exit, not a reason to skip the record. This
  * line is the injection-side carrier for exactly that path; it must stay short
@@ -423,8 +422,8 @@ export const RECORD_GAP_LINE =
  * `context()` with the same text.
  *
  * `cwd` is the session's workspace (project) directory, which mint uses for
- * project lookup. `sessionId` (when the host gives one) is what the #116
- * record-gap line is keyed by; without it that line never renders.
+ * project lookup. `sessionId` (when the host gives one) is what the record-gap
+ * line is keyed by; without it that line never renders.
  */
 export function registerMintContext(
   agentCtx: DshContext,
@@ -440,7 +439,7 @@ export function registerMintContext(
 
   const load = async (): Promise<void> => {
     // Resolve first, separately: an unresolvable entry is a plugin-side outage
-    // the session can act on (#66), not an empty project — staying silent here
+    // the session can act on, not an empty project — staying silent here
     // made `Cannot find module` look like "no issues".
     let resolved: string;
     try {
@@ -453,7 +452,7 @@ export function registerMintContext(
       const overview = await fetchOverview(cwd, resolved);
       cached = renderOverview(overview);
       // Remember which project this directory *is*, so `-p <self>` can be
-      // recognised as own-project work rather than a cross-project write (#114).
+      // recognised as own-project work rather than a cross-project write.
       // Keyed by the mount-line `entry`, the same key the gate probes with.
       if (overview.project !== undefined) {
         noteOwnProject(cwd, entry, overview.project);
@@ -471,8 +470,8 @@ export function registerMintContext(
         started = true;
         void load();
       }
-      // The cached body loads once; the #116 line is a per-assembly condition on
-      // top of it (and consumes its one shot here, matching the #111 notice's
+      // The cached body loads once; the record-gap line is a per-assembly condition
+      // on top of it (and consumes its one shot here, matching the exit notice's
       // "tell it once" semantics). An empty body means mint is unreadable, where
       // the WARNING line already carries the actionable signal.
       if (cached === '' || !takeRecordGapNotice(sessionId)) return cached;
@@ -506,7 +505,7 @@ export function registerMintContext(
 const MAX_REGISTERED_SESSIONS = 100;
 
 /**
- * Register the overview/guidance channel (#113).
+ * Register the overview/guidance channel.
  *
  * The host's lifecycle event is **`agent/created`** (payload
  * `{ agent, source, signal? }`, `dsh-agent` `Registry.announce`). The name this

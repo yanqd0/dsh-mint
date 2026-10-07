@@ -4,14 +4,13 @@ import type { AgentsLike } from './types.js';
  * Session identity of a host `Agent` (or of anything carrying one).
  *
  * The runtime may hand out a fresh `Agent` object per dispatch, so only the
- * session id is stable — every session-scoped decision (approval grants #80,
- * the mint-write ledger #111, the injection channel's dedup #113) has to key on
- * it. Absent or non-string ids yield `undefined`, which means "do not
- * attribute": callers then fail open (no grant remembered, no injection dedup
- * applied).
+ * session id is stable — every session-scoped decision (approval grants, the
+ * mint-write ledger, the injection channel's dedup) has to key on it. Absent
+ * or non-string ids yield `undefined`, which means "do not attribute": callers
+ * then fail open (no grant remembered, no injection dedup applied).
  *
  * Its own module only so the three callers can share one rule instead of
- * restating the shape three times (the duplication #103 was about).
+ * restating the shape three times (which is what this module prevents).
  *
  * {@link rootSessionId} lives here too: it is the same question asked one level
  * up the chain, and **two** tools need the answer (`mint_plan_dag` and the

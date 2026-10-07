@@ -1,5 +1,5 @@
 /**
- * The panel's route space, shared by both halves of the plugin (#104).
+ * The panel's route space, shared by both halves of the plugin.
  *
  * The host registers the prefix on `ctx.webServer` and matches names inside it
  * (`src/routes.ts`); the browser half builds the same paths for its `fetch`es
@@ -30,7 +30,7 @@ export const ROUTE_NAMES = [
   'plan',
   'milestone',
   'meta',
-  // The plan DAG's read-only view (plan #31): file-keyed rather than
+  // The plan DAG's read-only view: file-keyed rather than
   // project-keyed, so it takes a session id and spawns no CLI.
   'dag',
 ] as const;

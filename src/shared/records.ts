@@ -1,6 +1,6 @@
 /**
- * Wire records shared by the host's mint query routes (`src/routes.ts`, #10) and
- * the browser half (`src/client/*`, #11).
+ * Wire records shared by the host's mint query routes (`src/routes.ts`) and the
+ * browser half (`src/client/*`).
  *
  * Types only — nothing here is emitted, so the host bundle and the client bundle
  * agree on one declaration without a runtime edge between them. The field names
@@ -19,8 +19,7 @@ export interface IssueItem {
   /** Owning plan, or `null` for a standalone issue. */
   plan_id: number | null;
   /**
-   * 该 issue 的「有效 milestone」：自己直挂的优先，否则取所属 plan 的
-   * （mint #503 → dsh-mint #90）。
+   * 该 issue 的「有效 milestone」：自己直挂的优先，否则取所属 plan 的。
    *
    * **可选是刻意的**：这个字段比多数安装实际解析到的 CLI 新——它随 mint
    * 0.9.0-alpha.1 才有，已发布的 `mint-faa`（0.8.1）根本不返回该键。所以字段缺失
@@ -44,12 +43,12 @@ export interface IssueDetail extends IssueItem {
   /**
    * The issue's markdown body, or `null` when it was created without one (mint
    * serializes the column's `Option`). The route truncates a string at its byte
-   * budget; the panel renders both `null` and `''` as "no body" (#94).
+   * budget; the panel renders both `null` and `''` as "no body".
    */
   body: string | null;
   /**
    * 这里**始终**有值：`show --json` 早在 list 读也带上它之前就返回了该字段，
-   * 这行声明只是把它重新收紧成必到（#90）。
+   * 这行声明只是把它重新收紧成必到。
    */
   milestone_id: number | null;
   uid?: string;
@@ -63,7 +62,7 @@ export interface PlanItem {
   status: string;
   /**
    * The plan's version, which follows its milestone: a plan attached to no
-   * milestone answers `null` (#96).
+   * milestone answers `null`.
    */
   version: string | null;
   milestone_id: number | null;
@@ -91,7 +90,7 @@ export interface LabelItem {
   /**
    * The recorded `#rrggbb` value the panel tints the label's badge with, or
    * `null` for a label mint has no color for — the panel falls back to a neutral
-   * chip instead of losing the label (#108).
+   * chip instead of losing the label.
    */
   color: string | null;
   description: string | null;
@@ -106,7 +105,7 @@ export interface LabelItem {
  * `list --json` 既不带 label 的颜色、也不带 plan 的版本，所以宿主在这里补齐
  * 这两本字典。issue 归属曾经也在这里拼装（每个 milestone 一次 CLI 调用）；
  * mint 0.9.0-alpha.1 改为把 `milestone_id` / `milestone_direct` 直接写在每个
- * issue 上（mint #503 → dsh-mint #90），故本 payload 只剩字典。
+ * issue 上，故本 payload 只剩字典。
  */
 export interface MintMetaPayload {
   ok: true;
@@ -133,7 +132,7 @@ export interface ContainerDetail {
   /** `null` for a plan whose milestone is absent (the version comes from it). */
   version: string | null;
   milestone_id: number | null;
-  /** `null` when the container was created without a body (#95). */
+  /** `null` when the container was created without a body. */
   body: string | null;
   issues: ContainerChild[];
   created_at: string;
@@ -174,7 +173,7 @@ export interface MintFailurePayload {
 export type MintResponse<T extends { ok: true }> = T | MintFailurePayload;
 
 /**
- * The plan DAG's wire records (plan #31).
+ * The plan DAG's wire records.
  *
  * One declaration for the host's `/dsh-mint/dag` route and the browser half that
  * renders it: the document lives in `/tmp/mint/dag/<sessionId>.json`, and the
@@ -197,7 +196,7 @@ export type DagStatus = 'pending' | 'running' | 'done';
 export type DagVerdict = 'pass' | 'fail';
 
 /**
- * Where a node's isolated working tree stands (#172).
+ * Where a node's isolated working tree stands.
  *
  * `active` — the worktree exists and its branch is not merged yet.
  * `merged` — the branch is in the **target branch** (the one checked out when
@@ -208,7 +207,7 @@ export type DagVerdict = 'pass' | 'fail';
 export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
 
 /**
- * The node-level git worktree a plan's parallel issue develops in (#172).
+ * The node-level git worktree a plan's parallel issue develops in.
  *
  * One node may own one worktree, based on one commit. It is a **collaboration**
  * boundary, not a security one: the subagent's file sandbox is still the session
@@ -216,7 +215,7 @@ export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
  * inside the workspace) plus file whitelists, not from confinement.
  */
 export interface DagWorktree {
-  /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<s8>/<node>`（#177）。 */
+  /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<s8>/<node>`。 */
   path: string;
   /** The branch the worktree is checked out on. */
   branch: string;
@@ -250,7 +249,7 @@ export interface DagNodeView {
   tokens?: number;
   /** The conclusion text a node's own agent reported (tooltip, scrollable). */
   note?: string;
-  /** The node's isolated working tree, when one was created (#172). */
+  /** The node's isolated working tree, when one was created. */
   worktree?: DagWorktree;
   updated_at: string;
 }

@@ -15,7 +15,7 @@ import { dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 /**
- * Skill auto-install (#28) — two triggers share this module:
+ * Skill auto-install — two triggers share this module:
  *
  * 1. `package.json` postinstall runs `node dist/install-skill.js` (npm always
  *    runs it; pnpm 10+ blocks dependency build scripts unless allow-listed, so
@@ -29,11 +29,11 @@ import { fileURLToPath } from 'node:url';
  *
  * Semantics are a content SYNC over the **whole skill tree**: the target is
  * untouched only when every file in the bundled skill already matches byte for
- * byte (a SKILL.md-only check missed `references/` edits — #72); anything else
+ * byte (a SKILL.md-only check would miss `references/` edits); anything else
  * is replaced. Extra files already in the target are tolerated on the skip
  * path, so a user's own additions survive a no-op sync.
  *
- * Ownership (#153) — this module only ever touches the copy **it** installed:
+ * Ownership — this module only ever touches the copy **it** installed:
  *
  * - a copy carries {@link OWNER_MARKER}; a copy made before that marker existed
  *   is recognised by its `SKILL.md` frontmatter. Anything else (a foreign
@@ -53,7 +53,7 @@ const DIRNAME = dirname(fileURLToPath(import.meta.url));
 export const SKILL_NAME = 'mint';
 
 /**
- * Marker file written into an installed copy (#153).
+ * Marker file written into an installed copy.
  *
  * Ownership has to be answerable *positively* before anything is deleted, and a
  * copy interrupted mid-sync may have no `SKILL.md` yet — so the marker goes in
@@ -138,7 +138,7 @@ export function looksLikeOurSkill(dir: string): boolean {
  *
  * The skill is a tree (SKILL.md + references/), and only SKILL.md is injected
  * into a session while references are read on demand — so a stale reference is
- * invisible to a SKILL.md-only comparison (#72).
+ * invisible to a SKILL.md-only comparison.
  */
 function listFiles(root: string, base: string = root): string[] {
   const files: string[] = [];

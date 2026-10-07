@@ -3,13 +3,13 @@ import { MINT_ENTRY_DEPENDENCY, describeMintEntry, resolveMintEntry, runMint } f
 // Standalone smoke entry (`node dist/check-mint-entry.js`), built as its own
 // tsup entry for the same reason as `install-skill-cli.ts`: code splitting would
 // move the logic into a shared chunk and the process-entry check would never
-// hold (notes/isolated-install.md, pit #2). Never imported by the plugin.
+// hold (notes/isolated-install.md, the process-entry pitfall). Never imported by the plugin.
 //
 // It answers "which mint would a session run, and does it start?" without a DSH
 // session. A plain `node` process is NOT under DSH's profile-resolution
 // interception, so this proves the mint-faa wrapper + downloaded binary chain
 // and an explicit local build; DSH's own bare-specifier routing is covered by
-// src/mint.test.ts (#66) and by the live session after a harness restart.
+// src/mint.test.ts and by the live session after a harness restart.
 //
 //   node dist/check-mint-entry.js --mode dependency
 //   node dist/check-mint-entry.js --mode local --entry ~/bin/mint

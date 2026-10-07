@@ -159,7 +159,7 @@ export interface MintApiLike {
   /**
    * The panel's lookup tables in one read: plans, milestones, and labels.
    *
-   * An issue's placement now arrives on the issue row itself (#90), so this read
+   * An issue's placement now arrives on the issue row itself, so this read
    * only carries the version/colour dictionaries a row renders with; the
    * dictionaries are re-read on every request, so a panel refresh needs no flag.
    */
@@ -170,7 +170,7 @@ export interface MintApiLike {
     signal?: AbortSignal
   ): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
   /**
-   * The plan DAG of this session (plan #31).
+   * The plan DAG of this session.
    *
    * Unlike every other read it is keyed by the *session file* rather than the
    * project, and a missing file is a normal answer (`dag: null`), not a failure.
