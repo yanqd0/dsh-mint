@@ -9,9 +9,12 @@
 宿主 plan 与 mint plan 的对应只在这一侧成立：计划模式 ⟹ mint plan（退出时门禁），反向不成立。
 
 - **计划模式序列**：在宿主 plan 模式里出方案 → 第一步建/挂对应 mint plan + 拆 issue（全 `open`）→
-  **退出前对「本 plan」的 issue 执行 `plan plan`**（open → planned，这就是开工点）→ 出计划模式。
-- **非计划模式序列**：`plan create`（挂当前 running milestone）→ 拆 issue → `plan plan` →
-  逐 issue `state start` → 改码。两条序列只差是否走宿主计划审批与退出门禁。
+  **本会话确实要开工**才在退出前对「本 plan」的 issue 执行 `plan plan`（open → planned，退出口即开工点）→ 出计划模式。
+  只登记建议、或拆出多个 plan 待用户拍板时**保持 `open`** 退出（#135 的 0-running 逃生口放行，#141）。
+- **非计划模式序列**：`plan create`（挂当前 running milestone）→ 拆 issue → **先保持 `open`** →
+  真正开工（第一个 issue 动手前）才 `plan plan` → 逐 issue `state start` → 改码。
+  两条序列只差是否走宿主计划审批与退出门禁。**建好 plan ≠ 开工**：唯一会自然派生 `running` 的例外是
+  把已在途（planned/dev/test）的 issue 挂进该 plan（#141）。
 - **存量 plan 接管**：整体/多 issue 一次跑完 → **必须先进入宿主 plan 模式**再执行，**禁止 auto 模式直接跑完**；
   用户已点名**具体单个 issue** → 按指令直接 `state start`，不必先进计划模式。
 - 门禁由插件 pre-execute 实现（见 `host-dsh.md`），判据三条：①项目里有**已拆解**的 mint plan
@@ -22,7 +25,8 @@
   「停摆其排期」只能对其 `planned` 子项 `issue state reset`（`dev/test` 不可 reset，必须交回该会话）。
 
 **为什么 `plan plan` 在退出口做不算违反 #128**：#128 约束的是**登记别处的新 issue**（建议一律留在 `open`）；
-当前 plan 的 issue 在「本次工作开工」那一刻锁到 `planned`，计划模式退出口正是那一刻（#135/#136）。
+当前 plan 的 issue 在「本次工作开工」那一刻锁到 `planned`，计划模式退出口正是那一刻（#135/#136）——
+但**只有本次确实要开工**才锁；只登记、或等用户拍板先做哪条 plan，就留 `open`（#141）。
 
 ## 2. 计划与归属
 
@@ -85,9 +89,10 @@
 两种顺序都合法，**记录必须有**（写给未来的自己、隔壁项目的 agent 或人类看）：
 
 - **先建再跑（默认）**：
-  - 计划模式：进计划模式 → 建/挂 plan + 拆 issue + `plan plan` → 出计划模式 → 逐 issue `state start` → 改码。
-  - 非计划模式（#136）：`plan create`（挂当前 running milestone）+ 拆 issue → `plan plan` →
-    逐 issue `state start` → 改码；**建 plan 不要求计划模式**。
+  - 计划模式：进计划模式 → 建/挂 plan + 拆 issue →（**确实要开工才** `plan plan`）→ 出计划模式 →
+    逐 issue `state start` → 改码；只登记就把 plan 与 issue 留在 `open` 再出模式（#141）。
+  - 非计划模式（#136）：`plan create`（挂当前 running milestone）+ 拆 issue → **保持 `open`** →
+    开工前才 `plan plan` → 逐 issue `state start` → 改码；**建 plan 不要求计划模式**。
 - **先跑后建（补登记）**：已在**无记录**状态下改了码/提交了 commit → 停下来补：
   建/挂 plan → 按实测现象与 commit 范围建 issue → `plan plan` → `issue state start <id>` →
   **对每个既有 commit 逐条** `issue state commit <id> --sha <前7位>`（sha 用 `git log --oneline` 回看）→

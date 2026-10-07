@@ -80,11 +80,12 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/template-guide.md', ['- [ ]', 'title-templates/', 'body-templates/']],
   ['references/body-editing.md', ['--body-section', '- [ ]', 'section not found']],
   ['references/constraints.md', ['state drop', 'plan drop', '--force-new']],
-  ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工点才']],
+  ['references/flow-planning.md', ['dev-clean', 'task', '登记 ≠ 排期', '开工点才', '只有开工点才']],
   ['references/labels.md', ['上限 5 个', '英文', '不主动清理']],
   // #128: a filed requirement stays open; a plan is created only when work
-  // actually starts.
-  ['references/flow-requirement.md', ['登记一律', '不预建 mint plan']],
+  // actually starts. #141: a freshly created plan (plan mode or not) also stays
+  // `open` until the start-of-work point locks it.
+  ['references/flow-requirement.md', ['登记一律', '不预建 mint plan', '保持 `open`']],
   // #112: both legal orders (build-then-run / run-then-backfill) live in
   // flow-impl, and the issue ordering rule left SKILL.md's body for the place
   // that already carried it (flow-session's step 4).
@@ -109,6 +110,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       // #140: the three-condition gate sheet lives in flow-impl (the criterion,
       // the milestone bucket, and the convergence paths for a refusal).
       '至多一个 running plan',
+      // #141: locking `planned` at the exit point needs this session to actually
+      // start the work; registration-only sessions leave everything `open`.
+      '确实要开工',
     ],
   ],
   ['references/flow-session.md', ['priority 升序', '按 id 升序', '单个 issue']],

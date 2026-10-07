@@ -18,7 +18,8 @@
    - 新建：`mint({ args: ["milestone","create","<版本标题>","--version","<V>","--body","<目标+范围+验收>"] })`
      —— `--version` 必填、语义化；按 version 查重，**重复则不加、不问**。
 2. **执行计划**（plan = 一次开发计划；**进计划模式的会话**在退出前必须有它，但**建 plan 不要求计划模式**，#136）：
-   `mint({ args: ["plan","create","<计划标题>","--body","<body>","--milestone","<RM>"] })`。
+   `mint({ args: ["plan","create","<计划标题>","--body","<body>","--milestone","<RM>"] })`
+   —— 新建即 `open`：**只有开工点才**锁 `planned`（#141；见步骤 3）。
 3. **拆 issues**：按计划子任务逐个建 issue —— 改行为的 phase 用 `--kind requirement`，
    **纯文档/杂务/调研/CI 用 `--kind task`**（task 无 dev 态：planned → test → done），
    统一 `--label dev-clean`：
@@ -26,7 +27,9 @@
    + `mint({ args: ["plan","attach","<PLAN>","<ISSUE>"] })` 挂入；
    **phase 已对应既有 issue（收口/合并计划）直接 attach，不重复建**。
    **拆 issue 落 open**（#128：登记 ≠ 排期）：**开工点才** `mint({ args: ["plan","plan","<PLAN>"] })`
-   批量锁定（open → planned）——开工点 = 计划模式退出口，或非计划模式开始改码前。
+   批量锁定（open → planned）——开工点 = 计划模式退出口（且本次确实要开工），或非计划模式开始改码前；
+   只登记/待用户拍板时 plan 与 issue **都保持 `open`**（#141）。
+   注意 `plan plan` 批量锁本 plan 名下**全部** open 子项，所以 plan 里不要混别处的建议 issue。
 4. **判并行批次**：按 `references/parallel-exec.md` §1 的判据（文件集两两不相交等五轴）给 issue 分批，
    把批次表写进 plan body 的 `## 并行批次` 段 —— `plan create --body` 时**就带该段**；
    细化用 `mint({ args: ["plan","set","<PLAN>","--body-section","并行批次","--body-file","<文件>"] })`
@@ -35,7 +38,7 @@
    无并行机会写「单批串行」+ 一句理由；执行侧见 `flow-impl.md` 并行批次小节。
 5. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**开工第一步**才是建 mint plan + 拆 issues，
    然后执行；每个 issue 走状态机到 done（关联对应 commit）。**登记别处的新问题/需求不预建 plan**（#128）；
-   计划模式只是宿主侧的审批通道，**不是建 plan 的前提**（#136）。
+   计划模式只是宿主侧的审批通道，**不是建 plan 的前提**（#136）；建好仍为 `open`，开工点才 `plan plan`（#141）。
 
 ## 维护（改名 / 迁移 / 清理）
 
