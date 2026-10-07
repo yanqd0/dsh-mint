@@ -36,8 +36,8 @@
    （标题不存在报 `section not found`；以 `- ` 开头的值**必须经 `--body-file`**，
    直接 `--body "- …"` 会被 CLI 当成参数）；宿主 plan 正文同步该表。
    无并行机会写「单批串行」+ 一句理由；执行侧见 `flow-impl.md` 并行批次小节。
-5. **方案定稿后出 DAG 全景**：正文定稿即**分界节点** —— 此前调研阶段的 DAG 是动态生长的
-   （`references/plan-dag.md`：总分总、用户决策只落在两个「总」），此后是**静态全景**：节点=本 plan 的 issue、
+5. **方案定稿后出 DAG 全景**：正文定稿即**分界节点** —— 定稿**前**的调研 DAG 已按 `references/plan-dag.md` 动态生长
+   （进计划模式即启动、每轮 `add` 节点），本步骤只是把那张动态图转成**静态全景**：节点=本 plan 的 issue、
    边=依赖，分层后写进同一 `## 并行批次` 段（不另立格式），低 context 任务派子代理、高 context/决策留 main
    （`references/dag-exec.md`）。
 6. **方案执行登记**（跨模块/多步骤方案，含方案审批/plan 产出）：**开工第一步**才是建 mint plan + 拆 issues，

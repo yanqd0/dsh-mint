@@ -4,6 +4,7 @@ import { installApprovalGate } from './approval-gate.js';
 import { installOverviewChannel } from './context.js';
 import { installCrossProjectGate } from './cross-project-gate.js';
 import { installDagLifecycle } from './dag-lifecycle.js';
+import { installDagPlanReminder } from './dag-plan-reminder.js';
 import { installDagTool } from './dag-tool.js';
 import { installSkill } from './install-skill.js';
 import { installMintTool } from './mint-tool.js';
@@ -101,6 +102,10 @@ export function apply(ctx: DshContext, config: Config): void {
   installSessionLedger(ctx, mintEntry);
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
+  // #169: plan mode without a DAG is invisible (an empty graph never opens the
+  // panel), so the research discipline gets a soft, once-per-session nudge. It
+  // reads the same plan-mode answer as the exit gate above (`src/plan-mode.ts`).
+  installDagPlanReminder(ctx);
   installMintTool(ctx, mintEntry);
   // plan 31: the DAG tool and its subagent pairing are registered on the root
   // ctx, so subagents inherit the tool and the listeners see every child run.
