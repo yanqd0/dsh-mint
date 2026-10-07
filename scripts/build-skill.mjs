@@ -4,7 +4,7 @@
 // copy non-TS assets.
 //
 // `skill/` is the single source of truth and is owned by this repo: the mint
-// skill was decoupled from the upstream `mint` submodule (#38). A missing
+// skill was decoupled from the upstream `mint` submodule. A missing
 // source is a hard error — the bundled skill is part of the package contract,
 // so the build must not silently produce a skill-less artifact.
 

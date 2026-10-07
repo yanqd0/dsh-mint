@@ -1,6 +1,6 @@
 # 会话成本复盘：mint 注入、工具开销与 dsh-dev-dsh 使用效果
 
-> 样本：`session-81beab16-…`（2026-10-01，dsh-mint 仓，plan #3 的评估→重构→实现→修复→验证全流程）。
+> 样本：`session-81beab16-…`（2026-10-01，dsh-mint 仓，一次评估→重构→实现→修复→验证全流程）。
 > 数据来源：`~/.dsh/sessions/--home-user-yanqd0-dsh-mint--/<id>/session.v4.jsonl.zstd`（319 次 LLM 调用）。
 > 结论用于回答两个问题：**mint 的 token 占用是否值得**、**dsh-dev-dsh 是否省了时间与 token**。
 
@@ -21,7 +21,7 @@
 
 ## 2. mint 的固定注入（每请求）
 
-三条由插件注入、每次请求都要重发的内容（#61 的验收预算，由 `tests/guard/injection-size.test.ts` 守）：
+三条由插件注入、每次请求都要重发的内容（验收预算，由 `tests/guard/injection-size.test.ts` 守）：
 
 | 项 | 现状 | 预算上限 |
 | --- | --- | --- |

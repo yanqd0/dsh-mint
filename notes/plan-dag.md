@@ -639,11 +639,15 @@ mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，H
 3. 一个 issue 多个 commit：merge 把它们收进一个 merge commit → 「只登记最后一个 sha」天然满足；
    不要在 merge 前逐个登记（那会在 merge 前从目标分支看触发上面的 NotAncestor 警告，merge 后还得重登记）。
 
+节点分支名是 `dsh-mint/wt/<session前8位>/<node>`，merge 由工具固定执行
+`git merge --no-ff -m 'merge <node id>'`（subject 只写节点 id，不带 mint ID）；落点与其余动作见
+[worktree-tool.md](worktree-tool.md)。
+
 **自证四连（全部只读，在 merge 后、目标分支的工作树里执行）**：
 
 ```bash
 git rev-parse --short=7 HEAD                 # ① 与登记值逐字符相同
-git log -1 --format='%h %p %s' <sha>         # ② 两个父 + subject 形如 Merge branch 'node/a1'
+git log -1 --format='%h %p %s' <sha>         # ② 两个父 + subject 形如 merge <node id>
 git diff <sha>^1 <sha> --stat                # ③ 只列该节点的文件 = 该 issue 的改动
 git rev-parse <sha>^2                        # ③' == worktree 里的分支头 sha（两条口径的关系）
 git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint 的同一条祖先判定 → 0
@@ -653,7 +657,8 @@ git merge-base --is-ancestor <sha> HEAD; echo $?   # ④ 与 mint 的同一条�
 worktree 的 sha，这条会非 0 并触发 `mint: warning: … is not an ancestor of HEAD`——这就是「时刻」的
 机器判据。短 sha（前 7 位）足够：mint 只做 `rev-parse --verify` 存在性检查，存的是你给的字符串。
 **边界**：merge 后若因冲突裁决又改代码 → 新 commit，需重新 `state commit`（口径仍是「只留最后一个」）；
-若改用了 squash/ff 合并，则没有 merge commit（ff 时 HEAD 就是分支头，两条口径合一），自证 ② 的「两个父」
+若改用了 squash/ff 合并（本工具的 `merge` 固定 `--no-ff`，不走这两条路），则没有 merge commit
+（ff 时 HEAD 就是分支头，两条口径合一），自证 ② 的「两个父」
 不再成立，需要按「HEAD 即分支头」读。
 
 #### 7.8.3 DAG 怎么「自报 token 开销」

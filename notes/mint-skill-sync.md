@@ -36,8 +36,8 @@
 | `issue set`/`plan set` 支持 `--body-append`/`--body-file`/`--body-section`（三选一；section 需配 body/file；标题不存在报 `section not found`） | `src/cli/body_edit.rs` |
 | `milestone set --status` 只有 done/dropped 是手动终态（派生短路），open/running 会被重算 | `src/container/sync.rs` |
 | 读命令可见 `mint: hint: found unmerged data from machine(s)` → 本地视图不完整，先 `sync pull` | `src/cli/run.rs` |
-| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效） | `src/skill/install-skill.ts`（#72 修复） |
+| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效） | `src/skill/install-skill.ts`（已修复） |
 
-## 相关 issue
+## 本轮覆盖
 
-#70–#78（plan #12）：拆分 SKILL.md、补 0.8 命令面、纠错与护栏、安装同步整树比对、复核方法沉淀。
+拆分 SKILL.md、补 0.8 命令面、纠错与护栏、安装同步整树比对、复核方法沉淀。

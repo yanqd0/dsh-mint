@@ -167,7 +167,7 @@ node node_modules/@yanqd0/dsh-mint/dist/check-mint-entry.js --mode local --entry
 Both print the mode, an entry label (`mint-faa@<version>`, `PATH:mint`, or the
 resolved build path) and the `-V` output, and exit non-zero when the entry cannot
 run. The injected `[Mint]` line names the same entry, so a debug build is
-distinguishable from a release one (#58).
+distinguishable from a release one.
 
 If the package install did not run the build scripts (pnpm blocks them by
 default), the first dependency-mode call downloads the mint binary — that one

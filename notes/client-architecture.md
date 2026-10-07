@@ -3,7 +3,7 @@
 > 本文件回答「**它由什么组成、谁拥有什么状态、一次点击怎么走到 mint**」。
 > 逐个 seat/字段的**契约细节**（注册参数、PLATFORM_MODULES 清单、locale 形式、坑位表）见
 > [client-face.md](client-face.md)；本文件只写架构与数据流，两者不重复。
-> 事实基线：DSH 0.2.0-rc.2 + 本仓 0.2.0（#9/#10/#11/#12/#79）。
+> 事实基线：DSH 0.2.0-rc.2 + 本仓 0.2.0。
 
 ## 1. 一句话架构
 
@@ -134,15 +134,15 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 - **分页**：`list --json` 自带 `page/page_size/pages/total`，不解析 stdout 页脚。
   `pageSize` 宿主侧钳制到 1–100。**容器列表例外**：默认（只看进行中）走 `--all-states --no-page`
   全表读，由宿主 `settledContainerPage` 过滤结束态并重算分页；勾选「含已结束」或显式 `status` 时
-  才把分页交回 mint（#88）。
+  才把分页交回 mint。
 - **截断**：`issue` 详情的 body 超过 256 KiB 时按 UTF-8 边界截断并置 `truncated`。
 - **字典一次读**：`/dsh-mint/meta` 一次给出 plans / milestones / labels 与 `placement`（issue → effective
   milestone + 是否直连），面板只在挂载与显式刷新时读一次，不随筛选/翻页变化。`list --json` 既没有
   effective milestone，也没有 label 颜色，所以行内归属与徽章配色全靠这份字典；字典不可用时行只显示自己
   带的 `#plan`、徽章回退中性色，并给一行提示（不假装数据完整）。
 - **临时的归属反查**：meta 的 placement 目前逐 milestone 跑 `list --all-states --milestone <M>`（上限 30）。
-  这是等上游补字段的临时实现（**mint #503**），落地后删除——判据与代价记在
-  [client-face.md](client-face.md) 与 plan #15。
+  这是等上游补字段的临时实现，落地后删除——判据与代价记在
+  [client-face.md](client-face.md)。
 - **每请求一个 abort**：一次 HTTP 请求内的所有 CLI run 共享一个 `AbortController`（`RequestScope`），
   浏览器断连即全取消；不是一个 run 一个 `close` 监听。
 
@@ -153,7 +153,7 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 | 打开了哪些 tab、在哪个 pane、是否浮动、呈现模式 | 右侧边栏 layout store | 按 session 持久化到 localStorage（刷新仍在） |
 | tab 记录与 `tab.signal` | 侧边栏 Tab 域 | tab 关闭或插件卸载时 abort |
 | 当前视图（Issue/Plan/Milestone）、筛选、页码、选中的条目 | **MintBody 组件内 `useState`** | 组件卸载即丢；不落盘（0.2.0 刻意如此） |
-| 打开的是哪个容器（`{kind,id}`）与它所在 tab | MintBody 组件内 | kind 随目标存，故切 tab 不会用对方的 id 取表（#82）；切回仍保留各自详情 |
+| 打开的是哪个容器（`{kind,id}`）与它所在 tab | MintBody 组件内 | kind 随目标存，故切 tab 不会用对方的 id 取表；切回仍保留各自详情 |
 | 字典（plans/milestones/labels/placement） | MintBody 组件内 | 挂载与刷新时各读一次；失败即降级显示 |
 | 一次读取的 loading/failed/ready | MintBody 组件内 | 每次输入变化重新请求（旧请求 abort） |
 | 文案词典 | client locale 注册表 | 插件生命周期 |
@@ -186,5 +186,5 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 - 单一语言（简体中文），英文走占位词典；真正的双语属 0.3.0。
 - 面板**不含写操作**（issue 状态迁移、plan close 等）。
 - 没有快捷键/命令入口：只能从 guide 新建；`commandId` 留空。
-- 视图状态不持久化；不跨项目查询（属 #55）。
+- 视图状态不持久化；不跨项目查询。
 - 组件无 DOM 测试环境（jsdom + RTL 属 0.3.0）。

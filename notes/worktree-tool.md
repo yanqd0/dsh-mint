@@ -67,7 +67,7 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
   重建该节点的 worktree）」。缺记录（旧节点）与 detached 不做校验，避免旧 DAG 突然不可合并。
 - **`merge` 冲突不裁决**：`git merge --no-ff` 停在冲突态，回传冲突文件清单与
   `git merge --abort` 的收场路径，并把 `state:'conflict'` + 完整的 `path`/`branch`/`base`
-  落盘（空 `base` 会让整份 DAG 下次读取变成 unreadable——#177 的回归钉）。
+  落盘（空 `base` 会让整份 DAG 下次读取变成 unreadable——这是该回归的钉子）。
 - **`remove` 的未合并拒绝**：判据是 `merge-base --is-ancestor <branch> <target>`；不成立即
   拒绝，文案给 `force:true` 的出路。缺记录时 `target` 取**当前分支**（读不到才落字面
   `HEAD`，且不把它说成分支名）。`remove` 只删工作树，**不删分支**。
