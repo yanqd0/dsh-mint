@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
 
-import { DAG_RUNNING_CLASS, dagNodeStyle, labelBadge, pill, placementChip } from './styles.js';
+import {
+  DAG_NODE_LABEL,
+  DAG_NODE_METRICS,
+  DAG_RUNNING_CLASS,
+  LIVE_TIME_COLOR,
+  LIVE_TOKENS_COLOR,
+  dagLiveTimeStyle,
+  dagLiveTokensStyle,
+  dagNodeStyle,
+  labelBadge,
+  pill,
+  placementChip,
+} from './styles.js';
 
 describe('panel styles', () => {
   // The tone is the only thing that varies, and it must reach a real theme token:
@@ -50,6 +62,29 @@ describe('DAG node styles', () => {
   // without renaming the `<style>` block would silently stop the pulse.
   it('names the pulsing node class once', () => {
     expect(DAG_RUNNING_CLASS).toBe('dsh-mint-dag-running');
+  });
+});
+
+describe('live metric styles', () => {
+  // A measured token count is money in this palette, so the line spends the
+  // theme's warning tone; an invented token would render as an unstyled line.
+  it('puts the measured token count on a real theme token', () => {
+    expect(LIVE_TOKENS_COLOR).toBe('var(--dsw-alias-state-warn-primary)');
+    expect(dagLiveTokensStyle()).toEqual({ fill: 'var(--dsw-alias-state-warn-primary)' });
+  });
+
+  // This theme carries no purple alias token, so the time color is a literal by
+  // design; pinning it here is what keeps the concession from drifting.
+  it('pins the measured time color to its controlled literal', () => {
+    expect(LIVE_TIME_COLOR).toBe('#8b76f6');
+    expect(dagLiveTimeStyle()).toEqual({ fill: '#8b76f6' });
+  });
+
+  // The two lines share the node box: the metrics line is the smaller of them.
+  it('sets the metrics line below the node label', () => {
+    expect(DAG_NODE_METRICS.fontSize).toBe(9);
+    expect(DAG_NODE_METRICS.fontFamily).toBe('inherit');
+    expect(Number(DAG_NODE_METRICS.fontSize)).toBeLessThan(Number(DAG_NODE_LABEL.fontSize));
   });
 });
 

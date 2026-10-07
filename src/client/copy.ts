@@ -98,6 +98,10 @@ export const ZH = {
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
   'dag.tokens': '{tokens} tokens',
+  // The host's own measurement, shown beside (never instead of) the self-report.
+  'dag.liveTokens': '{tokens} tokens（实测）',
+  'dag.liveTokenSource': '实测',
+  'dag.seconds': '秒',
   'dag.note': '结果原文',
   'dag.node.id': '{id}',
 } as const satisfies Record<string, string>;
@@ -183,6 +187,9 @@ export const EN = {
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
   'dag.tokens': '{tokens} tokens',
+  'dag.liveTokens': '{tokens} tokens (measured)',
+  'dag.liveTokenSource': 'measured',
+  'dag.seconds': 's',
   'dag.note': 'Result',
   'dag.node.id': '{id}',
 } as const satisfies Record<CopyKey, string>;

@@ -313,6 +313,47 @@ export const DAG_NODE_LABEL: CSSProperties = {
   fontFamily: 'inherit',
 };
 
+/**
+ * The node's second line: the measured metric pair, one size below the label.
+ *
+ * It inherits the label's family so a node reads as one block of text, and it
+ * is small enough that both numbers fit the 104px box beside their unit.
+ */
+export const DAG_NODE_METRICS: CSSProperties = {
+  fontSize: 9,
+  fontFamily: 'inherit',
+};
+
+/**
+ * The color a host-measured token count draws in.
+ *
+ * Amber is the theme's warning tone, and in this palette that is also the color
+ * of money: a measured count is budget spent, and the line spends the one state
+ * color the theme already has for it rather than inventing a hue.
+ */
+export const LIVE_TOKENS_COLOR = 'var(--dsw-alias-state-warn-primary)';
+
+/**
+ * The color a host-measured elapsed time draws in.
+ *
+ * This theme carries no purple alias token — all 403 `--dsw-*` tokens were
+ * checked, and purple survives only in the onboarding gradient and in shiki's
+ * syntax palette — so the time line is a controlled literal, the same
+ * concession {@link labelBadge} makes for a label's own recorded color. It must
+ * be kept in step with the panel's light and dark surfaces by hand.
+ */
+export const LIVE_TIME_COLOR = '#8b76f6';
+
+/** The fill of the measured token count inside a node box. */
+export function dagLiveTokensStyle(): CSSProperties {
+  return { fill: LIVE_TOKENS_COLOR };
+}
+
+/** The fill of the measured elapsed time inside a node box. */
+export function dagLiveTimeStyle(): CSSProperties {
+  return { fill: LIVE_TIME_COLOR };
+}
+
 /** One line of the tooltip: technical fields are secondary to the prose. */
 export const DAG_TOOLTIP_META: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',

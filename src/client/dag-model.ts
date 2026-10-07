@@ -8,11 +8,17 @@
  * Node without a DOM, and the same view always draws the same picture.
  */
 import { dagLayers } from '../dag.js';
-import type { DagNodeView, DagView } from '../records.js';
+import type { DagNodeMetrics, DagNodeView, DagView } from '../records.js';
+import type { StatusTone } from './model.js';
 
-/** The node box: wide enough for a six-code-point label, short enough to stack. */
+/**
+ * The node box: wide enough for a six-code-point label, short enough to stack.
+ *
+ * The height carries two lines — the label and, under it, the measured metric
+ * pair — which is what took it from 34 to 44.
+ */
 export const DAG_NODE_W = 104;
-export const DAG_NODE_H = 34;
+export const DAG_NODE_H = 44;
 
 /** Horizontal gap inside a layer; vertical gap between layers (edges run in it). */
 export const DAG_H_GAP = 16;
@@ -69,6 +75,20 @@ export function dagTone(node: DagNodeView): DagTone {
 /** True for the one status whose box pulses, so the CSS class has one owner. */
 export function isRunning(node: DagNodeView): boolean {
   return node.status === 'running';
+}
+
+/**
+ * The tone the node's status badge (`pill()`) draws in.
+ *
+ * A second reading of the same node on purpose, not {@link dagTone}: the badge
+ * is a chip on a row and says what the node is *doing*, so `pending` and
+ * `running` are both worth catching the eye — amber — while the box underneath
+ * keeps its own axis (amber for waiting, green for in flight). Only a refuted
+ * node is red in both.
+ */
+export function dagStatusTone(node: DagNodeView): StatusTone {
+  if (node.status === 'pending' || node.status === 'running') return 'warn';
+  return node.verdict === 'fail' ? 'error' : 'success';
 }
 
 /**
@@ -204,4 +224,126 @@ export function dagCounts(view: DagView): {
   };
   for (const node of view.nodes) counts[node.status] += 1;
   return counts;
+}
+
+/**
+ * The copy keys the node's measured line is built from.
+ *
+ * `DagBody` is the only caller (issue #164) and is a `.tsx` this module cannot
+ * import from, so the keys are named once here instead of being spelled in two
+ * files. It also answers the panel's copy guard, which reads source text: a key
+ * the dictionary carries but no source ever quotes is a dead key.
+ */
+export const DAG_COPY_KEYS = {
+  liveTokens: 'dag.liveTokens',
+  liveTokenSource: 'dag.liveTokenSource',
+  seconds: 'dag.seconds',
+} as const;
+
+/** A metric value the panel is willing to draw, or `undefined`. */
+function measuredInt(value: unknown): number | undefined {
+  // The host publishes the pair, but the route is JSON: a negative, fractional,
+  // or non-numeric value is a bug worth dropping, not a number worth drawing.
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** One node's entry, field by field: a bad `tokens` keeps a good `elapsed_ms`. */
+function keepMetrics(raw: unknown): DagNodeMetrics {
+  const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
+  const tokens = measuredInt(entry['tokens']);
+  const elapsedMs = measuredInt(entry['elapsed_ms']);
+  const kept: DagNodeMetrics = {};
+  if (tokens !== undefined) kept.tokens = tokens;
+  if (elapsedMs !== undefined) kept.elapsed_ms = elapsedMs;
+  return kept;
+}
+
+/**
+ * The host's per-node measurements, filtered down to what may be drawn.
+ *
+ * The route may measure nodes this answer's document no longer carries, and a
+ * half-read sample may hold one good field beside a bad one; both are dropped
+ * per rule, so a node shows what is true rather than what it was typed as. The
+ * result is empty — never a zero guess — when there is no document, when the
+ * answer carries no metrics at all, or when nothing survived.
+ *
+ * @param payload - the route answer, reduced to the two fields that matter.
+ */
+export function nodeMetricsMap(payload: {
+  metrics?: Record<string, DagNodeMetrics>;
+  dag: DagView | null;
+}): Record<string, DagNodeMetrics> {
+  const { dag, metrics } = payload;
+  if (dag === null || metrics === undefined) return {};
+  const known = new Set(dag.nodes.map((node) => node.id));
+  const kept: Record<string, DagNodeMetrics> = {};
+  for (const [id, raw] of Object.entries(metrics)) {
+    if (!known.has(id)) continue;
+    const entry = keepMetrics(raw);
+    if (entry.tokens === undefined && entry.elapsed_ms === undefined) continue;
+    kept[id] = entry;
+  }
+  return kept;
+}
+
+/** `1.2` / `123`: one decimal below a hundred, whole at or above it. */
+function scaled(value: number): string {
+  // `String` drops a trailing `.0`, so the exact thousands read `1k`, not `1.0k`.
+  return String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
+}
+
+/**
+ * A token count as one short label: `999`, `1.2k`, `123k`, `1.5M`.
+ *
+ * Below a thousand the count is exact; above it, scaled and rounded — one
+ * decimal until the scaled value reaches a hundred, where a decimal is
+ * precision the reader cannot use and columns the box does not have.
+ *
+ * @param tokens - a non-negative token count.
+ */
+export function formatCount(tokens: number): string {
+  if (tokens < 1e3) return String(tokens);
+  if (tokens < 1e6) return `${scaled(tokens / 1e3)}k`;
+  return `${scaled(tokens / 1e6)}M`;
+}
+
+/**
+ * An elapsed time as seconds, the way the live line shows it.
+ *
+ * Always seconds: a node is a subagent run, and minutes-and-seconds would spend
+ * columns without adding reach. Under a minute the value is truncated to whole
+ * seconds (`3200` → `3`, `59999` → `59`); from a minute on it keeps one decimal
+ * (`75400` → `75.4`). Truncation rather than rounding is deliberate — the line
+ * may not claim a second that has not elapsed. Negative time is clock skew and
+ * reads as zero.
+ *
+ * @param ms - elapsed milliseconds, as the host measured or the panel derived.
+ */
+export function formatSeconds(ms: number): string {
+  if (ms <= 0) return '0';
+  if (ms < 60000) return String(Math.floor(ms / 1000));
+  return String(Math.floor(ms / 100) / 10);
+}
+
+/**
+ * The elapsed time a running node should show right now.
+ *
+ * The host samples `elapsed_ms` only when it answers, so a live line between
+ * two answers is that sample plus the time since — which needs the anchor's
+ * clock (`sampled_at`) as much as the browser's `now`. The two clocks need not
+ * agree: a negative gap is skew, not time travel, and adds nothing. A host that
+ * published no anchor is trusted to be current.
+ *
+ * @param elapsedMs - the host's last sample, or `undefined` before the first.
+ * @param sampledAtMs - the host time that sample was taken at.
+ * @param nowMs - the browser's current time.
+ */
+export function liveElapsedMs(
+  elapsedMs: number | undefined,
+  sampledAtMs: number | undefined,
+  nowMs: number
+): number | undefined {
+  if (elapsedMs === undefined) return undefined;
+  if (sampledAtMs === undefined) return elapsedMs;
+  return elapsedMs + Math.max(0, nowMs - sampledAtMs);
 }
