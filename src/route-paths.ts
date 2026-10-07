@@ -30,6 +30,9 @@ export const ROUTE_NAMES = [
   'plan',
   'milestone',
   'meta',
+  // The plan DAG's read-only view (plan #31): file-keyed rather than
+  // project-keyed, so it takes a session id and spawns no CLI.
+  'dag',
 ] as const;
 
 /** One route's name, as {@link ROUTE_NAMES} declares it. */

@@ -162,3 +162,86 @@ export interface MintFailurePayload {
 
 /** What the panel must handle from any route: a success payload or a refusal. */
 export type MintResponse<T extends { ok: true }> = T | MintFailurePayload;
+
+/**
+ * The plan DAG's wire records (plan #31).
+ *
+ * One declaration for the host's `/dsh-mint/dag` route and the browser half that
+ * renders it: the document lives in `/tmp/mint/dag/<sessionId>.json`, and the
+ * panel is a pure function of what this route answers. The host-side document
+ * (`src/dag.ts`) adds its own ownership fields on top of {@link DagView}.
+ */
+
+/** Which half of a plan the node belongs to. */
+export type DagPhase = 'research' | 'exec';
+
+/** A node's lifecycle: not started, in flight, settled. */
+export type DagStatus = 'pending' | 'running' | 'done';
+
+/**
+ * A settled node's outcome — success or a refuted direction.
+ *
+ * Only meaningful with `status: 'done'`: the host refuses a verdict on a
+ * non-terminal node, so the panel can read the two fields without guessing.
+ */
+export type DagVerdict = 'pass' | 'fail';
+
+/** One node of the plan DAG, as the panel renders it. */
+export interface DagNodeView {
+  id: string;
+  /** Short label drawn inside the node (≤6 code points, enforced by the host). */
+  label: string;
+  /** Full title, shown in the hover tooltip. */
+  title: string;
+  phase: DagPhase;
+  status: DagStatus;
+  /** Present only for a settled node. */
+  verdict?: DagVerdict;
+  /** Predecessors: the nodes this one waits for. */
+  depends_on: string[];
+  /** mint issue this node tracks, when it tracks one. */
+  issue?: number;
+  /** Subagent session id, backfilled by the host's `subagent/start` pairing. */
+  agent?: string;
+  /** Self-reported token count; the host has no query for a child's usage. */
+  tokens?: number;
+  /** The conclusion text a node's own agent reported (tooltip, scrollable). */
+  note?: string;
+  updated_at: string;
+}
+
+/**
+ * One plan DAG as the route publishes it.
+ *
+ * `edges` are `[from, to]` pairs meaning **`to` depends on `from`** — the same
+ * direction as {@link DagNodeView.depends_on}.
+ */
+export interface DagView {
+  title: string;
+  /** Increments on every write; the panel re-renders only when it changes. */
+  revision: number;
+  created_at: string;
+  updated_at: string;
+  nodes: DagNodeView[];
+  edges: [string, string][];
+}
+
+/**
+ * `GET /dsh-mint/dag` — the panel's whole view.
+ *
+ * A missing file is the normal "no DAG in this session" state (`dag: null`,
+ * no warnings); an unreadable one is the same empty `dag` plus a `warnings`
+ * entry, so the panel can name the file it could not read instead of going
+ * blank.
+ */
+export interface MintDagPayload {
+  ok: true;
+  dag: DagView | null;
+  /** The answered revision (`0` when there is no readable DAG). */
+  revision: number;
+  /** Absolute path the answer came from; shown in the empty/unreadable states. */
+  file: string;
+  /** Mount-line `openDagTab`: whether the client should auto-open the panel. */
+  autoOpen: boolean;
+  warnings?: string[];
+}

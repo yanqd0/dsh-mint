@@ -38,6 +38,7 @@ export const ROUTES = {
   plan: routePath('plan'),
   milestone: routePath('milestone'),
   meta: routePath('meta'),
+  dag: routePath('dag'),
 } as const;
 
 /**
