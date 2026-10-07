@@ -120,17 +120,16 @@ describe('createApi', () => {
     const api = createApi({
       sessionId: 's1',
       baseUri: 'http://host/app/',
-      fetch: fetchStub('{"ok":true,"plans":[],"milestones":[],"labels":[],"placement":{}}', 200, calls),
+      fetch: fetchStub('{"ok":true,"plans":[],"milestones":[],"labels":[]}', 200, calls),
     });
     const result = await api.meta();
     expect(result.ok).toBe(true);
     expect(calls[0]?.url).toBe('/app/dsh-mint/meta?session=s1');
 
-    // The panel's own refresh asks the host to skip its placement memo (#105).
-    await api.meta(undefined, true);
-    expect(calls[1]?.url).toBe('/app/dsh-mint/meta?session=s1&refresh=1');
-    await api.meta(undefined, false);
-    expect(calls[2]?.url).toBe('/app/dsh-mint/meta?session=s1');
+    // 面板自己的刷新也只是「重读字典」：路由每次都答同样三次读，没有额外参数
+    //（#90 已退掉 placement 记忆化与它的 `refresh=1`）。
+    await api.meta(undefined);
+    expect(calls[1]?.url).toBe('/app/dsh-mint/meta?session=s1');
   });
 
   it('reads the DAG by session alone', async () => {

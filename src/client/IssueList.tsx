@@ -16,7 +16,7 @@ import { BODY, BUTTON, FILTER_LABEL, INPUT, NOTE, TAB_ACTIVE, TOOLBAR } from './
 export interface IssueListProps {
   copy: CopyTranslate;
   state: LoadState<MintListPayload<IssueItem>>;
-  /** The lookup tables rows read for placement; absent until they load. */
+  /** The dictionaries a row renders with (milestone version, label colour). */
   meta: MintMetaPayload | undefined;
   /** The search box's live text (the caller debounces it into a request). */
   search: string;

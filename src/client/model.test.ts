@@ -308,37 +308,63 @@ const META: MintMetaPayload = {
     },
   ],
   labels: [],
-  placement: {
-    '12': { milestone: 2, direct: false },
-    '69': { milestone: 4, direct: true },
-  },
 };
 
 describe('issue placement', () => {
-  it('prefers the placement table and keeps direct apart from via-plan', () => {
+  // #90：当前 `list --json` 的行自带「有效 milestone」和「是否直挂」，所以先信行
+  // 自己，任何字典表都排在其后。
+  it('takes the milestone and the direct flag off the row itself', () => {
+    const direct = { ...ISSUE, milestone_id: 4, milestone_direct: true } satisfies IssueItem;
+    expect(issuePlacement(direct, META)).toEqual({
+      planId: 3,
+      milestoneId: 4,
+      milestoneVersion: '0.3.0',
+      direct: true,
+    });
+
+    const viaPlan = {
+      ...ISSUE,
+      plan_id: 33,
+      milestone_id: 4,
+      milestone_direct: false,
+    } satisfies IssueItem;
+    expect(issuePlacement(viaPlan, META)).toEqual({
+      planId: 33,
+      milestoneId: 4,
+      milestoneVersion: '0.3.0',
+      direct: false,
+    });
+  });
+
+  it('believes an explicit null on the row instead of back-filling from the plan', () => {
+    // 字段存在就是 mint 的结论：`null` = 这一行没有有效 milestone（例如所属 plan
+    // 自己没挂 milestone，或 mint 的结论与本地字典不一致）。plan 表只在其**缺失**时兜底。
+    const explicitNull = {
+      ...ISSUE,
+      plan_id: 33,
+      milestone_id: null,
+      milestone_direct: false,
+    } satisfies IssueItem;
+    expect(issuePlacement(explicitNull, META)).toEqual({
+      planId: 33,
+      milestoneId: null,
+      milestoneVersion: undefined,
+      direct: false,
+    });
+  });
+
+  it('resolves the milestone through the plan table when the row predates the field', () => {
+    // 已发布的 `mint-faa`（0.8.1）两个字段都不返回：那是老 CLI，不是形状漂移，
+    // 所以退化路径就是该行自己的 plan。
     expect(issuePlacement(ISSUE, META)).toEqual({
       planId: 3,
       milestoneId: 2,
       milestoneVersion: '0.2.0',
       direct: false,
     });
-    const standalone = { ...ISSUE, id: 69, plan_id: null };
-    expect(issuePlacement(standalone, META)).toEqual({
-      planId: null,
-      milestoneId: 4,
-      milestoneVersion: '0.3.0',
-      direct: true,
-    });
-  });
-
-  it('falls back to the plan table when the scan missed the issue', () => {
-    const unseen = { ...ISSUE, id: 99 };
-    expect(issuePlacement(unseen, META)).toEqual({
-      planId: 3,
-      milestoneId: 2,
-      milestoneVersion: '0.2.0',
-      direct: false,
-    });
+    // 无可展示：既没有 plan 链，也没有自己的 milestone。
+    expect(issuePlacement({ ...ISSUE, plan_id: null }, META)).toBeUndefined();
+    expect(issuePlacement({ ...ISSUE, plan_id: null }, undefined)).toBeUndefined();
   });
 
   it('shows only the plan link when the lookup tables are unusable', () => {
@@ -348,7 +374,15 @@ describe('issue placement', () => {
       milestoneVersion: undefined,
       direct: false,
     });
-    expect(issuePlacement({ ...ISSUE, plan_id: null }, undefined)).toBeUndefined();
+    // 自带 milestone 的行仍需要表来取版本标签；milestone 本身是行给的，所以标签
+    // 依旧是「直挂」。
+    const direct = { ...ISSUE, milestone_id: 4, milestone_direct: true } satisfies IssueItem;
+    expect(issuePlacement(direct, undefined)).toEqual({
+      planId: 3,
+      milestoneId: 4,
+      milestoneVersion: undefined,
+      direct: true,
+    });
   });
 
   it('does not invent a milestone for a plan that has none', () => {

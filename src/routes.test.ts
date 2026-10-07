@@ -12,17 +12,14 @@ import { dagFilePath, readDag, updateDag } from './dag-store.js';
 import {
   BODY_MAX_BYTES,
   META_LABELS_ARGV,
-  META_MILESTONE_LIMIT,
   META_MILESTONES_ARGV,
   META_PLANS_ARGV,
-  PLACEMENT_TTL_MS,
   READ_ONLY_SUBCOMMANDS,
   ROUTE_PREFIX,
   RouteRequestError,
   buildDetailArgv,
   buildIssueDetailArgv,
   buildListArgv,
-  buildMilestoneIssuesArgv,
   containerListRequest,
   createMintHandler,
   filterValue,
@@ -66,7 +63,7 @@ function harness(options: {
   /** Per-argv result; takes precedence over the single {@link options.result}. */
   byArgv?: (argv: readonly string[]) => unknown;
   entry?: string;
-  /** Clock seam for the placement TTL (#105). */
+  /** Clock seam for the DAG answer's `sampled_at` (#162). */
   now?: () => number;
   /** DAG directory override: the plan DAG route is file-keyed (plan #31). */
   dagDir?: string;
@@ -159,7 +156,7 @@ const PLAN_DETAIL = {
   issues: [{ id: 9, title: '实现 client 打包面', kind: 'requirement', status: 'dev' }],
 };
 
-/** A second milestone, so placement has more than one member set to resolve. */
+/** A second milestone, so the meta dictionaries carry more than one table row. */
 const MILESTONE_ITEM_4 = {
   ...MILESTONE_ITEM,
   id: 4,
@@ -301,7 +298,6 @@ describe('route argv builders', () => {
       [...META_MILESTONES_ARGV],
       [...META_PLANS_ARGV],
       [...META_LABELS_ARGV],
-      buildMilestoneIssuesArgv(2),
       ['label', 'list', '--json', '--no-page'],
     ];
     for (const argv of argvs) {
@@ -633,19 +629,14 @@ describe('mint routes', () => {
     expect(res.json()).toMatchObject({ ok: false, error: 'boom', stderr: 'mint: hint: boom' });
   });
 
-  it('serves the panel dictionary and issue placement in one response', async () => {
+  it('serves the panel dictionaries without scanning issue placement (#90)', async () => {
     const run = harness({
       cwd: '/proj',
       byArgv: (argv) => {
         if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
         if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
         if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
-        if (argv[0] === 'list' && argv[3] === '2') {
-          return JSON.stringify({
-            items: [ISSUE_ITEM, { ...ISSUE_ITEM, id: 69, plan_id: null }],
-          });
-        }
-        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
+        return JSON.stringify({ items: [] });
       },
     });
     const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
@@ -654,41 +645,24 @@ describe('mint routes', () => {
       plans: [PLAN_ITEM],
       milestones: [MILESTONE_ITEM, MILESTONE_ITEM_4],
       labels: [LABEL_ITEM],
-      placement: {
-        '9': { milestone: 2, direct: false },
-        '69': { milestone: 2, direct: true },
-        '87': { milestone: 4, direct: true },
-      },
     });
+    // 归属如今随每个 `list --json` issue 到达（#90），所以 meta 恰好就是三次字典
+    // 读：既没有 `list --milestone` 扇出，响应里也没有 `placement` 键。
     expect(run.runs.map((entry) => entry.argv)).toEqual(
       expect.arrayContaining([
         [...META_MILESTONES_ARGV],
         [...META_PLANS_ARGV],
         [...META_LABELS_ARGV],
-        buildMilestoneIssuesArgv(2),
-        buildMilestoneIssuesArgv(4),
       ])
     );
-  });
+    expect(run.runs).toHaveLength(3);
+    expect(res.json()).not.toHaveProperty('placement');
 
-  it('keeps the rest of the response when one milestone placement read fails', async () => {
-    const run = harness({
-      cwd: '/proj',
-      byArgv: (argv) => {
-        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
-        if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
-        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
-        if (argv[0] === 'list' && argv[3] === '2') return 1; // the runner turns this into a CLI failure
-        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
-      },
-    });
-    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
-    const payload = res.json();
-    expect(payload.ok).toBe(true);
-    expect(payload.placement).toEqual({ '87': { milestone: 4, direct: true } });
-    expect(payload.warnings as string[]).toEqual([
-      expect.stringContaining('milestone #2 issue placement unavailable'),
-    ]);
+    // `refresh=1` 过去用来绕过按 milestone 的缓存；现在同样只答这三次读，后面不再
+    // 跟着第四次运行。
+    const refreshed = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1&refresh=1`);
+    expect(refreshed.json()).not.toHaveProperty('placement');
+    expect(run.runs).toHaveLength(6);
   });
 
   it('refuses the whole response when a dictionary read fails', async () => {
@@ -699,60 +673,6 @@ describe('mint routes', () => {
     const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: false, error: 'boom' });
-  });
-
-  it('memoizes the placement scan and lets refresh=1 bypass it (#105)', async () => {
-    let clock = 1_000;
-    const run = harness({
-      cwd: '/proj',
-      now: () => clock,
-      byArgv: (argv) => {
-        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
-        if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
-        if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
-        return JSON.stringify({ items: [{ ...ISSUE_ITEM, id: 87, plan_id: null }] });
-      },
-    });
-    const placementRuns = (): number =>
-      run.runs.filter((entry) => entry.argv[0] === 'list').length;
-
-    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
-    expect(placementRuns()).toBe(2);
-    // Same handler, same project, inside the TTL: the dictionaries are re-read,
-    // the (expensive) placement scan is not.
-    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
-    expect(placementRuns()).toBe(2);
-    expect(run.runs.filter((entry) => entry.argv[0] === 'milestone')).toHaveLength(2);
-
-    // The panel's own refresh must not wait for the TTL.
-    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1&refresh=1`);
-    expect(placementRuns()).toBe(4);
-
-    // Once the TTL lapses the next request rescans by itself.
-    clock += PLACEMENT_TTL_MS;
-    await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
-    expect(placementRuns()).toBe(6);
-  });
-
-  it('caps how many milestones it scans for placement', async () => {
-    const many = Array.from({ length: META_MILESTONE_LIMIT + 1 }, (_value, index) => ({
-      ...MILESTONE_ITEM,
-      id: index + 1,
-    }));
-    const run = harness({
-      cwd: '/proj',
-      byArgv: (argv) => {
-        if (argv[0] === 'milestone') return JSON.stringify({ items: many });
-        if (argv[0] === 'plan' || argv[0] === 'label') return JSON.stringify({ items: [] });
-        return JSON.stringify({ items: [] });
-      },
-    });
-    const res = await invoke(run.handler, `${ROUTE_PREFIX}/meta?session=s1`);
-    const scans = run.runs.filter((entry) => entry.argv[2] === '--milestone');
-    expect(scans).toHaveLength(META_MILESTONE_LIMIT);
-    expect(res.json().warnings as string[]).toEqual([
-      expect.stringContaining(`first ${String(META_MILESTONE_LIMIT)} of 31 milestones`),
-    ]);
   });
 
   it('aborts every run of a request when the client disconnects', async () => {

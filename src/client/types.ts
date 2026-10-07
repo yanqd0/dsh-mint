@@ -32,7 +32,6 @@ export type {
   DagView,
   IssueDetail,
   IssueItem,
-  IssuePlacement,
   LabelItem,
   MilestoneItem,
   MintDagPayload,
@@ -158,13 +157,13 @@ export interface MintApiLike {
   /** One issue in full: the list fields plus the body. */
   issue(id: number, signal?: AbortSignal): Promise<MintResponse<MintIssuePayload>>;
   /**
-   * The panel's lookup tables in one read: plans, milestones, labels, and where
-   * each issue sits. Nothing a row needs per item lives on the item itself.
+   * The panel's lookup tables in one read: plans, milestones, and labels.
    *
-   * `fresh` bypasses the host's short placement memo (#105): the panel's own
-   * refresh action sets it, so an attachment changed a second ago shows up now.
+   * An issue's placement now arrives on the issue row itself (#90), so this read
+   * only carries the version/colour dictionaries a row renders with; the
+   * dictionaries are re-read on every request, so a panel refresh needs no flag.
    */
-  meta(signal?: AbortSignal, fresh?: boolean): Promise<MintResponse<MintMetaPayload>>;
+  meta(signal?: AbortSignal): Promise<MintResponse<MintMetaPayload>>;
   plan(id: number, signal?: AbortSignal): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
   milestone(
     id: number,

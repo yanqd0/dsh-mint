@@ -117,9 +117,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
     signal?.addEventListener('abort', abort);
     setMeta({ status: 'loading' });
-    // `reload > 0` is the tab's explicit refresh (command or retry button): it
-    // must bypass the host's placement memo, not merely re-read the tables.
-    void api.meta(controller.signal, reload > 0).then((response) => {
+    // The panel's explicit refresh re-reads the same three dictionaries: #90 moved
+    // an issue's placement onto the row, so there is no memo left to bypass.
+    void api.meta(controller.signal).then((response) => {
       setMeta(toLoadState(response));
     });
     return () => {

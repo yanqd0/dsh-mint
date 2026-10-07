@@ -35,7 +35,7 @@ import {
 import type { ParsedItems } from './mint-json.js';
 import { runMint } from './mint.js';
 import type { MintRunOptions, MintRunResult } from './mint.js';
-import type { DagNodeMetrics, DagStatus, IssuePlacement } from './records.js';
+import type { DagNodeMetrics, DagStatus } from './records.js';
 import { ROUTE_PREFIX, isRouteName } from './route-paths.js';
 import { hasControlCharacter } from './text.js';
 import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from './types.js';
@@ -74,28 +74,7 @@ const MAX_FILTER_LENGTH = 200;
  */
 export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone', 'label'] as const;
 
-/**
- * How many milestones the meta route scans for issue placement.
- *
- * Placement has no bulk read (see {@link META_MILESTONE_ARGV}): one milestone
- * costs one CLI run, so a pathological project must degrade to a warning instead
- * of spawning hundreds of children.
- */
-export const META_MILESTONE_LIMIT = 30;
-
-/**
- * How long one placement scan answers further panel requests (#105).
- *
- * Placement has no bulk read (see {@link buildMilestoneIssuesArgv}), so a single
- * request costs one CLI run per milestone, up to {@link META_MILESTONE_LIMIT}.
- * The three dictionary tables are still re-read on every request — they are what
- * the panel navigates — while the issue→milestone map is remembered for this
- * window. The panel's explicit refresh sends `refresh=1` and bypasses it, so a
- * user who just changed an attachment never waits for the TTL.
- */
-export const PLACEMENT_TTL_MS = 10_000;
-
-/** The three whole-table reads the meta route always performs, unpaginated. */
+/** meta 路由始终执行的三次整表读，均不分页。 */
 export const META_MILESTONES_ARGV: readonly string[] = [
   'milestone',
   'list',
@@ -105,20 +84,6 @@ export const META_MILESTONES_ARGV: readonly string[] = [
 ];
 export const META_PLANS_ARGV: readonly string[] = ['plan', 'list', '--all-states', '--json', '--no-page'];
 export const META_LABELS_ARGV: readonly string[] = ['label', 'list', '--json', '--no-page'];
-
-/**
- * The argv that lists one milestone's issues.
- *
- * This is the temporary stand-in for mint exposing an issue's effective
- * milestone on `list --json` (dsh-mint plan #15 → mint #503). `--milestone`
- * already means "effective milestone (direct, else via plan)" in mint, and the
- * items carry `plan_id`, which is how the caller tells the two apart.
- *
- * @param id - the milestone to enumerate.
- */
-export function buildMilestoneIssuesArgv(id: number): string[] {
-  return ['list', '--all-states', '--milestone', String(id), '--json', '--no-page'];
-}
 
 /** A request these routes refuse: bad path, bad id, or a bad filter. */
 export class RouteRequestError extends Error {}
@@ -147,7 +112,7 @@ export interface MintRouteDeps {
   entry?: string;
   /** Defaults to {@link runMint}; tests replace it. */
   run?: MintRunner;
-  /** Clock seam for the placement TTL (#105); defaults to `Date.now`. */
+  /** DAG 应答里 `sampled_at` 的时钟缝（#162）；默认 `Date.now`。 */
   now?: () => number;
   /** DAG directory override (plan #31); defaults to {@link DAG_DIR}. */
   dagDir?: string;
@@ -546,18 +511,6 @@ export function createMintHandler(
   };
 
   /**
-   * The issue→milestone map, per project, for {@link PLACEMENT_TTL_MS} (#105).
-   *
-   * Scoped to the handler (i.e. the plugin's lifetime) rather than to a request:
-   * the expensive part is the per-milestone fan-out, and a panel that reopens or
-   * switches views asks for it again within seconds.
-   */
-  const placementCache = new Map<
-    string,
-    { at: number; placement: Record<string, IssuePlacement> }
-  >();
-
-  /**
    * Run mint under the request's lifetime; `undefined` once the client left.
    *
    * The signal is the request's own ({@link RequestScope}), not this call's: a
@@ -636,16 +589,15 @@ export function createMintHandler(
   /**
    * Serve the panel's lookup tables in one response.
    *
-   * Three whole-table reads plus one run per milestone (the temporary placement
-   * stand-in, {@link buildMilestoneIssuesArgv}) — all in parallel, because each
-   * is an independent child process. A per-milestone failure costs that
-   * milestone's placement and a warning, never the whole response: the panel can
-   * still draw every row it already has.
+   * The three dictionaries are independent whole-table reads, so they run in
+   * parallel; a per-table shape warning is carried, a failure answers for all.
    *
-   * The scan is memoized for {@link PLACEMENT_TTL_MS} per project (#105); the
-   * caller's `refresh=1` forces a fresh one.
+   * 这里刻意**不再**做 issue→milestone 反查（#90）：mint 0.9.0-alpha.1 已把
+   * `milestone_id` / `milestone_direct` 写在每个 `list --json` 行上（mint #503），
+   * 归属只随面板本就要读的 issue 列表到达，本路由不再有额外开销。这也顺带退掉了反查
+   * 所需的按 milestone 缓存（#105），`refresh=1` 随之成为空操作。
    */
-  const sendMeta = async (scope: RequestScope, params: URLSearchParams): Promise<void> => {
+  const sendMeta = async (scope: RequestScope): Promise<void> => {
     const [milestones, plans, labels] = await Promise.all([
       runForRequest(scope, [...META_MILESTONES_ARGV]),
       runForRequest(scope, [...META_PLANS_ARGV]),
@@ -673,63 +625,11 @@ export function createMintHandler(
       if (warning !== undefined) warnings.push(warning);
     }
 
-    const scan = milestonePage.items.slice(0, META_MILESTONE_LIMIT);
-    if (milestonePage.items.length > scan.length) {
-      warnings.push(
-        `meta: placement scanned the first ${String(META_MILESTONE_LIMIT)} of ${String(milestonePage.items.length)} milestones`
-      );
-    }
-
-    const cacheKey = `${deps.entry ?? ''}\u0000${scope.cwd}`;
-    const cached = placementCache.get(cacheKey);
-    if (params.get('refresh') !== '1' && cached !== undefined && now() - cached.at < PLACEMENT_TTL_MS) {
-      sendJson(scope.res, 200, {
-        ok: true,
-        plans: planPage.items,
-        milestones: milestonePage.items,
-        labels: labelPage.items,
-        placement: cached.placement,
-        ...(warnings.length === 0 ? {} : { warnings }),
-      });
-      return;
-    }
-
-    const members = await Promise.all(
-      scan.map(async (milestone) => ({
-        id: milestone.id,
-        result: await runForRequest(scope, buildMilestoneIssuesArgv(milestone.id)),
-      }))
-    );
-
-    const placement: Record<string, IssuePlacement> = {};
-    for (const { id, result } of members) {
-      if (result === undefined) continue;
-      if (!result.ok) {
-        warnings.push(`meta: milestone #${String(id)} issue placement unavailable`);
-        continue;
-      }
-      const page = parseItems(`list --milestone ${String(id)} --json`, result.text, isIssueItem, {
-        noun: 'meta',
-      });
-      if (page.warning !== undefined) warnings.push(page.warning);
-      for (const item of page.items) {
-        // mint answers `--milestone` with the effective milestone, so a member
-        // without a plan is the direct case and everyone else is via that plan.
-        placement[String(item.id)] = { milestone: id, direct: item.plan_id === null };
-      }
-    }
-    // A client that disconnected mid-scan keeps no answer (#105): `placement`
-    // would then be a partial map that reads as real data for the whole TTL.
-    if (!scope.signal.aborted) {
-      placementCache.set(cacheKey, { at: now(), placement });
-    }
-
     sendJson(scope.res, 200, {
       ok: true,
       plans: planPage.items,
       milestones: milestonePage.items,
       labels: labelPage.items,
-      placement,
       ...(warnings.length === 0 ? {} : { warnings }),
     });
   };
@@ -781,7 +681,7 @@ export function createMintHandler(
             await sendContainerList(scope, 'milestone', params, page, isMilestoneItem);
             return;
           case 'meta':
-            await sendMeta(scope, params);
+            await sendMeta(scope);
             return;
           case 'issue': {
             const id = parseId(params);

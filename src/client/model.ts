@@ -169,12 +169,20 @@ export function milestoneVersionOf(
 }
 
 /**
- * Resolve an issue row's placement from the lookup tables.
+ * Resolve an issue row's placement.
  *
- * `list --json` carries neither an effective milestone nor a plan's version, so
- * every answer past the row's own `plan_id` comes from `meta`. When that read
- * failed the panel still shows the plan link it has and nothing it would have to
- * guess; `undefined` means the row has no placement to show at all.
+ * `list --json` now states the issue's effective milestone itself and whether it
+ * is direct (mint 0.9.0-alpha.1, mint #503 → dsh-mint #90), so the row is
+ * believed first and `meta` only supplies the version label the panel prints.
+ *
+ * A row that carries **neither** field predates them (the published `mint-faa`
+ * 0.8.1 is a supported CLI, not shape drift), so the old behaviour applies: the
+ * milestone is looked up through the row's own `plan_id`, and that milestone
+ * never counts as the issue's own. `undefined` means the row has nothing to show.
+ *
+ * A row that **does** carry the field is believed, explicit `null` included:
+ * `null` is mint's own answer, not a missing value, so the plan table must not
+ * back-fill a milestone the row itself denied.
  *
  * @param item - one `list --json` issue.
  * @param meta - the lookup tables, or `undefined` when they are not loaded.
@@ -184,20 +192,22 @@ export function issuePlacement(
   meta: MintMetaPayload | undefined
 ): PlacementView | undefined {
   const planId = item.plan_id;
-  const placed = meta?.placement[String(item.id)];
-  const viaPlan =
-    planId === null
-      ? undefined
-      : (meta?.plans.find((plan) => plan.id === planId)?.milestone_id ?? null);
-  const milestoneId = placed?.milestone ?? viaPlan ?? null;
+  // The row is believed whenever it carries the field — explicit `null` included,
+  // because `null` is mint's answer rather than a missing one. The plan table is
+  // only the fallback for a row that predates the field, and it is also (with
+  // `meta.milestones`) where the version label the panel prints comes from.
+  const planMilestone =
+    planId === null ? null : (meta?.plans.find((plan) => plan.id === planId)?.milestone_id ?? null);
+  const milestoneId = item.milestone_id !== undefined ? item.milestone_id : planMilestone;
+  // Without the flag, a milestone that came through the plan belongs to the plan,
+  // never to the issue itself.
+  const direct = item.milestone_direct ?? (item.milestone_id != null && item.plan_id === null);
   if (planId === null && milestoneId === null) return undefined;
   return {
     planId,
     milestoneId,
     milestoneVersion: milestoneVersionOf(meta, milestoneId),
-    // A placement entry is authoritative; without one, a milestone that follows
-    // from a plan is that plan's, never the issue's own.
-    direct: placed?.direct ?? false,
+    direct,
   };
 }
 

@@ -18,6 +18,21 @@ export interface IssueItem {
   labels: string[];
   /** Owning plan, or `null` for a standalone issue. */
   plan_id: number | null;
+  /**
+   * 该 issue 的「有效 milestone」：自己直挂的优先，否则取所属 plan 的
+   * （mint #503 → dsh-mint #90）。
+   *
+   * **可选是刻意的**：这个字段比多数安装实际解析到的 CLI 新——它随 mint
+   * 0.9.0-alpha.1 才有，已发布的 `mint-faa`（0.8.1）根本不返回该键。所以字段缺失
+   * 代表「老 CLI」而非形状漂移：读取方退化回经 plan 表解析，绝不因整页 issue 丢了
+   * 一个可选字段就全丢。`null` 表示确实没有有效 milestone。
+   */
+  milestone_id?: number | null;
+  /**
+   * {@link milestone_id} 是 issue 自己直挂的（`true`）还是经其 plan 得到的
+   * （`false`）。可选原因同 {@link milestone_id}：老 CLI 两个键都不返回。
+   */
+  milestone_direct?: boolean;
   /** Typed links; each element reaches the panel unvalidated (see `describeLink`). */
   links: unknown[];
   created_at: string;
@@ -32,7 +47,10 @@ export interface IssueDetail extends IssueItem {
    * budget; the panel renders both `null` and `''` as "no body" (#94).
    */
   body: string | null;
-  /** Always present here, where a list row may fold it into its plan. */
+  /**
+   * 这里**始终**有值：`show --json` 早在 list 读也带上它之前就返回了该字段，
+   * 这行声明只是把它重新收紧成必到（#90）。
+   */
   milestone_id: number | null;
   uid?: string;
   test_cmd?: string | null;
@@ -82,27 +100,19 @@ export interface LabelItem {
   updated_at: string;
 }
 
-/** Where one issue sits: its effective milestone, and how it got there. */
-export interface IssuePlacement {
-  /** The milestone the issue effectively belongs to (direct, else its plan's). */
-  milestone: number;
-  /** True when the milestone is the issue's own, not its plan's. */
-  direct: boolean;
-}
-
 /**
- * The panel's lookup tables, read once instead of once per row.
+ * 面板的字典表：一次读齐，而不是每行读一遍。
  *
- * `list --json` carries neither an issue's effective milestone nor a label's
- * color, so the host assembles both here. `placement` is keyed by issue id as a
- * string, because that is what a JSON object can key by.
+ * `list --json` 既不带 label 的颜色、也不带 plan 的版本，所以宿主在这里补齐
+ * 这两本字典。issue 归属曾经也在这里拼装（每个 milestone 一次 CLI 调用）；
+ * mint 0.9.0-alpha.1 改为把 `milestone_id` / `milestone_direct` 直接写在每个
+ * issue 上（mint #503 → dsh-mint #90），故本 payload 只剩字典。
  */
 export interface MintMetaPayload {
   ok: true;
   plans: PlanItem[];
   milestones: MilestoneItem[];
   labels: LabelItem[];
-  placement: Record<string, IssuePlacement>;
   /** Shape-drift and partial-read notices the panel shows instead of guessing. */
   warnings?: string[];
 }

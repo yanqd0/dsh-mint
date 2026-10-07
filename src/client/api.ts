@@ -125,8 +125,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
     milestones: (query, signal) =>
       get<MintListPayload<MilestoneItem>>(ROUTES.milestones, query, signal),
     issue: (id, signal) => get<MintIssuePayload>(ROUTES.issue, { id: String(id) }, signal),
-    meta: (signal, fresh) =>
-      get<MintMetaPayload>(ROUTES.meta, fresh === true ? { refresh: '1' } : {}, signal),
+    meta: (signal) => get<MintMetaPayload>(ROUTES.meta, {}, signal),
     plan: (id, signal) =>
       get<MintDetailPayload<ContainerDetail>>(ROUTES.plan, { id: String(id) }, signal),
     milestone: (id, signal) =>
