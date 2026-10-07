@@ -236,7 +236,6 @@ export function dagCounts(view: DagView): {
  */
 export const DAG_COPY_KEYS = {
   liveTokens: 'dag.liveTokens',
-  liveTokenSource: 'dag.liveTokenSource',
   seconds: 'dag.seconds',
 } as const;
 

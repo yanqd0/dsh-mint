@@ -98,9 +98,9 @@ export const ZH = {
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
   'dag.tokens': '{tokens} tokens',
-  // The host's own measurement, shown beside (never instead of) the self-report.
+  // The host's own measurement; `dag.tokens` above is the fallback for a node
+  // whose child the host could not measure, and the marker keeps them apart.
   'dag.liveTokens': '{tokens} tokens（实测）',
-  'dag.liveTokenSource': '实测',
   'dag.seconds': '秒',
   'dag.note': '结果原文',
   'dag.node.id': '{id}',
@@ -188,7 +188,6 @@ export const EN = {
   'dag.phase.exec': 'exec',
   'dag.tokens': '{tokens} tokens',
   'dag.liveTokens': '{tokens} tokens (measured)',
-  'dag.liveTokenSource': 'measured',
   'dag.seconds': 's',
   'dag.note': 'Result',
   'dag.node.id': '{id}',

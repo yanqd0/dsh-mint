@@ -409,7 +409,6 @@ describe('DAG_COPY_KEYS', () => {
   it('names the live-metrics copy keys once', () => {
     expect(DAG_COPY_KEYS).toEqual({
       liveTokens: 'dag.liveTokens',
-      liveTokenSource: 'dag.liveTokenSource',
       seconds: 'dag.seconds',
     });
   });
@@ -425,5 +424,21 @@ describe('DAG animation contract', () => {
     expect(source).toContain('animation: none');
     // One `running` class, and it is the animation's target.
     expect(source).toContain('DAG_RUNNING_CLASS');
+  });
+});
+
+// The live line is wired in the body, a `.tsx` no Node test can render: the
+// button below is the source guard that keeps the wiring from being dropped.
+describe('DAG live-metrics contract', () => {
+  it('reads the model, the copy keys, and the styles the live line is built from', () => {
+    const source = readFileSync(fileURLToPath(new URL('DagBody.tsx', import.meta.url)), 'utf8');
+    // The sample: what to draw, which numbers to age, and which keys to say.
+    expect(source).toContain('nodeMetricsMap');
+    expect(source).toContain('liveElapsedMs');
+    expect(source).toContain('DAG_COPY_KEYS');
+    // The colors: the node's SVG line and the card's DOM line name the same pair.
+    expect(source).toContain('dagLiveTokensStyle');
+    expect(source).toContain('dagLiveTimeStyle');
+    expect(source).toContain('DAG_NODE_METRICS');
   });
 });

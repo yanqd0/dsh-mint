@@ -3,35 +3,84 @@
  *
  * One SVG per document: nodes are `dag-model`'s boxes, edges its polylines, and
  * the status coloring comes from the same tone function the model tests cover.
- * The component owns only two things the model cannot: when to read (the tab's
- * visibility and its 2s poll) and what hover shows.
+ * The component owns only three things the model cannot: when to read (the tab's
+ * visibility and its 2s poll), how a host sample is aged into a live clock (a 1s
+ * tick, running only while something is), and what hover shows.
  *
- * The poll replaces the state only when the answered `revision` changed, so a
- * session with a quiet plan does not re-render its graph every two seconds.
+ * The poll replaces the state only when the answered revision or the sample it
+ * carried changed, so a quiet plan keeps its graph, while a node that is still
+ * running keeps moving.
  */
 import { useEffect, useRef, useState } from 'react';
 import type { CSSProperties, ReactElement } from 'react';
 
-import type { DagNodeView, DagVerdict, MintDagPayload } from '../records.js';
+import type { DagNodeMetrics, DagNodeView, DagVerdict, MintDagPayload } from '../records.js';
 import { StateNotice } from './StateNotice.js';
-import { dagCounts, dagTone, isRunning, layoutDag } from './dag-model.js';
+import {
+  DAG_COPY_KEYS,
+  dagCounts,
+  dagStatusTone,
+  dagTone,
+  formatCount,
+  formatSeconds,
+  isRunning,
+  layoutDag,
+  liveElapsedMs,
+  nodeMetricsMap,
+} from './dag-model.js';
 import type { LoadState } from './model.js';
 import { toLoadState } from './model.js';
 import {
   DAG_CANVAS,
   DAG_NODE_LABEL,
+  DAG_NODE_METRICS,
   DAG_RUNNING_CLASS,
   DAG_SHELL,
   DAG_TOOLTIP,
   DAG_TOOLTIP_META,
+  LIVE_TIME_COLOR,
+  LIVE_TOKENS_COLOR,
   NOTE,
   TOOLBAR,
+  dagLiveTimeStyle,
+  dagLiveTokensStyle,
   dagNodeStyle,
+  pill,
 } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
 
 /** How often a visible DAG tab re-reads the document (spec §4.6). */
 const POLL_MS = 2000;
+
+/** How often the live line re-derives a running node's elapsed time. */
+const TICK_MS = 1000;
+
+/**
+ * The two text baselines inside a node box, measured from the box's top.
+ *
+ * The box is 44 tall for exactly this: the label takes the first line and the
+ * measured pair the second, and both are centered, so the two constants are one
+ * line apart whatever the label's own metrics turn out to be.
+ */
+const NODE_LABEL_DY = 16;
+const NODE_METRICS_DY = 32;
+
+/** The token unit inside a node box: the box is 104 wide and the label 12px. */
+const TOKEN_UNIT = 't';
+
+/** What sits between the two measured numbers, in the secondary color. */
+const METRICS_SEPARATOR = ' · ';
+
+/** A running node whose sample has not arrived: a time is coming, none is known. */
+const TIME_PENDING = '?';
+
+/** A settled node with nothing measured: there is nothing left to wait for. */
+const TIME_NONE = '-';
+
+/** Units and separators: legible, but never in a measured number's own color. */
+const METRICS_SECONDARY: CSSProperties = {
+  fill: 'var(--dsw-alias-label-secondary)',
+};
 
 /** The pulse the running node's border runs; injected once, next to the node. */
 const KEYFRAMES = `
@@ -59,6 +108,107 @@ const TOOLTIP_LINE: CSSProperties = {
   margin: 0,
 };
 
+/** The card's chip row: what the node is doing, and the issue it tracks. */
+const TOOLTIP_BADGES: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+  flexWrap: 'wrap',
+  margin: '0 0 4px',
+};
+
+/** A unit, a source note, or any other quiet text inside the card (DOM, so `color`). */
+const TOOLTIP_QUIET: CSSProperties = {
+  color: 'var(--dsw-alias-label-secondary)',
+};
+
+/**
+ * What one answer's identity consists of.
+ *
+ * The revision says whether the file moved; the sample says whether the numbers
+ * did. Both are needed to tell "the same reading twice" from "the same document,
+ * freshly measured".
+ */
+interface DagSample {
+  revision: number;
+  sampledAt: number | undefined;
+  metrics: Record<string, DagNodeMetrics> | undefined;
+}
+
+/** The guard's memory of one answered payload. */
+function sampleOf(payload: MintDagPayload): DagSample {
+  return { revision: payload.revision, sampledAt: payload.sampled_at, metrics: payload.metrics };
+}
+
+/**
+ * Whether two answers are the same reading of the document.
+ *
+ * Only when both the revision and the sample are unchanged is re-setting the
+ * state pure redraw work: the same graph and the same numbers, at the cost of a
+ * render. The maps are small and flat, so comparing them field by field is both
+ * cheaper and more precise than a serialized form.
+ */
+function sameSample(previous: DagSample | undefined, next: DagSample): boolean {
+  if (previous === undefined) return false;
+  if (previous.revision !== next.revision) return false;
+  if (previous.sampledAt !== next.sampledAt) return false;
+  return sameMetrics(previous.metrics, next.metrics);
+}
+
+/** Field-by-field equality of two samples, keyed by node id. */
+function sameMetrics(
+  before: Record<string, DagNodeMetrics> | undefined,
+  after: Record<string, DagNodeMetrics> | undefined
+): boolean {
+  if (before === after) return true;
+  if (before === undefined || after === undefined) return false;
+  const ids = Object.keys(before);
+  if (ids.length !== Object.keys(after).length) return false;
+  return ids.every(
+    (id) =>
+      before[id]?.tokens === after[id]?.tokens && before[id]?.elapsed_ms === after[id]?.elapsed_ms
+  );
+}
+
+/**
+ * The per-node measurements a payload may be drawn from, already filtered.
+ *
+ * `nodeMetricsMap` drops what the document no longer carries and what a partial
+ * sample got wrong; the branch on `metrics` is what keeps the call inside
+ * `exactOptionalPropertyTypes`, where an explicit `undefined` is not the same as
+ * an absent field.
+ *
+ * @param payload - the loaded answer, or `undefined` while it is not there yet.
+ */
+function sampleMetrics(payload: MintDagPayload | undefined): Record<string, DagNodeMetrics> {
+  if (payload?.metrics === undefined) return {};
+  return nodeMetricsMap({ dag: payload.dag, metrics: payload.metrics });
+}
+
+/**
+ * The elapsed time a node's line should draw right now.
+ *
+ * A running node is still moving: the host sampled its time once, and every
+ * second since is the browser's own — which is exactly what `liveElapsedMs`
+ * anchors on the sample's clock. A settled node's time is the sample itself: it
+ * must not drift with `now`, because nothing is still accumulating.
+ *
+ * @param node - the node whose line is drawn.
+ * @param metrics - the host's last sample for that node, if any.
+ * @param sampledAtMs - when that sample was taken, on the host's clock.
+ * @param nowMs - the browser's current time.
+ */
+function measuredTimeMs(
+  node: DagNodeView,
+  metrics: DagNodeMetrics | undefined,
+  sampledAtMs: number | undefined,
+  nowMs: number
+): number | undefined {
+  const elapsedMs = metrics?.elapsed_ms;
+  if (node.status !== 'running') return elapsedMs;
+  return liveElapsedMs(elapsedMs, sampledAtMs, nowMs);
+}
+
 /**
  * Render the DAG panel.
  *
@@ -74,7 +224,11 @@ export function DagBody(props: MintBodyProps): ReactElement {
   const [state, setState] = useState<LoadState<MintDagPayload>>({ status: 'loading' });
   const [hovered, setHovered] = useState<string | undefined>(undefined);
   const [reload, setReload] = useState(0);
-  const revision = useRef<number | undefined>(undefined);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  // The last reading the panel accepted. It is a ref rather than state because
+  // it guards a write, it never draws; and it remembers the sample as well as
+  // the revision, since the numbers move while the document does not.
+  const lastSample = useRef<DagSample | undefined>(undefined);
 
   useEffect(() => {
     if (!visible || signal?.aborted === true) return;
@@ -86,10 +240,14 @@ export function DagBody(props: MintBodyProps): ReactElement {
     const read = (): void => {
       void api.dag(controller.signal).then((response) => {
         if (controller.signal.aborted) return;
-        // An unchanged revision means the document did not move: re-setting the
-        // state would re-render the same graph and drop an open tooltip.
-        if (response.ok && response.revision === revision.current) return;
-        if (response.ok) revision.current = response.revision;
+        // The same document measured into the same numbers: re-setting the state
+        // would re-render the same graph and drop an open tooltip for nothing.
+        if (response.ok && sameSample(lastSample.current, sampleOf(response))) return;
+        // The whole payload is carried into the state — the guard above is about
+        // skipping writes, never about merging a stale sample into a fresh one.
+        // A failed answer forgets the reading, so a recovered session is never
+        // mistaken for "the same sample" and left on the notice.
+        lastSample.current = response.ok ? sampleOf(response) : undefined;
         setState(toLoadState(response));
       });
     };
@@ -102,16 +260,39 @@ export function DagBody(props: MintBodyProps): ReactElement {
     };
   }, [api, visible, signal, reload]);
 
-  // The tab's own refresh command: an explicit read bypasses the revision guard.
+  // The tab's own refresh command: an explicit read bypasses the guard.
   useEffect(() => {
     if (actions === undefined) return;
     return actions.bindCommands({
       refresh: () => {
-        revision.current = undefined;
+        lastSample.current = undefined;
         setReload((count) => count + 1);
       },
     });
   }, [actions]);
+
+  const payload = state.status === 'ready' ? state.value : undefined;
+  const metrics = sampleMetrics(payload);
+  const sampledAtMs = payload?.sampled_at;
+  // The clock is only worth a timer while a running node has a sampled start:
+  // with nothing accumulating, every tick would redraw the same picture.
+  const liveClock =
+    payload?.dag?.nodes.some(
+      (node) => node.status === 'running' && metrics[node.id]?.elapsed_ms !== undefined
+    ) ?? false;
+
+  useEffect(() => {
+    if (!visible || !liveClock) return;
+    // The first tick re-anchors `now` on the browser clock, so the line starts
+    // from the sample's age rather than from whenever the component mounted.
+    setNowMs(Date.now());
+    const timer = setInterval(() => {
+      setNowMs(Date.now());
+    }, TICK_MS);
+    return () => {
+      clearInterval(timer);
+    };
+  }, [visible, liveClock]);
 
   if (state.status === 'loading') return <StateNotice copy={copy} state="loading" />;
   if (state.status === 'failed') {
@@ -122,7 +303,7 @@ export function DagBody(props: MintBodyProps): ReactElement {
         message={state.message}
         stderr={state.stderr}
         onRetry={() => {
-          revision.current = undefined;
+          lastSample.current = undefined;
           setReload((count) => count + 1);
         }}
       />
@@ -138,7 +319,9 @@ export function DagBody(props: MintBodyProps): ReactElement {
     return (
       <div style={DAG_SHELL}>
         <p style={{ ...NOTE, padding: '8px 10px' }}>
-          {warnings === undefined || warnings.length === 0 ? copy('dag.empty') : copy('dag.unreadable')}
+          {warnings === undefined || warnings.length === 0
+            ? copy('dag.empty')
+            : copy('dag.unreadable')}
         </p>
         {warnings !== undefined && warnings.length > 0 && (
           <p style={{ ...NOTE, padding: '0 10px 8px' }}>{copy('dag.file', { path: file })}</p>
@@ -209,40 +392,172 @@ export function DagBody(props: MintBodyProps): ReactElement {
                 />
                 <text
                   x={box.x + box.w / 2}
-                  y={box.y + box.h / 2}
+                  y={box.y + NODE_LABEL_DY}
                   textAnchor="middle"
                   dominantBaseline="middle"
                   style={DAG_NODE_LABEL}
                 >
                   {node.label}
                 </text>
+                <NodeMetricsLine
+                  node={node}
+                  metrics={metrics[box.id]}
+                  sampledAtMs={sampledAtMs}
+                  nowMs={nowMs}
+                  copy={copy}
+                  x={box.x + box.w / 2}
+                  y={box.y + NODE_METRICS_DY}
+                />
               </g>
             );
           })}
         </svg>
         {hoveredNode !== undefined && (
-          <NodeTooltip node={hoveredNode} copy={copy} layout={layout} />
+          <NodeTooltip
+            node={hoveredNode}
+            copy={copy}
+            layout={layout}
+            metrics={metrics[hoveredNode.id]}
+            sampledAtMs={sampledAtMs}
+            nowMs={nowMs}
+          />
         )}
       </div>
     </div>
   );
 }
 
-/** What one node's tooltip needs: the node, the copy seat, and the geometry. */
+/** What one node box's measured line needs: the node, its sample, and the clock. */
+interface NodeMetricsLineProps {
+  node: DagNodeView;
+  metrics: DagNodeMetrics | undefined;
+  sampledAtMs: number | undefined;
+  nowMs: number;
+  copy: MintBodyProps['copy'];
+  x: number;
+  y: number;
+}
+
+/**
+ * The second line inside a node box: what the host measured, in the box's colors.
+ *
+ * Each number keeps its own fill — amber for the tokens, purple for the time —
+ * while the units and the separator stay in the secondary label color, so the
+ * line reads as two numbers rather than as one sentence. The token unit is a
+ * lone `t`: the box is 104 wide, and a spelled-out `tokens` would be the whole
+ * line by itself.
+ *
+ * A `pending` node has no agent yet and therefore nothing to measure, so it
+ * draws no line at all. A running node draws `?` in the time slot until a sample
+ * arrives (a time is coming, none is known); a settled node with nothing in it
+ * draws `-` (there is nothing left to wait for), and a settled node that only
+ * ever reported tokens draws just those.
+ */
+function NodeMetricsLine({
+  node,
+  metrics,
+  sampledAtMs,
+  nowMs,
+  copy,
+  x,
+  y,
+}: NodeMetricsLineProps): ReactElement | null {
+  if (node.status === 'pending') return null;
+  const tokens = metrics?.tokens;
+  const elapsed = measuredTimeMs(node, metrics, sampledAtMs, nowMs);
+  // The placeholder is only for a slot that exists: a settled node showing
+  // nothing but its tokens has no time slot to fill.
+  let placeholder: string | undefined;
+  if (elapsed === undefined) {
+    if (node.status === 'running') placeholder = TIME_PENDING;
+    else if (tokens === undefined) placeholder = TIME_NONE;
+  }
+
+  const parts: ReactElement[] = [];
+  if (tokens !== undefined) {
+    parts.push(
+      <tspan key="tokens" style={dagLiveTokensStyle()}>
+        {formatCount(tokens)}
+      </tspan>,
+      <tspan key="tokens-unit" style={METRICS_SECONDARY}>
+        {TOKEN_UNIT}
+      </tspan>
+    );
+  }
+  if (elapsed !== undefined) {
+    if (parts.length > 0) {
+      parts.push(
+        <tspan key="separator" style={METRICS_SECONDARY}>
+          {METRICS_SEPARATOR}
+        </tspan>
+      );
+    }
+    parts.push(
+      <tspan key="time" style={dagLiveTimeStyle()}>
+        {formatSeconds(elapsed)}
+      </tspan>,
+      <tspan key="time-unit" style={METRICS_SECONDARY}>
+        {copy(DAG_COPY_KEYS.seconds)}
+      </tspan>
+    );
+  } else if (placeholder !== undefined) {
+    if (parts.length > 0) {
+      parts.push(
+        <tspan key="separator" style={METRICS_SECONDARY}>
+          {METRICS_SEPARATOR}
+        </tspan>
+      );
+    }
+    parts.push(
+      <tspan key="time" style={METRICS_SECONDARY}>
+        {placeholder}
+      </tspan>
+    );
+  }
+  if (parts.length === 0) return null;
+
+  return (
+    <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" style={DAG_NODE_METRICS}>
+      {parts}
+    </text>
+  );
+}
+
+/** What one node's tooltip needs: the node, its sample, the clock, and the geometry. */
 interface NodeTooltipProps {
   node: DagNodeView;
   copy: MintBodyProps['copy'];
   layout: ReturnType<typeof layoutDag>;
+  metrics: DagNodeMetrics | undefined;
+  sampledAtMs: number | undefined;
+  nowMs: number;
 }
 
 /**
  * The hover card: the node's full text, then the fields a reader would otherwise
  * have to ask the tool for.
+ *
+ * The status and the verdict sit in the chip row, because the footer is the
+ * quiet line; the measured numbers keep the colors the node box gave them, so
+ * the card and the box read as one reading of the node. A card is DOM, not SVG:
+ * the same palette is applied through `color`, not `fill`.
  */
-function NodeTooltip({ node, copy, layout }: NodeTooltipProps): ReactElement {
+function NodeTooltip({
+  node,
+  copy,
+  layout,
+  metrics,
+  sampledAtMs,
+  nowMs,
+}: NodeTooltipProps): ReactElement {
   const box = layout.boxes.find((candidate) => candidate.id === node.id);
   const left = box === undefined ? 0 : box.x;
   const top = box === undefined ? 0 : box.y + box.h + 4;
+  // Both chips answer what the node is doing, so both take the badge's tone; the
+  // box underneath keeps its own axis (`dagTone`).
+  const tone = dagStatusTone(node);
+  const tokens = metrics?.tokens;
+  const elapsed = measuredTimeMs(node, metrics, sampledAtMs, nowMs);
   return (
     <div
       style={{
@@ -255,8 +570,31 @@ function NodeTooltip({ node, copy, layout }: NodeTooltipProps): ReactElement {
       role="tooltip"
     >
       <p style={TOOLTIP_TITLE}>{node.title}</p>
-      {node.tokens !== undefined && (
-        <p style={TOOLTIP_LINE}>{copy('dag.tokens', { tokens: node.tokens })}</p>
+      <p style={TOOLTIP_BADGES}>
+        <span style={pill(tone)}>{statusLabel(copy, node.status)}</span>
+        {node.verdict !== undefined && (
+          <span style={pill(tone)}>{verdictLabel(copy, node.verdict)}</span>
+        )}
+        {node.issue !== undefined && (
+          <span style={DAG_TOOLTIP_META}>{`#${String(node.issue)}`}</span>
+        )}
+      </p>
+      {tokens === undefined ? (
+        // Nothing was measured: the node's own report is all there is, and it is
+        // shown without the measure's color or source note — it is not one.
+        node.tokens !== undefined && (
+          <p style={TOOLTIP_LINE}>{copy('dag.tokens', { tokens: node.tokens })}</p>
+        )
+      ) : (
+        <p style={TOOLTIP_LINE}>
+          <LiveTokensLine copy={copy} tokens={tokens} />
+        </p>
+      )}
+      {elapsed !== undefined && (
+        <p style={TOOLTIP_LINE}>
+          <span style={{ color: LIVE_TIME_COLOR }}>{formatSeconds(elapsed)}</span>{' '}
+          <span style={TOOLTIP_QUIET}>{copy(DAG_COPY_KEYS.seconds)}</span>
+        </p>
       )}
       {node.note !== undefined && (
         <>
@@ -265,11 +603,39 @@ function NodeTooltip({ node, copy, layout }: NodeTooltipProps): ReactElement {
         </>
       )}
       <p style={{ ...TOOLTIP_LINE, ...DAG_TOOLTIP_META }}>
-        {`${copy('dag.node.id', { id: node.id })} · ${phaseLabel(copy, node.phase)} · ${statusLabel(copy, node.status)}${
-          node.verdict === undefined ? '' : ` · ${verdictLabel(copy, node.verdict)}`
-        }`}
+        {`${copy('dag.node.id', { id: node.id })} · ${phaseLabel(copy, node.phase)}`}
       </p>
     </div>
+  );
+}
+
+/** What the card's measured token line needs: the count and the copy seat. */
+interface LiveTokensLineProps {
+  copy: MintBodyProps['copy'];
+  tokens: number;
+}
+
+/**
+ * The card's measured token count, colored inside its own translated line.
+ *
+ * The dictionary's live line is one string with the count interpolated into it
+ * (`{tokens} tokens (measured)`), and only the count may take the measure's
+ * color — the unit and the source note stay secondary. The line is therefore
+ * split around the number it interpolated, which is exact: neither locale's
+ * surrounding text carries a digit of its own.
+ */
+function LiveTokensLine({ copy, tokens }: LiveTokensLineProps): ReactElement {
+  const count = formatCount(tokens);
+  const line = copy(DAG_COPY_KEYS.liveTokens, { tokens: count });
+  const at = line.indexOf(count);
+  const before = at < 0 ? '' : line.slice(0, at);
+  const after = at < 0 ? line : line.slice(at + count.length);
+  return (
+    <>
+      {before !== '' && <span style={TOOLTIP_QUIET}>{before}</span>}
+      <span style={{ color: LIVE_TOKENS_COLOR }}>{count}</span>
+      <span style={TOOLTIP_QUIET}>{after}</span>
+    </>
   );
 }
 
