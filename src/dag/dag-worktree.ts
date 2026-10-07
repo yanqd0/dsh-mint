@@ -24,7 +24,7 @@
  * This module is pure orchestration over a git runner, so the whole cycle is
  * testable against a real temporary repository with no host wiring.
  */
-import { join, resolve } from 'node:path';
+import { basename, dirname, join, resolve, sep } from 'node:path';
 
 import type { DagWorktree } from '../shared/records.js';
 import type { GitRunResult } from '../shared/git.js';
@@ -132,6 +132,96 @@ function stderrOf(result: GitRunResult): string {
   const text = result.stderr.trim() === '' ? result.stdout.trim() : result.stderr.trim();
   const firstLine = text.split('\n')[0] ?? '';
   return firstLine.length > 240 ? `${firstLine.slice(0, 240)}…` : firstLine;
+}
+
+/** 一棵已安装 worktree 的仓库级读数（list 的输出源；prune 也复用同一扫描）。 */
+export interface InstalledWorktree {
+  /** 绝对路径（`worktree list --porcelain` 的原样输出）。 */
+  path: string;
+  /** 该树签出的分支名；detached 时为 `''`。 */
+  branch: string;
+  /** 落点路径的父目录名 = 会话前 8 位（见 {@link worktreeRoot}）。 */
+  session: string;
+  /** 落点路径的末段名 = 节点 id。 */
+  node: string;
+  /** 该分支是否已并入当前 HEAD（`merge-base --is-ancestor`）。 */
+  merged: boolean;
+  /** 分支头提交时间（`git log -1 --format=%cI`），读不到时 `''`。 */
+  tipIso: string;
+}
+
+/**
+ * 本仓命名空间内**当前装着的** worktree 清单（仓库级，不读 DAG）。
+ *
+ * 与 {@link registeredWorktrees} 的差别有两点，都是有意为之：① 只认落在
+ * `<git common dir>/dsh-mint/worktrees/<session8>/<node>` 这个命名空间里的树——
+ * 用户在仓里手工建的普通 worktree 不是本工具的东西，列出来只会让人误会；② 每条带
+ * 分支、是否已合并与分支头时间，供 `list` 一屏说清「哪棵树、什么状态、还要不要
+ * merge」。**只保留两层深**（少一层 = 会话目录本身，多一层 = 别人的目录）。
+ *
+ * 判据取自 git 自己：`merge-base --is-ancestor <branch> HEAD` 成功即「已并入当前
+ * HEAD」（与 {@link removeWorktree} 的收尾判据同源）；时间用**提交时间** `%cI`
+ * 而不是 `%aI`，与面板上的 `at` 语义一致。两者都必须失败仍可读——明细读不到就是
+ * `false` / `''`，绝不因此让整张清单落空。
+ *
+ * 按 `path` 排序后才返回：`git worktree list` 的顺序随创建次序变，而这里的输出会
+ * 进模型上下文，同一状态必须给同一串行，否则每轮都要重新读一遍。
+ */
+export async function installedWorktrees(deps: WorktreeDeps): Promise<InstalledWorktree[]> {
+  const root = await commonGitDir(deps);
+  // 不是 git 仓（或读不到 common dir）时给空表：list 是只读视图，不是失败。
+  if (typeof root !== 'string') return [];
+  const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
+  // 老 git（< 2.5）不认 `worktree` 子命令，与 {@link registeredWorktrees} 同样
+  // 落成空表（#187）：真正的失败在 `worktree add` 那步带降级文案暴露。
+  if (!result.ok) return [];
+
+  const found: InstalledWorktree[] = [];
+  let path = '';
+  let branch = '';
+  const flush = async (): Promise<void> => {
+    // 命名空间过滤在这一处收口：只有正好两层深的落点才进清单。
+    if (!isNodePath(root, path)) return;
+    const node = basename(path);
+    const session = basename(dirname(path));
+    const merged =
+      branch !== '' &&
+      (await deps.git(deps.repo, ['merge-base', '--is-ancestor', branch, 'HEAD'])).ok;
+    found.push({ path, branch, session, node, merged, tipIso: await tipCommit(deps, branch) });
+  };
+
+  for (const line of result.stdout.split('\n')) {
+    if (line.startsWith('worktree ')) {
+      // 上一块到此结束；块内字段顺序由 git 保证（worktree → HEAD → branch|detached）。
+      await flush();
+      path = line.slice('worktree '.length).trim();
+      branch = '';
+      continue;
+    }
+    if (line.startsWith('branch ')) {
+      branch = line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '');
+    }
+    // `HEAD` / `detached` / `bare` / `prunable` / 空行都不需要单独处理：
+    // detached 留 `branch = ''`，`prunable` 的树仍在盘上，照旧列出。
+  }
+  await flush();
+  return found.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+/** 一条 `list` 明细的时间列：分支头提交的 ISO 时间，缺分支/读不到时 `''`。 */
+async function tipCommit(deps: WorktreeDeps, branch: string): Promise<string> {
+  if (branch === '') return '';
+  const result = await deps.git(deps.repo, ['log', '-1', '--format=%cI', branch]);
+  return result.ok ? result.stdout.trim() : '';
+}
+
+/** `path` 是否正好是 `<commonGitDir>/dsh-mint/worktrees/<session8>/<node>`（多一层少一层都不算）。 */
+function isNodePath(root: string, path: string): boolean {
+  const parts = path.slice(join(root, WORKTREE_SUBDIR).length + 1).split(sep);
+  return parts.length === 2 && parts[0] !== '' && parts[1] !== '';
 }
 
 /** Paths git currently registers as worktrees of this repository. */
@@ -376,7 +466,8 @@ export async function mergeWorktree(
  *
  * 「已合并」的判据是**目标分支**（#189：建树时所在的分支，由 `deps.target`
  * 传入），不是硬编码的 HEAD：会话可能已经 checkout 走了，那时按 HEAD 判定会把
- * 已合回目标分支的工作误报成未合并。缺记录（旧节点）才退回 HEAD。
+ * 已合回目标分支的工作误报成未合并。缺记录（旧节点）时退回**当前分支**，读不到
+ * 才落到字面 `HEAD`——字面 HEAD 只作「无从校验」的标记，不该被当成分支名写进文档。
  *
  * Refuses a branch that is not merged into the target branch unless `force` is set:
  * removing the tree does not delete the branch, but losing the only checkout of
@@ -393,7 +484,9 @@ export async function removeWorktree(
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
   const branch = worktreeBranch(deps, node);
-  const target = deps.target ?? 'HEAD';
+  // 缺记录时先问当前分支（#189 之前的旧节点），问不到才用字面 `HEAD`：写进文档的
+  // target 必须是真分支名或明确的「无从校验」标记，不能被字面串悄悄顶上。
+  const target = deps.target ?? ((await currentBranch(deps)) || 'HEAD');
   const worktree: DagWorktree = {
     path,
     branch,
@@ -408,7 +501,7 @@ export async function removeWorktree(
   if (!force) {
     const merged = await deps.git(deps.repo, ['merge-base', '--is-ancestor', branch, target]);
     if (!merged.ok) {
-      // 缺记录时 target 是字面 `HEAD`：文案别把它说成分支名。
+      // 只有「连当前分支都读不到」时 target 才是字面 `HEAD`，别把它说成分支名。
       const where = target === 'HEAD' ? '当前 HEAD' : `目标分支 ${target}`;
       return {
         ok: false,

@@ -3,6 +3,8 @@
 > 来源：mint plan #31 正文（`plan show 31 --json`，milestone 0.3.0 / #4，version 0.3.0）。
 > 范围：宿主工具 `mint_plan_dag`（init/add/set/get）+ 状态文件 `/tmp/mint/dag/<sessionId>.json`
 > + 只读路由 `GET /dsh-mint/dag` + 右侧边栏并列新 tab（`kind=plan-dag`）。
+> **worktree 动作（create/list/merge/remove）已从本工具拆出**，成为独立的 `worktree` 工具：
+> 规格真源见 [worktree-tool.md](worktree-tool.md)，操作流程见 `skill/references/worktree-exec.md`。
 > 本文件是**将来实现会话的规格真源**：照做即可，不需要再做设计决策；只写事实与规格，
 > 不含实现代码（字段示例除外）。客户端侧 seat / 产物契约见 [client-face.md](client-face.md)，
 > 会话事件与只在状态变更后提醒的分工见 [todo-panel.md](todo-panel.md)。
@@ -75,6 +77,10 @@
 - `version` 不识别或 JSON 解析失败 → 客户端显示「DAG 不可读」+ 文件路径，**不崩溃**。
 
 ## 2. 工具面 `mint_plan_dag`
+
+> 本工具只管**图**：`init` / `add` / `set` / `get`。节点级 git worktree（建/列/合/清理）是
+> 另一个工具 `worktree`，规格见 [worktree-tool.md](worktree-tool.md)——两族动作改动的东西不同
+> （一份 `/tmp` 文档 vs 真实工作树），合成一个工具会让 schema 与描述同时装两套词汇。
 
 ### 2.1 注册与形态
 
@@ -232,8 +238,10 @@
 
 - `src/dag/dag.ts`（纯数据 + 校验 + 分层）
 - `src/dag/dag-store.ts`（文件读写、原子写、按 session 锁）
-- `src/dag/dag-tool.ts`（`mint_plan_dag`）
+- `src/dag/dag-tool.ts`（`mint_plan_dag`：init/add/set/get）
 - `src/dag/dag-lifecycle.ts`（subagent 配对）
+- `src/dag/worktree-tool.ts`（独立的 `worktree` 工具：create/list/merge/remove；git 层在
+  `src/dag/dag-worktree.ts`）
 
 ### 5.2 宿主扩展
 
@@ -251,6 +259,8 @@
 ### 5.4 测试与文档
 
 - 新增 `tests/unit/dag/dag.test.ts`、`tests/unit/dag/dag-tool.test.ts`、`tests/unit/client/dag-model.test.ts`
+- 新增 `tests/unit/dag/worktree-tool.test.ts`（工具面）、`tests/unit/dag/dag-worktree.test.ts`（git 层）
+  与规格文档 `notes/worktree-tool.md`
 - 扩展 `tests/unit/host/routes.test.ts`（只读断言 + 缺失文件 200/null）、`tests/unit/client/api.test.ts`、
   `tests/unit/shared/route-paths.test.ts`（漂移守卫）、`tests/guard/client-bundle.test.ts`（不回归）
 - 文档：`notes/client-face.md` 补「自动打开 tab」契约段、`notes/memory.md` 索引、
@@ -259,7 +269,7 @@
 ### 5.5 验收
 
 - `pnpm lint && pnpm check-types && pnpm test` 全绿。
-- `mint_plan_dag` 四动作与全部错误路径有用例。
+- `mint_plan_dag` 四动作与全部错误路径有用例；`worktree` 的四动作同理（见 `notes/worktree-tool.md`）。
 - 路由在文件缺失时返回 200 + `dag:null`。
 - 面板四态配色与悬停信息（标题 / token / 结果原文）实测可见。
 - `/tmp/mint/dag/` 文件缺失时面板不崩。
@@ -318,7 +328,7 @@
 | --- | --- |
 | 纯数据/校验/分层 | `src/dag/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`） |
 | 文件层 | `src/dag/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖） |
-| 工具面 | `src/dag/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离） |
+| 工具面 | `src/dag/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离）；worktree 动作已拆到 `src/dag/worktree-tool.ts`（见 [worktree-tool.md](worktree-tool.md)） |
 | 生命周期 | `src/dag/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点） |
 | 路由 | `src/host/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/shared/route-paths.ts`、`src/shared/records.ts` |
 | 客户端 | `src/client/dag-model.ts`（分层/几何/配色）、`src/client/DagBody.tsx`（SVG + tooltip + 2s 轮询）、`src/client/dag-open.ts`（5s 探测 + 唯一性判据）、`src/client/{index,api,copy,styles,types}.ts(x)` |

@@ -127,7 +127,9 @@ describe('outstandingWorktrees (#175)', () => {
     const text = worktreeSweepReminder([node('a', 'conflict')]);
     expect(text).toContain('a conflict');
     expect(text).toContain('b/a');
-    expect(text).toContain('wt",op:"remove"');
+    // 清理命令走独立工具（worktree 动作已从 mint_plan_dag 拆出）。
+    expect(text).toContain('worktree({action:"remove"');
+    expect(text).not.toContain('mint_plan_dag({action:"wt"');
   });
 });
 

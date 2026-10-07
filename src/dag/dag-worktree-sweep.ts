@@ -47,7 +47,7 @@ export function worktreeSweepReminder(nodes: readonly DagNodeView[]): string {
   return (
     '[mint] plan 已关闭，但本会话还有 worktree 未收尾：\n' +
     `${lines.join('\n')}\n` +
-    '已合并的用 mint_plan_dag({action:"wt",op:"remove",node:"<id>"}) 清理；' +
+    '已合并的用 worktree({action:"remove",node:"<id>"}) 清理；' +
     '未合并的先 merge；冲突态的在对应 worktree 内解决后重跑 merge（或 git merge --abort）。'
   );
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from '../../src/host/context.js';
 import { DAG_TOOL_DESCRIPTION } from '../../src/dag/dag-tool.js';
+import { WORKTREE_TOOL_DESCRIPTION } from '../../src/dag/worktree-tool.js';
 import { MINT_ENTRY_WARNING } from '../../src/mint/mint.js';
 import { MINT_TOOL_DESCRIPTION } from '../../src/mint/mint-tool.js';
 
@@ -132,18 +133,27 @@ describe('per-request injection budget (#61)', () => {
 
   // plan 31: the DAG tool's description is the second per-request tool budget.
   // It is larger than `mint`'s because it carries a whole small DSL (the document
-  // actions, the node fields, the edge direction); #172 added the worktree line
-  // for the second action family, so the ceiling grew with it — and it must stay
-  // a description, not a manual: the full spec is `notes/plan-dag.md` §2, the
-  // worktree flow is `skill/references/worktree-exec.md`, and the exact
-  // parameters live in the tool's own schema.
-  it('keeps the plan DAG tool description under 810 bytes (plan #31, #172)', () => {
-    expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(810);
+  // actions, the node fields, the edge direction). The worktree line moved out to
+  // the standalone `worktree` tool, so this ceiling came back down to the measured
+  // value +20 B — and it must stay a description, not a manual: the full spec is
+  // `notes/plan-dag.md` §2 and the exact parameters live in the tool's own schema.
+  it('keeps the plan DAG tool description under 700 bytes (plan #31)', () => {
+    expect(bytes(DAG_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
     expect(DAG_TOOL_DESCRIPTION).toContain('init');
     expect(DAG_TOOL_DESCRIPTION).toContain('to 依赖 from');
     expect(DAG_TOOL_DESCRIPTION).toContain('label ≤6 字');
-    expect(DAG_TOOL_DESCRIPTION).toContain('wt 建/列/删');
     expect(DAG_TOOL_DESCRIPTION).toContain('mint_plan_dag({action:"add"');
+  });
+
+  // The worktree tool is the third per-request budget, and the only one whose
+  // actions touch the filesystem: the description has to name all four (a model
+  // that cannot see `remove` leaves trees behind) and the batch rule that makes
+  // the merges independent.
+  it('keeps the worktree tool description under 700 bytes', () => {
+    expect(bytes(WORKTREE_TOOL_DESCRIPTION)).toBeLessThanOrEqual(700);
+    for (const marker of ['create', 'list', 'merge', 'remove']) {
+      expect(WORKTREE_TOOL_DESCRIPTION, marker).toContain(marker);
+    }
   });
 
   it('states the paging footer contract mint 0.8 writes (#78)', () => {

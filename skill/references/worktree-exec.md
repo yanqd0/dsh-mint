@@ -1,7 +1,7 @@
 # worktree 隔离并行执行（worktree-exec）
 
 > 触发：并行批次需要「每条 issue 一个**独立可验证的 commit**」，或共享工作区已被证明互相污染。
-> 命令全部走 `mint_plan_dag` 工具（`action:"wt"` / `action:"merge"`）；批次判据见 `parallel-exec.md` §1，
+> 命令全部走 `worktree` 工具（`action:"create"|"merge"|"list"|"remove"`）；批次判据见 `parallel-exec.md` §1，
 > 派发与等待纪律见 `parallel-exec.md` §3、§5；收口见 `flow-impl.md` §4。
 
 默认的并行批次是**共享工作区**：子代理只改自己白名单内的文件，git 提交与一切 mint 写由主 agent
@@ -46,9 +46,9 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 ## 3. 全流程（工具形态）
 
     create → 派活（提示词含 worktree 路径）→ 子代理在 worktree 内 commit
-    → merge → issue state commit --sha → wt remove
+    → merge → issue state commit --sha → remove
 
-1. **建 worktree（主 agent，派发前）**：`mint_plan_dag({action:"wt", op:"create", node:"a1", base:"<sha>"})`
+1. **建 worktree（主 agent，派发前）**：`worktree({action:"create", node:"a1", base:"<sha>"})`
    - 落点 `.git/dsh-mint/worktrees/<session前8位>/<node>`（`<common-git-dir>` 内部，
      `git status` 不可见，**无需** `.gitignore` 条目）；分支 `dsh-mint/wt/<session前8位>/<node>`。
      仓里若残留旧的 `.worktrees/`（#177 之前），手工删掉即可。
@@ -66,17 +66,17 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
    - 允许：在**其 worktree 内** `git add` / `git commit`；commit message **以 `#<issue-id>` 起头**。
    - 仍禁止：`issue state`（一切 mint 写）、`build` / `test:coverage`、碰主工作树与别人的 worktree。
    - 一个 issue 多个 commit 也可以；merge 后 `state commit` 只登记最后一个 sha。
-4. **merge（主 agent，收齐后）**：`mint_plan_dag({action:"merge", node:"a1"})`
+4. **merge（主 agent，收齐后）**：`worktree({action:"merge", node:"a1"})`
    - 合回**建树时所在的分支**（目标分支），不是无条件合回 `main`；仅当该分支的工作树**干净**时执行
      （`git merge --no-ff`）；**按 issue 顺序** merge（不是完成先后）。
    - **工具会校验**：当前 checkout 的分支必须 == 该节点 `create` 时记录的分支（`worktree.target`），
      不一致**直接拒绝**（不执行 merge），并给出「先 `git checkout <建树时的分支>` 再 merge（或重建该节点的
      worktree）」；缺记录（#189 之前的旧节点）与 detached HEAD 不做该校验。
-   - 冲突不裁决（§5）。进度查看：`mint_plan_dag({action:"wt", op:"list"})`。
+   - 冲突不裁决（§5）。进度查看：`worktree({action:"list"})`。
 5. **登记 sha（merge 之后）**：`mint({ args: ["issue","state","commit","<id>","--sha","<目标分支上的 sha>"] })`
    - sha 必须是**该目标分支 merge 后**的 sha（`git rev-parse --short=7 HEAD`，即在目标分支的工作树里读），
      不是 worktree 里的 sha。
-6. **清理**：`mint_plan_dag({action:"wt", op:"remove", node:"a1"})`（收尾见 §5）。
+6. **清理**：`worktree({action:"remove", node:"a1"})`（收尾见 §5）。
 
 ## 4. 与文件白名单/串行判据的关系
 
@@ -92,7 +92,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 - 冲突的常见根因是白名单判据没守住（同一文件被两节点改）→ 先回 §4 复核批次表，再决定是否人工合并。
 - worktree 落在 `<common-git-dir>` 内的 `dsh-mint/worktrees/`，`git status` 看不见它，**不需要**
   `.gitignore` 条目；旧的 `.worktrees/` 条目可以删掉（残留目录手工删）。
-- **`plan close` 后清理 `active` worktree**：逐个 `op:"remove"`，`wt list` 不应再剩 `active` 项。
+- **`plan close` 后清理 `active` worktree**：逐个 `action:"remove"`，`worktree({action:"list"})` 不应再剩未合并项。
   `remove` 按记录的**目标分支**（`worktree.target`）判「已合并」，拒绝**尚未合并进该分支**的分支
   （避免丢掉唯一 checkout）：确认要丢弃才 `force:true`；它只删工作树、不删分支（分支可留可删，
   不删也不影响目标分支）。
@@ -113,7 +113,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 - **判据**：`git --version` < 2.5，或 `git worktree …` 报 `unknown subcommand` / `is not a git command`，
   或沙箱直接拒绝该命令。**默认路径仍是 worktree**：不预检、也不因为「可能不行」提前退缩，**失败才降级**
   （工具在 `worktree add` / `worktree remove` 的失败文案里带上本机版本与本节指针，老 git 上
-  `wt list` 返回空表属正常——真正的失败在 `add` 那步暴露）。
+  `worktree({action:"list"})` 返回空表属正常——真正的失败在 `create` 那步暴露）。
 - **动作**：回退共享工作区——子代理照旧执行，但 main **逐个派发**（一步一节点，不并行）；或 main 亲自依次
   执行（伪 DAG）。批次表（`parallel-exec.md` §1）**仍然有效**：谁和谁可以并行的判据没变，变的只是执行方式；
   子代理照旧只改白名单内的文件。

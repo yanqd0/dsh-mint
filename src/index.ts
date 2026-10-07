@@ -7,6 +7,7 @@ import { installDagLifecycle } from './dag/dag-lifecycle.js';
 import { installDagPlanReminder } from './dag/dag-plan-reminder.js';
 import { installDagTool } from './dag/dag-tool.js';
 import { installWorktreeSweep } from './dag/dag-worktree-sweep.js';
+import { installWorktreeTool } from './dag/worktree-tool.js';
 import { installSkill } from './skill/install-skill.js';
 import { installMintTool } from './mint/mint-tool.js';
 import { installPlanBinding } from './host/planbind.js';
@@ -127,6 +128,9 @@ export function apply(ctx: DshContext, config: Config): void {
   // plan 31: the DAG tool and its subagent pairing are registered on the root
   // ctx, so subagents inherit the tool and the listeners see every child run.
   installDagTool(ctx);
+  // worktree 动作已从 DAG 工具拆出，成为独立工具：git 侧（建/合/清理）与 DAG 文档
+  // 是两套词汇，`list` 更是仓库级问题（不读 DAG），所以 schema、描述与执行器都独立。
+  installWorktreeTool(ctx);
   installDagLifecycle(ctx);
   // #175: a closed plan is the last moment anyone looks at the DAG, so leftover
   // worktrees get named once instead of staying on disk unwatched.

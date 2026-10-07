@@ -145,7 +145,7 @@ describe('dsh-mint plugin', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
-  it('registers the plan DAG tool next to mint (plan #31)', () => {
+  it('registers the plan DAG tool and the standalone worktree tool next to mint (plan #31)', () => {
     const names: string[] = [];
     const ctx: DshContext = {
       on: () => () => {},
@@ -157,7 +157,8 @@ describe('dsh-mint plugin', () => {
       },
     };
     apply(ctx, { debug: false, autoApprove: false, autoInstallSkill: true, openDagTab: true });
-    expect(names).toEqual(['mint', 'mint_plan_dag']);
+    // worktree 已从 mint_plan_dag 拆出，成为第三个根 ctx 工具。
+    expect(names).toEqual(['mint', 'mint_plan_dag', 'worktree']);
   });
 
   it('pairs a subagent run with a node of its parent DAG (plan #31)', async () => {

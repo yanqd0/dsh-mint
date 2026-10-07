@@ -1,5 +1,4 @@
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -7,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { dagFilePath, readDag, updateDag } from '../../../src/dag/dag-store.js';
 import { clearMeasurements, lastMeasurement } from '../../../src/dag/dag-metrics.js';
-import { runGit } from '../../../src/shared/git.js';
 import type { DagNodeView } from '../../../src/shared/records.js';
 import { installDagLifecycle } from '../../../src/dag/dag-lifecycle.js';
 import {
@@ -15,9 +13,9 @@ import {
   TOOL_NAME,
   executeDagTool,
   installDagTool,
-  rootSessionId,
 } from '../../../src/dag/dag-tool.js';
 import type { DagToolOutcome } from '../../../src/dag/dag-tool.js';
+import { rootSessionId } from '../../../src/shared/session-id.js';
 import type {
   AgentCwdLike,
   AgentsLike,
@@ -35,9 +33,6 @@ import type {
  */
 let dir: string;
 
-/** The session the worktree cases own; short enough to keep the slug readable. */
-const SESSION = 'sess-wt1';
-
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), 'dsh-mint-dag-tool-'));
 });
@@ -49,14 +44,6 @@ afterEach(() => {
 /** Run one call for `session`, over the temp directory. */
 function run(session: string | undefined, args: unknown): Promise<DagToolOutcome> {
   return executeDagTool({ sessionId: session, dagDir: dir }, args);
-}
-
-/**
- * Run one call with the worktree wiring (#172): a real git runner against a real
- * repository, and the temp DAG directory.
- */
-function runWorktree(repo: string, args: unknown): Promise<DagToolOutcome> {
-  return executeDagTool({ sessionId: SESSION, dagDir: dir, repo, git: runGit }, args);
 }
 
 /** A context that records what `installDagTool` registers. */
@@ -97,14 +84,10 @@ describe('installDagTool', () => {
       additionalProperties: false,
       required: ['action'],
       properties: {
-        action: { type: 'string', enum: ['init', 'add', 'set', 'get', 'wt', 'merge'] },
+        action: { type: 'string', enum: ['init', 'add', 'set', 'get'] },
         status: { type: 'string', enum: ['pending', 'running', 'done'] },
         verdict: { type: 'string', enum: ['pass', 'fail'] },
         tokens: { type: 'integer' },
-        op: { type: 'string', enum: ['create', 'list', 'remove'] },
-        node: { type: 'string' },
-        base: { type: 'string' },
-        force: { type: 'boolean' },
         nodes: { type: 'array' },
         edges: { type: 'array' },
       },
@@ -630,204 +613,5 @@ describe('installDagLifecycle', () => {
     expect(after.state).toBe('ok');
     if (after.state !== 'ok') return;
     expect(after.doc.revision).toBe(revision);
-  });
-});
-
-/**
- * The worktree actions (#172) end to end: the tool drives the production git
- * runner against a real temporary repository and persists the outcome on the
- * node. The domain cycle itself is covered in `dag-worktree.test.ts`; these cases
- * are about the tool's contract — what lands in the document, what the answer
- * says, and which refusals reach the model.
- */
-describe('executeDagTool: wt / merge (#172)', () => {
-  let repo: string;
-
-  /**
-   * 合并提交也要有身份：merge 发生在工具进程内（`dag-worktree.ts`），拿不到上面
-   * `commit` 的 `-c`，只能靠仓内配置，否则在没有全局身份的机器上必失败。
-   */
-  const IDENTITY = ['-c', 'user.name=t', '-c', 'user.email=t@e.i'] as const;
-
-  /** Commit a file in `cwd` so a branch has something to merge. */
-  function commit(cwd: string, name: string, text: string, message: string): void {
-    writeFileSync(join(cwd, name), text);
-    execFileSync('git', ['add', '--', name], { cwd });
-    execFileSync('git', [...IDENTITY, 'commit', '-q', '-m', message], { cwd });
-  }
-
-  beforeEach(() => {
-    repo = mkdtempSync(join(tmpdir(), 'dsh-mint-dag-wt-'));
-    execFileSync('git', ['init', '-q', '-b', 'main'], { cwd: repo });
-    for (const [key, value] of [['user.name', 't'], ['user.email', 't@e.i']] as const) {
-      execFileSync('git', ['config', key, value], { cwd: repo });
-    }
-    commit(repo, 'README.md', '# fixture\n', 'init');
-  });
-
-  afterEach(() => {
-    rmSync(repo, { recursive: true, force: true });
-  });
-
-  /** A DAG with one node, so the worktree actions have something to hang on. */
-  async function seedGraph(): Promise<void> {
-    expect((await run(SESSION, { action: 'init', title: 'wt' })).ok).toBe(true);
-    const added = await run(SESSION, {
-      action: 'add',
-      nodes: [{ id: 'a1', label: '①', title: 'work', phase: 'exec', issue: 172 }],
-    });
-    expect(added.ok).toBe(true);
-  }
-
-  /** The node as the stored document currently has it. */
-  async function node(): Promise<DagNodeView | undefined> {
-    const read = await readDag(SESSION, dir);
-    return read.state === 'ok' ? read.doc.nodes[0] : undefined;
-  }
-
-  it('creates a worktree and records it on the node', async () => {
-    await seedGraph();
-    const outcome = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(outcome.ok).toBe(true);
-    expect(outcome.summary).toContain('[plan-dag] wt a1 active');
-    expect(outcome.summary).toContain(`dsh-mint/wt/${SESSION}/a1`);
-
-    const stored = await node();
-    expect(stored?.worktree?.state).toBe('active');
-    expect(stored?.worktree?.path).toContain(join(repo, '.git', 'dsh-mint', 'worktrees'));
-    expect(stored?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
-    // #189：建树时所在的分支被记进文档，merge 时由工具层回传给 git 层做校验。
-    expect(stored?.worktree?.target).toBe('main');
-  });
-
-  it('is idempotent and reports the existing worktree', async () => {
-    await seedGraph();
-    const first = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    const again = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(again.ok).toBe(true);
-    expect(again.summary).toContain('已存在');
-    expect(first.summary).toBeDefined();
-  });
-
-  it('refuses an unknown node and a bad op before touching git', async () => {
-    await seedGraph();
-    const unknown = await runWorktree(repo, { action: 'wt', op: 'create', node: 'nope' });
-    expect(unknown.ok).toBe(false);
-    expect(unknown.summary).toContain('节点不存在');
-
-    const badOp = await runWorktree(repo, { action: 'wt', op: 'clone', node: 'a1' });
-    expect(badOp.ok).toBe(false);
-    expect(badOp.summary).toContain('op=');
-  });
-
-  it('refuses wt/merge without a graph, and without a repository root', async () => {
-    const noGraph = await runWorktree(repo, { action: 'wt', op: 'list' });
-    expect(noGraph.ok).toBe(false);
-    expect(noGraph.summary).toContain('暂无 DAG');
-
-    await seedGraph();
-    const noRepo = await executeDagTool({ sessionId: SESSION, dagDir: dir }, { action: 'wt', op: 'list' });
-    expect(noRepo.ok).toBe(false);
-    expect(noRepo.summary).toContain('仓库根目录');
-  });
-
-  it('merges a node branch, records the state and reports the target-branch sha', async () => {
-    await seedGraph();
-    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(created.ok).toBe(true);
-    const stored = await node();
-    const tree = stored?.worktree?.path;
-    expect(tree).toBeDefined();
-    if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
-
-    const merged = await runWorktree(repo, { action: 'merge', node: 'a1' });
-    expect(merged.ok).toBe(true);
-    expect(merged.summary).toContain('wt a1 merged');
-    expect(merged.summary).toContain('目标分支');
-
-    const after = await node();
-    expect(after?.worktree?.state).toBe('merged');
-    expect(after?.worktree?.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
-    expect(execFileSync('git', ['show', 'HEAD:feature.txt'], { cwd: repo, encoding: 'utf8' })).toContain('work');
-  });
-
-  it('refuses a merge when the repo moved off the branch the tree was cut from (#189)', async () => {
-    // 贯穿工具层的验收：create 记下 target=main，会话切到 feature 后 merge 必须被拒，
-    // 且拒绝理由同时点名两个分支；切回 main 后同一调用成功。
-    await seedGraph();
-    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(created.ok).toBe(true);
-
-    execFileSync('git', ['checkout', '-q', '-b', 'feature'], { cwd: repo });
-    const refused = await runWorktree(repo, { action: 'merge', node: 'a1' });
-    expect(refused.ok).toBe(false);
-    expect(refused.summary).toContain('feature');
-    expect(refused.summary).toContain('main');
-
-    execFileSync('git', ['checkout', '-q', 'main'], { cwd: repo });
-    const merged = await runWorktree(repo, { action: 'merge', node: 'a1' });
-    expect(merged.ok).toBe(true);
-    expect(merged.summary).toContain('wt a1 merged');
-  });
-
-  it('lists the session worktrees and removes a merged one', async () => {
-    await seedGraph();
-    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(created.ok).toBe(true);
-    const list = await runWorktree(repo, { action: 'wt', op: 'list' });
-    expect(list.ok).toBe(true);
-    expect(list.summary).toContain('a1 active');
-
-    const tree = (await node())?.worktree?.path;
-    if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
-    expect((await runWorktree(repo, { action: 'merge', node: 'a1' })).ok).toBe(true);
-
-    const removed = await runWorktree(repo, { action: 'wt', op: 'remove', node: 'a1' });
-    expect(removed.ok).toBe(true);
-    expect(removed.summary).toContain('a1 removed');
-    expect((await node())?.worktree?.state).toBe('removed');
-  });
-
-  it('refuses to remove an unmerged worktree without force', async () => {
-    await seedGraph();
-    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(created.ok).toBe(true);
-    const tree = (await node())?.worktree?.path;
-    if (tree === undefined) return;
-    commit(tree, 'feature.txt', 'work\n', 'work #172');
-
-    const refused = await runWorktree(repo, { action: 'wt', op: 'remove', node: 'a1' });
-    expect(refused.ok).toBe(false);
-    expect(refused.summary).toContain('尚未合并');
-
-    const forced = await runWorktree(repo, { action: 'wt', op: 'remove', node: 'a1', force: true });
-    expect(forced.ok).toBe(true);
-  });
-
-  it('keeps the DAG readable after a merge conflict (#177)', async () => {
-    await seedGraph();
-    const created = await runWorktree(repo, { action: 'wt', op: 'create', node: 'a1' });
-    expect(created.ok).toBe(true);
-    const tree = (await node())?.worktree?.path;
-    if (tree === undefined) return;
-    // 两侧改同一文件：merge 必然停在冲突态，走「冲突也要落盘」那条分支。
-    commit(tree, 'README.md', '# from the node\n', 'node side');
-    commit(repo, 'README.md', '# from main\n', 'main side');
-
-    const conflicted = await runWorktree(repo, { action: 'merge', node: 'a1' });
-    expect(conflicted.ok).toBe(false);
-    expect(conflicted.summary).toContain('merge 冲突');
-
-    // 缺陷回归钉：#177 之前这里落盘 `base: ''`，`checkWorktree` 要求非空，
-    // 于是整份 DAG 下次读取变成 unreadable。
-    const read = await readDag(SESSION, dir);
-    expect(read.state).toBe('ok');
-    if (read.state !== 'ok') return;
-    expect(read.doc.nodes[0]?.worktree?.state).toBe('conflict');
-    expect(read.doc.nodes[0]?.worktree?.base).toMatch(/^[0-9a-f]{40}$/);
-
-    execFileSync('git', ['merge', '--abort'], { cwd: repo });
   });
 });
