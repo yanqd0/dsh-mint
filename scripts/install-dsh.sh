@@ -1,51 +1,35 @@
 #!/usr/bin/env bash
-# dsh-mint skill installer
+# dsh-mint skill tool (development flow).
 #
-# Installs the bundled mint skill into DSH's user skill directory.
-#   (default)  symlink dist/skill -> ~/.dsh/skills/mint (follows package updates)
-#   --copy     copy instead of symlink
-#   --uninstall  remove the installed skill (deletes symlink or copy)
+# A thin wrapper: every mode and every ownership guard lives in
+# `dist/install-skill.js`, which is the single implementation shared with
+# `pnpm skill`. This script only locates the package root and defaults to the
+# dev form — a symlink from `$DSH_HOME/skills/mint` to `<pkg>/dist/skill`, so
+# the model reads the checkout's latest `pnpm build` output.
 #
-# Respects DSH_HOME if set (defaults to ~/.dsh).
+#   (default)     symlink the bundled skill into the DSH skill directory
+#   --copy        copy it instead (the packaged-install form)
+#   --uninstall   remove what this plugin installed (guarded, idempotent)
+#   --status      report the current form and whether a copy is in sync
+#   --force       take over a target the guards would otherwise leave alone
+#
+# Respects DSH_HOME (defaults to ~/.dsh).
 
-set -u
+set -euo pipefail
 
-MODE="symlink"
-UNINSTALL=0
-for arg in "$@"; do
-  case "$arg" in
-    --copy) MODE="copy" ;;
-    --uninstall) UNINSTALL=1 ;;
-    *) echo "unknown option: $arg" >&2; exit 2 ;;
-  esac
-done
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd 2>/dev/null || echo "$(dirname "${BASH_SOURCE[0]:-$0}")")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 PKG_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-SKILL_SRC="$PKG_DIR/dist/skill"
-DSH_HOME_DIR="${DSH_HOME:-$HOME/.dsh}"
-SKILL_DST="$DSH_HOME_DIR/skills/mint"
+ENTRY="$PKG_DIR/dist/install-skill.js"
 
-if [ "$UNINSTALL" = "1" ]; then
-  rm -f "$SKILL_DST"
-  echo "uninstalled: $SKILL_DST"
-  exit 0
-fi
-
-if [ ! -d "$SKILL_SRC" ]; then
-  echo "error: $SKILL_SRC not found — run \`pnpm build\` first" >&2
+if [ ! -f "$ENTRY" ]; then
+  echo "error: $ENTRY not found — run \`pnpm build\` first" >&2
+  echo "to remove a leftover install by hand, confirm it first:" >&2
+  echo "  head -2 \"\${DSH_HOME:-\$HOME/.dsh}/skills/mint/SKILL.md\"   # expect: name: mint" >&2
   exit 1
 fi
 
-case "$MODE" in
-  symlink)
-    rm -rf "$SKILL_DST"
-    ln -sfn "$SKILL_SRC" "$SKILL_DST"
-    echo "symlinked: $SKILL_SRC -> $SKILL_DST"
-    ;;
-  copy)
-    rm -rf "$SKILL_DST"
-    cp -r "$SKILL_SRC" "$SKILL_DST"
-    echo "copied: $SKILL_SRC -> $SKILL_DST"
-    ;;
+# No explicit mode means the dev form; the CLI's own bare default is the copy.
+case "${1:-}" in
+  --copy | --link | --uninstall | --status | -h | --help) exec node "$ENTRY" "$@" ;;
+  *) exec node "$ENTRY" --link "$@" ;;
 esac

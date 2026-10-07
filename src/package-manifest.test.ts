@@ -52,6 +52,13 @@ describe('package manifest', () => {
     expect(manifest.files).toContain('cordis.patch.yml');
   });
 
+  // The skill lives outside the profile, so removing the package leaves it
+  // behind (dsh has no plugin uninstall hook). The guarded removal has to be
+  // runnable *while* the package is still installed, hence this entry (#154).
+  it('ships the guarded skill tool, so a leftover skill can be removed', () => {
+    expect(manifest.files).toContain('scripts/install-dsh.sh');
+  });
+
   it('mounts this package under the plugin id `mint`', () => {
     const patch = readFileSync(join(ROOT, 'cordis.patch.yml'), 'utf8');
     expect(patch).toMatch(/^- insert:/m);

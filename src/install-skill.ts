@@ -175,6 +175,16 @@ function isCurrent(source: string, target: string): boolean {
   }
 }
 
+/**
+ * True when `target` already holds every bundled file byte for byte.
+ *
+ * Exported for the status view (`dist/install-skill.js --status`), so "is the
+ * copy stale?" has one answer for both the sync and the report.
+ */
+export function skillInSync(target: string, source: string = skillSource()): boolean {
+  return isCurrent(source, target);
+}
+
 /** `lstatSync` without the throw: the shape check must see symlinks as links. */
 function lstatOrUndefined(path: string): Stats | undefined {
   try {

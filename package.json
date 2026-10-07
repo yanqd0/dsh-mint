@@ -22,6 +22,7 @@
   "files": [
     "dist",
     "cordis.patch.yml",
+    "scripts/install-dsh.sh",
     "scripts/install-skill-postinstall.mjs",
     "locale/*.json"
   ],
@@ -52,7 +53,8 @@
     "lint": "eslint src",
     "format": "prettier --write .",
     "check-types": "tsc --noEmit",
-    "pack:check": "pnpm pack --dry-run"
+    "pack:check": "pnpm pack --dry-run",
+    "skill": "node dist/install-skill.js"
   },
   "dependencies": {
     "mint-faa": ">=0.8.0 <1.0.0",
