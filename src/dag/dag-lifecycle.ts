@@ -325,7 +325,7 @@ export function withSample(
  * @param dagDir - DAG directory override; absent means `DAG_DIR`.
  */
 export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
-  /** runId → 配对记录（父会话 + 认领到的节点 id），见 {@link PendingRun}。 */
+  /** runId → 配对记录（**图归属会话** + 认领到的节点 id），见 {@link PendingRun}。 */
   const pending = new Map<string, PendingRun>();
 
   const agents = (): AgentsLike | undefined => ctx.get?.('agents') as AgentsLike | undefined;
