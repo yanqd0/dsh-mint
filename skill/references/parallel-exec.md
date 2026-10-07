@@ -39,14 +39,20 @@
 - 主 agent 独占 git 与 mint：子代理不 commit、不 `state`。
 - 主 agent 的宿主 todo 清单按 issue 粒度展开（一个 issue 一项）；子代理不写 `todo_write`，
   清单也不含 issue 之外的条目（口径见 `flow-impl.md` §3）。
+- 清单条目仍按 issue 写（不得写成批次/DAG 节点名），口径见 `flow-impl.md` §3。
 - 逐 issue：`git add -- <该 issue 的文件>` → commit → dev 类再 `git rev-parse --short=7 HEAD` → `issue state commit <id> --sha <前7位>`。
 - 批内不并行跑 build / test:coverage / format：全局独占，主 agent 串行。
 - 子代理只改文件，自检只用只读命令。
 
 ## 5. 等待与收尾（不 sleep）
 
-- 不 sleep：禁止 bash `sleep` 与 `list_agents` 轮询。
-- 默认不等：派发后做独立工作，结算通知自动到达。
+- 不 sleep、不轮询 `list_agents`：禁止 bash `sleep`，也不要反复 `list_agents` 查子代理状态。
+- 默认不等：派发后先做独立工作，结算通知自动到达。
+- 无独立工作就地结束本轮：派发后若确实没有可继续做的独立工作，**就地结束当前轮次**，
+  不要用 `sleep` 拖时间——运行时会在子代理结算时以 **follow-up 轮次**唤醒本 agent，
+  结算通知随后自动到达。
+- `sleep` 会把结算通知推迟到 `sleep` 结束之后（实测）：`sleep` 期间拿不到通知，
+  只会更慢，同时白耗墙钟时间。
 - 真被阻塞才 `job_output(<id>, wait: true)`（仅一次性后台 job，不用于子代理）。
 - 短活 `run_in_background: false`；跑偏用 `interrupt_agent`；答复前收齐仍相关任务，`job_kill` 无意义 job。
 
