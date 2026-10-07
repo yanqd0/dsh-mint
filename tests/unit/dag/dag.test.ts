@@ -104,9 +104,9 @@ describe('parseDagAction', () => {
 
   it('allows init without a title and bounds the one it takes', () => {
     expect(parseDagAction({ action: 'init' })).toEqual({ action: 'init', title: '' });
-    expect(parseDagAction({ action: 'init', title: '第 31 号计划' })).toEqual({
+    expect(parseDagAction({ action: 'init', title: '演示计划' })).toEqual({
       action: 'init',
-      title: '第 31 号计划',
+      title: '演示计划',
     });
     expect(errorOf(parseDagAction({ action: 'init', title: 7 }))).toContain('title');
     expect(errorOf(parseDagAction({ action: 'init', title: 'x'.repeat(201) }))).toContain('title');
