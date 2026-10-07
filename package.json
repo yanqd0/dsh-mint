@@ -50,7 +50,7 @@
     "postinstall": "node scripts/install-skill-postinstall.mjs",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "eslint src",
+    "lint": "eslint src tests",
     "format": "prettier --write .",
     "check-types": "tsc --noEmit",
     "pack:check": "pnpm pack --dry-run",

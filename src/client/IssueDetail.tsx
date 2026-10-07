@@ -6,7 +6,7 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueDetail as IssueDetailRecord, MintMetaPayload } from '../records.js';
+import type { IssueDetail as IssueDetailRecord, MintMetaPayload } from '../shared/records.js';
 import { BodyView } from './Body.js';
 import { LabelBadges, PlacementChips } from './Rows.js';
 import type { CopyTranslate } from './copy.js';

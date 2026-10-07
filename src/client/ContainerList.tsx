@@ -7,7 +7,7 @@
  */
 import type { ReactElement } from 'react';
 
-import type { MintListPayload } from '../records.js';
+import type { MintListPayload } from '../shared/records.js';
 import { ContainerRowView } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';

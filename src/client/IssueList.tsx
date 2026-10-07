@@ -6,7 +6,7 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueItem, MintListPayload, MintMetaPayload } from '../records.js';
+import type { IssueItem, MintListPayload, MintMetaPayload } from '../shared/records.js';
 import { IssueRow } from './Rows.js';
 import { StateNotice } from './StateNotice.js';
 import type { CopyTranslate } from './copy.js';

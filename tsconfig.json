@@ -20,6 +20,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["src", "tsup.config.ts", "vitest.config.ts"],
+  "include": ["src", "tests", "tsup.config.ts", "vitest.config.ts"],
   "exclude": []
 }

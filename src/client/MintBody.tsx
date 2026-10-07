@@ -22,7 +22,7 @@ import type {
   MintMetaPayload,
   MintResponse,
   PlanItem,
-} from '../records.js';
+} from '../shared/records.js';
 import { ContainerDetail } from './ContainerDetail.js';
 import { ContainerList } from './ContainerList.js';
 import { IssueDetail } from './IssueDetail.js';

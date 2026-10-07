@@ -3,8 +3,8 @@ import { defineConfig } from 'tsup';
 export default defineConfig({
   entry: {
     index: 'src/index.ts',
-    'install-skill': 'src/install-skill-cli.ts',
-    'check-mint-entry': 'src/check-entry-cli.ts',
+    'install-skill': 'src/skill/install-skill-cli.ts',
+    'check-mint-entry': 'src/mint/check-entry-cli.ts',
   },
   format: ['esm'],
   dts: true,

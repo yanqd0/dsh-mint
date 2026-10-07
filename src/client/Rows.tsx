@@ -8,7 +8,7 @@
  */
 import type { ReactElement } from 'react';
 
-import type { IssueItem, LabelItem, MintMetaPayload } from '../records.js';
+import type { IssueItem, LabelItem, MintMetaPayload } from '../shared/records.js';
 import type { CopyTranslate } from './copy.js';
 import type { ContainerRow, PlacementView } from './model.js';
 import { issueHeadline, issueMeta, issuePlacement, statusTone } from './model.js';

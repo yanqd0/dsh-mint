@@ -21,8 +21,8 @@ import type {
   MintMetaPayload,
   MintResponse,
   PlanItem,
-} from '../records.js';
-import { routePath } from '../route-paths.js';
+} from '../shared/records.js';
+import { routePath } from '../shared/route-paths.js';
 import type { MintApiLike } from './types.js';
 
 /**

@@ -20,7 +20,7 @@ import type {
   DagVerdict,
   DagWorktreeState,
   MintDagPayload,
-} from '../records.js';
+} from '../shared/records.js';
 import { StateNotice } from './StateNotice.js';
 import {
   DAG_COPY_KEYS,

@@ -13,7 +13,7 @@ import type {
   MintMetaPayload,
   MintResponse,
   PlanItem,
-} from '../records.js';
+} from '../shared/records.js';
 import type { CopyKey, CopyTranslate } from './copy.js';
 
 /** What a view knows about one request. */

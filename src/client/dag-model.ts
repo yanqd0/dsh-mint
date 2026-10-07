@@ -7,8 +7,8 @@
  * this file is a pure function of the view, so the geometry can be checked in
  * Node without a DOM, and the same view always draws the same picture.
  */
-import { dagLayers } from '../dag.js';
-import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../records.js';
+import { dagLayers } from '../dag/dag.js';
+import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../shared/records.js';
 import type { StatusTone } from './model.js';
 
 /**

@@ -18,7 +18,7 @@ import type {
   MintMetaPayload,
   MintResponse,
   PlanItem,
-} from '../records.js';
+} from '../shared/records.js';
 import type { CopyTranslate, Translate } from './copy.js';
 
 export type {
@@ -41,7 +41,7 @@ export type {
   MintMetaPayload,
   MintResponse,
   PlanItem,
-} from '../records.js';
+} from '../shared/records.js';
 
 /** The translate function a locale namespace binds. */
 export type { Translate };

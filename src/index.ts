@@ -1,15 +1,15 @@
 import { z } from 'zod';
 
-import { installApprovalGate } from './approval-gate.js';
-import { installOverviewChannel } from './context.js';
-import { installCrossProjectGate } from './cross-project-gate.js';
-import { installDagLifecycle } from './dag-lifecycle.js';
-import { installDagPlanReminder } from './dag-plan-reminder.js';
-import { installDagTool } from './dag-tool.js';
-import { installWorktreeSweep } from './dag-worktree-sweep.js';
-import { installSkill } from './install-skill.js';
-import { installMintTool } from './mint-tool.js';
-import { installPlanBinding } from './planbind.js';
+import { installApprovalGate } from './mint/approval-gate.js';
+import { installOverviewChannel } from './host/context.js';
+import { installCrossProjectGate } from './mint/cross-project-gate.js';
+import { installDagLifecycle } from './dag/dag-lifecycle.js';
+import { installDagPlanReminder } from './dag/dag-plan-reminder.js';
+import { installDagTool } from './dag/dag-tool.js';
+import { installWorktreeSweep } from './dag/dag-worktree-sweep.js';
+import { installSkill } from './skill/install-skill.js';
+import { installMintTool } from './mint/mint-tool.js';
+import { installPlanBinding } from './host/planbind.js';
 import {
   installCommitReminder,
   installFailureSignal,
@@ -17,10 +17,10 @@ import {
   installSessionRecordReminder,
   installSleepHint,
   installTodoSyncReminder,
-} from './reminders.js';
-import { installMintRoutes } from './routes.js';
-import { installSessionLedger } from './session-ledger.js';
-import type { DshContext } from './types.js';
+} from './host/reminders.js';
+import { installMintRoutes } from './host/routes.js';
+import { installSessionLedger } from './host/session-ledger.js';
+import type { DshContext } from './shared/types.js';
 
 /** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
 export const name = 'dsh-mint';

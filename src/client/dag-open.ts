@@ -15,7 +15,7 @@
  * - **Every failure is swallowed.** A dead route, a dead session, or a transient
  *   fetch error must not surface in a conversation nobody asked to interrupt.
  */
-import type { MintDagPayload } from '../records.js';
+import type { MintDagPayload } from '../shared/records.js';
 import type { MintApiLike, SidebarOpenTabLike, SidebarRightLike } from './types.js';
 
 /** How often the prober looks for a DAG (5s: a plan does not appear instantly). */
