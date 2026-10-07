@@ -36,6 +36,12 @@ afterEach(() => {
 
 const SESSION = 'root';
 const AGENT = 'child';
+/** 孙代理的**直接父会话**：三链 `GRAND → MID → SESSION` 的中间那一层。 */
+const MID = 'mid';
+/** 孙代理自己的会话 id（它的直接父是 `MID`，图归属要上溯到 `SESSION`）。 */
+const GRAND = 'grand';
+/** 一级 dev 子代理的会话 id：父感知认领靠它找到 `dev` 节点。 */
+const DEV_AGENT = 'dev-agent';
 
 interface EndInfo {
   runId: string;
@@ -140,6 +146,35 @@ async function seedNode(
     dir
   );
   expect(update.ok).toBe(true);
+}
+
+/** One document with several nodes, written through the real store. */
+async function seedNodes(
+  session: string,
+  nodes: readonly Omit<DagNodeView, 'updated_at'>[]
+): Promise<void> {
+  const update = await updateDag(
+    session,
+    () => ({
+      doc: {
+        version: 1 as const,
+        session,
+        title: 'DAG',
+        revision: 1,
+        created_at: 'T',
+        updated_at: 'T',
+        nodes: nodes.map((node) => ({ updated_at: 'T', ...node })),
+        edges: [],
+      },
+    }),
+    dir
+  );
+  expect(update.ok).toBe(true);
+}
+
+/** 读回文档里的一个节点；`state` 不是 ok 或没有该 id 时 `undefined`。 */
+function nodeIn(read: DagRead, id: string): DagNodeView | undefined {
+  return read.state === 'ok' ? read.doc.nodes.find((node) => node.id === id) : undefined;
 }
 
 /** A running node already paired with {@link AGENT}, as `start` would leave it. */
@@ -396,6 +431,127 @@ describe('subagent/end 的兜底认领', () => {
     expect(read.doc.nodes[0]?.note).toBe('boom');
     expect(read.doc.nodes[0]?.note?.includes(FALLBACK_MARK)).toBe(false);
     expect(read.doc.nodes[0]).toMatchObject({ status: 'done', verdict: 'fail' });
+  });
+});
+
+describe('subagent/start 的根归属与父感知认领', () => {
+  it('孙代理的认领写进根会话的图，中间会话的文件不被创建', async () => {
+    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    const events = harness();
+    // 注册表把整条链答出来：grand 的父是 mid，mid 的父是 root。
+    events.parents.set(GRAND, MID);
+    events.parents.set(MID, SESSION);
+
+    events.start({ runId: 'r1', id: GRAND });
+    await drain();
+
+    const root = await stored(SESSION);
+    expect(root.state).toBe('ok');
+    if (root.state !== 'ok') return;
+    expect(root.doc.nodes[0]?.agent).toBe(GRAND);
+    // 拿直接父会话当归属就会写到这张不存在的文件里（认领于是静默 skip）。
+    expect((await stored(MID)).state).toBe('missing');
+  });
+
+  it('父节点在文档里时，优先认领依赖它的那个等待节点', async () => {
+    await seedNodes(DEV_AGENT, [
+      {
+        id: 'dev',
+        label: 'dev',
+        title: 't',
+        phase: 'exec',
+        status: 'running',
+        depends_on: [],
+        agent: DEV_AGENT,
+      },
+      {
+        id: 'test',
+        label: 'test',
+        title: 't',
+        phase: 'exec',
+        status: 'running',
+        depends_on: ['dev'],
+      },
+      // `other` 故意排在 `test` 之后：旧规则（数组末尾最近的 running 且无 agent）拿到的正是它。
+      { id: 'other', label: 'other', title: 't', phase: 'exec', status: 'running', depends_on: [] },
+    ]);
+    const events = harness();
+    events.parents.set(GRAND, DEV_AGENT);
+
+    events.start({ runId: 'r1', id: GRAND });
+    await drain();
+
+    const read = await stored(DEV_AGENT);
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    // `depends_on: ["dev"]` 这条边就是配对凭据。
+    expect(nodeIn(read, 'test')?.agent).toBe(GRAND);
+    expect(nodeIn(read, 'other')?.agent).toBeUndefined();
+    expect(nodeIn(read, 'dev')?.agent).toBe(DEV_AGENT);
+  });
+
+  it('父会话在文档里没有节点时，退回数组末尾最近的 running 且无 agent 节点', async () => {
+    await seedNodes(DEV_AGENT, [
+      { id: 'n1', label: 'n1', title: 't', phase: 'exec', status: 'running', depends_on: [] },
+      { id: 'n2', label: 'n2', title: 't', phase: 'exec', status: 'running', depends_on: [] },
+      {
+        id: 'n3',
+        label: 'n3',
+        title: 't',
+        phase: 'exec',
+        status: 'running',
+        depends_on: [],
+        agent: 'someone-else',
+      },
+    ]);
+    const events = harness();
+    events.parents.set(GRAND, DEV_AGENT);
+
+    events.start({ runId: 'r1', id: GRAND });
+    await drain();
+
+    const read = await stored(DEV_AGENT);
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    // 数组末尾是 `n3`，但它已经属于别人；从后往前最近的等待节点是 `n2`。
+    expect(nodeIn(read, 'n2')?.agent).toBe(GRAND);
+    expect(nodeIn(read, 'n1')?.agent).toBeUndefined();
+    expect(nodeIn(read, 'n3')?.agent).toBe('someone-else');
+  });
+
+  it('父节点存在但没有等待节点依赖它时，同样退回末尾规则', async () => {
+    await seedNodes(DEV_AGENT, [
+      {
+        id: 'dev',
+        label: 'dev',
+        title: 't',
+        phase: 'exec',
+        status: 'running',
+        depends_on: [],
+        agent: DEV_AGENT,
+      },
+      { id: 'n1', label: 'n1', title: 't', phase: 'exec', status: 'running', depends_on: [] },
+      {
+        id: 'n2',
+        label: 'n2',
+        title: 't',
+        phase: 'exec',
+        status: 'running',
+        depends_on: ['n1'],
+      },
+    ]);
+    const events = harness();
+    events.parents.set(GRAND, DEV_AGENT);
+
+    events.start({ runId: 'r1', id: GRAND });
+    await drain();
+
+    const read = await stored(DEV_AGENT);
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    // `dev` 认出来了，但没有任何等待节点 `depends_on: ["dev"]` → 退回末尾的 `n2`。
+    expect(nodeIn(read, 'n2')?.agent).toBe(GRAND);
+    expect(nodeIn(read, 'n1')?.agent).toBeUndefined();
   });
 });
 
