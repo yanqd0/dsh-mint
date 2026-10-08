@@ -163,6 +163,29 @@ describe('worktree naming', () => {
   });
 });
 
+describe('node id guard', () => {
+  it('refuses an id that would reach a git ref, without running a single git command', async () => {
+    // 三个写入口（建/合/删）都先在本地挡下：subject、分支名与路径段都由 node.id 拼出，
+    // 所以「拒绝」必须发生在任何 git 命令之前，否则非法 id 已经进了命令行。
+    const calls: string[] = [];
+    const recording: WorktreeDeps['git'] = (_cwd, args) => {
+      calls.push(args.join(' '));
+      return Promise.resolve(answer(true, ''));
+    };
+    const guarded = deps({ git: recording });
+    for (const id of ['a1#1', '..', 'a b']) {
+      const created = await createWorktree(guarded, { id });
+      expect(created.ok, id).toBe(false);
+      if (created.ok) continue;
+      expect(created.error).toContain('不可用于 git 引用');
+      expect(created.error).toContain('只允许');
+      expect((await mergeWorktree(guarded, { id })).ok, id).toBe(false);
+      expect((await removeWorktree(guarded, { id })).ok, id).toBe(false);
+    }
+    expect(calls).toEqual([]);
+  });
+});
+
 describe('createWorktree', () => {
   it('creates the tree and its branch from HEAD', async () => {
     const outcome = await createWorktree(deps(), { id: 'a1' });
