@@ -1,6 +1,4 @@
-# CLAUDE.md: dsh-mint 项目导航
-
-> 本文档是编程 AI 的项目导航：定位、硬约束与权威信息来源。
+# dsh-mint 项目导航
 
 ## 定位
 
@@ -45,7 +43,25 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 
 ## 架构事实
 
-`src/` 内部的实现口径（挂载语法、宿主事件与服务、`mint` 工具注册、`systemPrompt` 注入形态、客户端半边的 seat 与产物约束、插件元数据门禁）见 [src/AGENTS.md](src/AGENTS.md)；测试口径见 [tests/AGENTS.md](tests/AGENTS.md)。细节：`notes/dsh-plugin-dev.md`、`notes/client-face.md`、`notes/mounting.md`。
+```text
+.
+├── AGENTS.md                              # 本文件：仓库导航 + 硬约束 + issue/plan 流程
+├── README.md / README.zh.md               # 面向使用者（装/用/配/卸），双语必须同步
+├── CONTRIBUTING.md                        # 面向人类开发者的开发环与排障
+├── docs/RELEASING.md                      # 对外发布 runbook（tag gate / 双注册表 / 失败处置）
+├── package.json                           # 脚本；（部分）依赖清单
+├── cordis.patch.yml                       # 自挂载声明，与 package.json 的 dsh.bundle.patch 配对
+├── src/                                   # 宿主半边 + 客户端半边（模块边界与 TS 口径 → src/AGENTS.md）
+├── tests/                                 # 单元与契约守卫（目录分层与用例规范 → tests/AGENTS.md）
+├── skill/SKILL.md                         # 随包 skill 的内容真源（常驻机制 + 意图路由 + 硬门禁）
+│   └── references/                        # 分支内容：流程、宿主专属、模板与 body 纪律
+├── ...                                    # 其余 skill markdown：编号 body 模板与各流程 ref
+├── notes/                                 # 对内中文调研与实测；入口 notes/memory.md（新会话先读）
+│   └── ...                                # 其余调研与实测记录，见 notes/memory.md 索引
+├── scripts/                               # 安装与构建：install-dsh.sh（含 --status/--uninstall）、build-*.mjs
+├── locale/{en,zh}.json                    # 插件展示元数据（名称/说明）双语
+└── ...                                    # 工具链与 CI：tsconfig / tsup / vitest / eslint / prettier / .github
+```
 
 ## 常用命令（工具链落地后启用）
 
@@ -56,14 +72,3 @@ pnpm test          # 测试（vitest）
 pnpm lint          # ESLint
 pnpm check-types   # tsc --noEmit
 ```
-
-## 文档导航
-
-- `src/AGENTS.md`：**源码模块与 TS 口径**（模块边界与依赖方向、TypeScript 规范、拆分/扩展规则、宿主/客户端契约）。
-- `tests/AGENTS.md`：**测试规范**（目录分层与命名、用例形式、临时目录与外部依赖、契约守卫、覆盖率口径）。
-- `notes/memory.md`：项目记忆索引（新会话先读）。
-- `notes/client-face.md`：**客户端面实测契约**（右侧边栏 seat、`dsh.client` 产物、webServer 路由通道、locale/主题、验证手段与坑）。
-- `notes/dsh-plugin-dev.md`：DSH 插件开发调研（挂载/DI/事件签名/沙箱/开发环）。
-- `notes/mounting.md`：挂载与安装指南（bundle 自挂载、**skill 两形态与卸载**、workspace-write 下 mint 放行选项）。
-- `CONTRIBUTING.md`：人类开发者的开发环、配置与排障参考（README 精简后移出的内容）。
-- `docs/RELEASING.md`：对外发布 runbook（tag gate、双注册表、Release notes、失败处置）；`docs/` 其余 i18n 工程暂不做。

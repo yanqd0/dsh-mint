@@ -1,19 +1,42 @@
-# src/AGENTS.md — 源码模块与 TS 口径（面向 AI）
+# 源码模块与 TS 口径
 
-> 根 `AGENTS.md` 管仓库级硬约束与流程；本文件只管 `src/`：模块边界、TS 口径、拆分规则。测试规范见 `tests/AGENTS.md`。
-> DSH 按触碰路径注入嵌套 AGENTS.md，与根文件共享字节预算 → 细节写 `notes/`。
+编码与测试的通用口径见本目录外：导航与硬约束在根 `AGENTS.md`，测试规范见 `tests/AGENTS.md`。
 
 ## 模块
 
-| 目录 | 是什么 | 可 import |
-| --- | --- | --- |
-| `shared/` | 两侧共享纯数据/工具：records、route-paths、text、git、session-id、types | 无 src 内依赖 |
-| `host/` | 宿主装配与会话集成（context、reminders、planbind 等） | `shared/` |
-| `dag/` | DAG 域：模型、落盘、metrics、生命周期、worktree | `shared/`（边到 host/mint：reminders、plan-mode、cross-project-gate） |
-| `mint/` | mint CLI/工具面与门禁（mint、mint-tool、cross-project、approval-gate 等） | `shared/` |
-| `skill/` | 随包 skill 的安装/同步（≠ 仓根 `skill/` 内容真源） | `shared/` |
-| `client/` | 浏览器半边（esbuild 打包） | 只能 `shared/` 与无 Node 内置依赖的纯模块 |
-| `index.ts` | 宿主入口（tsup key `index`） | 全部 |
+每行注释给出该目录/文件能 import 的模块——依赖单向，`shared/` 不反向依赖：
+
+```text
+src/                                       # 宿主半边（TS）+ 客户端半边（浏览器）
+├── shared/                                # 两侧共享纯数据/工具，无 src 内依赖
+│   ├── records.ts                         # 宿主路由与面板共用的线格式
+│   ├── route-paths.ts                     # 面板路由空间，两侧共读
+│   ├── text.ts / git.ts                   # 文本谓词 / DAG worktree 用的 git 跑壳
+│   └── session-id.ts / types.ts           # 结构面类型：宿主 Agent 会话身份、宿主服务形状
+├── host/                                  # 会话集成，可 import shared 与 mint
+│   ├── context.ts                         # [Mint] 概览注入与工具指引兜底
+│   ├── reminders.ts                       # 工具调用后的事件提醒
+│   ├── planbind.ts / plan-mode.ts         # 计划模式退出/开工门禁 + 会话计划状态
+│   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀）
+│   └── ...                                # session-ledger.ts：会话内 mint 写台账
+├── dag/                                   # 依赖 shared + mint，并反向接 host
+│   ├── dag.ts                             # DAG 数据层（纯函数，无 node: 依赖）
+│   ├── dag-store.ts / dag-lifecycle.ts    # /tmp 文档读写与锁 / 子代理起止配对
+│   ├── dag-tool.ts / worktree-tool.ts     # mint_plan_dag 与 worktree 两个宿主工具
+│   └── ...                                # metrics / plan-reminder / worktree-sweep
+├── mint/                                  # 可 import shared
+│   ├── mint.ts / mint-tool.ts             # CLI 执行与 mint 工具注册
+│   ├── cross-project.ts / ...-gate.ts     # -p 解析与跨项目写门禁
+│   └── ...                                # approval-gate / mint-json / own-project / check-entry-cli
+├── skill/                                 # 随包 skill 的安装与同步（≠ 仓根 skill/ 内容真源）
+│   └── ...                                # install-skill(.ts/-cli.ts) / skill-cli
+├── client/                                # 浏览器半边：只 import shared 与现成纯模块
+│   ├── index.tsx                          # esbuild 预构建入口（dsh.client 产物）
+│   ├── api.ts / model.ts / dag-model.ts   # fetch 通道 / 视图纯逻辑 / DAG 分层
+│   ├── dag-open.ts                        # DAG tab 自动打开探测
+│   └── ...                                # 面板组件：MintBody / Issue* / Container* / DagBody / Rows / styles / types
+└── index.ts                               # 宿主入口（tsup key index），装配全部 install*
+```
 
 ## TypeScript 口径
 
@@ -29,7 +52,7 @@
 ## 拆分与扩展
 
 - 新一级目录：独立域且 ≥3 个生产文件；一级目录 >16 文件或出现明显子簇才切二级。
-- 新模块清单：放文件 → 表格加行 → 全仓 `src/` 引用同步（根 `AGENTS.md`、`CONTRIBUTING.md`、`skill/`、`notes/`）→ 视需要加 tsup/vitest 配置。
+- 新模块清单：放文件 → 模块 tree 加行 → 全仓 `src/` 引用同步（根 `AGENTS.md`、`CONTRIBUTING.md`、`skill/`、`notes/`）→ 视需要加 tsup/vitest 配置。
 - **`dist` 产物名是契约**：tsup entry 的 **key**（`index`/`install-skill`/`check-mint-entry`）与 `dist/client.js`、`dist/skill/` 被 `exports`、`install-dsh.sh`、postinstall 守卫引用；改源路径只改 entry 的 **value**。
 - **`import.meta.url` 深度纪律**：运行时不依赖源码层级（见 `src/mint/mint.ts` 向上找 `package.json`）；测试统一用 `tests/helpers/repo.ts`。
 - 宿主面不得有 client 构建依赖；client bundle 须预构建（否则 `MissingClientBundleError`）。

@@ -1,8 +1,26 @@
-# tests/AGENTS.md — 测试规范（面向 AI）
+# 测试规范
 
-> 只写工具管不到的（prettier/ESLint/tsc/vitest 已管项不复述）；编码见 `src/AGENTS.md`，导航见根 `AGENTS.md`；本文件与根共享注入字节预算。
+编码见 `src/AGENTS.md`，导航与硬约束见根 `AGENTS.md`。
 
-**落点**：镜像优先 `tests/unit/<域>/<模块>.test.ts` ↔ `src/<域>/<模块>.ts`；无单一被测模块、守仓根契约/产物的 → `tests/guard/`；必须 `.test.ts`（其它后缀被 vitest 默认 glob 静默漏跑）；路径定位用 `tests/helpers/repo.ts`，不手数 `..`。
+## 落点
+
+单元测试镜像 `src/` 的域：`tests/unit/<域>/<模块>.test.ts` ↔ `src/<域>/<模块>.ts`；无单一被测模块、守仓根契约/产物的落 `guard/`：
+
+```text
+tests/                                     # 测试根：单元镜像 src/，守卫盯仓根契约
+├── guard/                                 # 守仓根契约与产物：bundle、注入预算、安装脚本、README 对、skill 文档、包清单
+│   └── ...                                # 一契约一文件，见下方「契约守卫」段
+├── helpers/repo.ts                        # 仓根与 fixture 定位（不手数 ..）
+├── unit/shared/                           # 与 src/shared 对称：文本谓词、路由空间
+├── unit/mint/                             # mint CLI/工具面与两条门禁
+├── unit/host/                             # 注入、提醒、路由、计划门禁与台账
+├── unit/dag/                              # DAG 模型/落盘/生命周期/指标/worktree
+├── unit/skill/                            # skill 安装与命令面
+├── unit/client/                           # 面板视图逻辑与产物
+└── unit/                                  # 另有 index.test.ts（宿主入口装配）
+```
+
+- 必须 `.test.ts`（其它后缀被 vitest 默认 glob 静默漏跑）；路径定位用 `tests/helpers/repo.ts`，不手数 `..`。
 
 **用例**：`describe` = 被测单元，`it` = 「场景 + 预期」（不用裸 `test()`、不写 class）；≥3 组同构输入用 `it.each`；一个 `it` 只断言一个行为，断言写具体值；循环断言要能定位失败输入。
 
