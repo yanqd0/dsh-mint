@@ -9,6 +9,8 @@ import type { MintRunResult } from '../mint/mint.js';
 import { isRecord, parseDetail, parseItems } from '../mint/mint-json.js';
 import { noteOwnProject } from '../mint/own-project.js';
 import { sessionIdOf } from '../shared/session-id.js';
+import { delegationShape, readSubagentDepth, renderOverviewDepthLine } from './subagent-depth.js';
+import type { SubagentDepth } from './subagent-depth.js';
 import { takeRecordGapNotice } from './session-ledger.js';
 import type { AgentLike, DshContext } from '../shared/types.js';
 
@@ -424,15 +426,24 @@ export const RECORD_GAP_LINE =
  * `cwd` is the session's workspace (project) directory, which mint uses for
  * project lookup. `sessionId` (when the host gives one) is what the record-gap
  * line is keyed by; without it that line never renders.
+ *
+ * `depthProbe` 是宿主委派深度的探针（缺省用 `agentCtx` 自己读）。它被抽成参数是因为
+ * 概览装在 **agent 的 ctx** 上，而 `subagents` 服务装在**根 ctx** 上：装配处
+ * （{@link installOverviewChannel}）显式传根 ctx 的探针，旧调用点则零改动。
+ * 探针是同步的（`text()` 同步渲染），且**每次装配现读**：用户在 GUI 改完设置，
+ * 下一次请求就准。
  */
 export function registerMintContext(
   agentCtx: DshContext,
   cwd: string,
   entry?: string,
-  sessionId?: string
+  sessionId?: string,
+  depthProbe?: () => SubagentDepth
 ): (() => void) | undefined {
   const sp = agentCtx.systemPrompt;
   if (!sp) return undefined;
+
+  const probeDepth = depthProbe ?? (() => readSubagentDepth(agentCtx));
 
   let cached = '';
   let started = false;
@@ -470,12 +481,19 @@ export function registerMintContext(
         started = true;
         void load();
       }
+      // 空 body 意味着 mint 读不出来：此时空串（或入口 WARNING 行）才是可行动信号，
+      // 不要再叠一条降级说明。降级行每次都现读——宿主设置改完下一次请求就准。
+      if (cached === '') return cached;
+      const depthLine = renderOverviewDepthLine(delegationShape(probeDepth()));
       // The cached body loads once; the record-gap line is a per-assembly condition
       // on top of it (and consumes its one shot here, matching the exit notice's
-      // "tell it once" semantics). An empty body means mint is unreadable, where
-      // the WARNING line already carries the actionable signal.
-      if (cached === '' || !takeRecordGapNotice(sessionId)) return cached;
-      return `${cached}\n${RECORD_GAP_LINE}`;
+      // "tell it once" semantics). 降级行在 body 之后、record-gap 行之前：它是宿主
+      // 事实，比「本会话尚未登记」更基础，也不吃 record-gap 的一次性额度。
+      const gap = takeRecordGapNotice(sessionId);
+      const parts = [cached];
+      if (depthLine !== '') parts.push(depthLine);
+      if (gap) parts.push(RECORD_GAP_LINE);
+      return parts.join('\n');
     },
   });
 
@@ -547,7 +565,7 @@ export function installOverviewChannel(ctx: DshContext, entry?: string): () => v
         }
         registered.add(sessionId);
       }
-      registerMintContext(agent.ctx, cwd, entry, sessionId);
+      registerMintContext(agent.ctx, cwd, entry, sessionId, () => readSubagentDepth(ctx));
     } catch {
       // Contained on purpose: see the `agent/created` note above.
     }

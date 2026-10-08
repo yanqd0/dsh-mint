@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runGit } from '../../../src/shared/git.js';
 import type { DagNodeView } from '../../../src/shared/records.js';
-import { readDag } from '../../../src/dag/dag-store.js';
+import { dagFilePath, readDag } from '../../../src/dag/dag-store.js';
 import { executeDagTool } from '../../../src/dag/dag-tool.js';
 import {
   TOOL_NAME,
@@ -113,6 +113,27 @@ async function addNode(id: string, session: string = SESSION): Promise<void> {
   expect(added.ok).toBe(true);
 }
 
+/**
+ * 手写一份**读不回来**的 DAG 文档（未来版本号）：`readDag` 因此答 `unreadable`。
+ * 夹具刻意不依赖节点 id 的字符集——那条校验属于 `dag.ts` 的写/读路径，不是本工具的契约。
+ */
+function writeUnreadableDoc(session: string = SESSION): void {
+  writeFileSync(
+    dagFilePath(session, dir),
+    JSON.stringify({
+      version: 99,
+      session,
+      title: 'broken',
+      revision: 1,
+      created_at: 'T',
+      updated_at: 'T',
+      nodes: [],
+      edges: [],
+    }),
+    'utf8'
+  );
+}
+
 /** The node as the stored document currently has it. */
 async function node(session: string = SESSION): Promise<DagNodeView | undefined> {
   const read = await readDag(session, dir);
@@ -197,6 +218,32 @@ describe('installWorktreeTool', () => {
     expect(outcome.ok).toBe(true);
     expect(outcome.summary).toContain('[worktree] create a1');
     expect((await node('root'))?.worktree?.state).toBe('active');
+  });
+
+  it('refuses a node action when the delegation chain leaves the registry, naming the missing session', async () => {
+    // 链断在中途（`mid` 不在册）：installer 把归属解析的失败原样传给执行器，节点动作
+    // 必须拒绝并点名那个查不到的会话；`list` 是仓库级动作，照样能跑。
+    const agents: AgentsLike = {
+      get: (id) =>
+        id === 'child'
+          ? { session: { id: 'child', header: { parentSession: 'mid' } } }
+          : undefined,
+    };
+    const { ctx, registered } = toolContext({ agents });
+    installWorktreeTool(ctx, dir);
+    const execute = registered[0]?.execute;
+    const exec = {
+      name: TOOL_NAME,
+      arguments: {},
+      agent: { session: { id: 'child', header: { cwd: repo } } },
+    };
+
+    const refused = (await execute?.({ action: 'create', node: 'a1' }, exec)) as WorktreeToolOutcome;
+    expect(refused.ok).toBe(false);
+    expect(refused.summary).toContain('查不到链上会话 mid');
+
+    const listed = (await execute?.({ action: 'list' }, exec)) as WorktreeToolOutcome;
+    expect(listed.ok).toBe(true);
   });
 });
 
@@ -302,6 +349,18 @@ describe('executeWorktreeTool', () => {
     );
     expect(noSession.ok).toBe(false);
     expect(noSession.summary).toContain('无法确定会话');
+  });
+
+  it('echoes why a DAG is unreadable instead of reporting the empty state', async () => {
+    // 「没有文档」与「有文档但读不了」是两件事：后者必须原样回显 readDag 的原因，
+    // 否则真正的原因会被「先 init 建立」的文案盖掉。
+    writeUnreadableDoc();
+
+    const refused = await runWorktree({ action: 'create', node: 'a1' });
+    expect(refused.ok).toBe(false);
+    expect(refused.summary).toContain('DAG 不可读');
+    expect(refused.summary).toContain('unsupported version: 99');
+    expect(refused.summary).not.toContain('暂无 DAG');
   });
 
   it('creates a worktree and records it on the node', async () => {

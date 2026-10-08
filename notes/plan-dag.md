@@ -123,11 +123,18 @@
 
 - 监听 `subagent/start` / `subagent/end`：宿主 `SubagentRunInfo` / `SubagentRunEndInfo` 含
   `runId`、`id`（子 sessionId）、`stopReason`（`end` 侧）。
-- **归属会话 = 根会话**：两个监听都用 `rootSessionId`（`src/shared/session-id.ts`）沿
-  `session.header.parentSession` 上溯到顶。二级子代理的**直接父**是中间子代理，拿它当归属就会写到一张
-  不存在的 `<中间子会话>.json`（`updateDag` 对没有的会话静默 skip）——上溯到根才写进 main 的那张图。
-  上溯不出来时（注册表 entry 没有 `session.id`、链上有环、超过 16 跳）**退回直接父会话**：那正是本改动
-  前的口径，一级委派仍然正确，也仍然不会新建文档。
+- **归属会话 = 根会话**：两个监听都用 `ownerOfSession`（`src/dag/dag-lifecycle.ts`），它包着
+  `src/shared/session-id.ts` 的 `rootSession` 沿 `session.header.parentSession` 上溯到顶。二级子代理的
+  **直接父**是中间子代理，拿它当归属就会写到一张不存在的 `<中间子会话>.json`（`updateDag` 对没有的会话
+  静默 skip）——上溯到根才写进 main 的那张图。
+- **两种出口可区分，链断在中途就不认领**：`rootSession` 不把「注册表里查不到下一跳」当成根，而是答
+  `{ id, resolved: false }`。走到顶（`resolved: true`）用那个根；断在**起点**（无注册表的 lean 宿主、
+  或调用者自己就是顶层）取直接父会话——那正是本改动前的口径，一级委派仍然正确，也仍然不会新建文档；
+  断在**中途**则 `ownerOfSession` 答 `undefined`、这次派发**不认领**：中间会话既不是根（写它的文件不是
+  main 那张图），又可能撞上一份同名旧文档。上溯直接失败（读不出起点 id / 链上有环 / 超过 16 跳）同样不认领。
+- **工具面同理但更严**：`resolveToolOwner`（同一模块）把两种出口翻成「能用 / 不能用」——断在中途时
+  `mint_plan_dag` 与 `worktree` 直接拒绝并**点名**那个查不到的会话（installer 以 `ownerError` 传给执行器），
+  绝不退化成「先 init 建立」；断在起点仍放行（lean 宿主没有注册表可用，收紧会让一级委派全废）。
 - `start` 的**认领是父感知的**（`claimNextNode`）：① 按**直接父会话**（`child.session.header.parentSession`）
   在文档里找父节点（`node.agent === 父会话`，从后往前）；② 找到后在 `status='running'` 且 `agent` 为空的
   节点里**优先**认领 `depends_on` 指向该父节点的那个（多个时取数组里最后一个）——dev/test 对里 test 节点
@@ -220,7 +227,7 @@
 
 - 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
   key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
-  `dag-lifecycle.ts` 沿 `header.parentSession` 解析图归属（`rootSessionId`）走的是同一类注册表查找。
+  `dag-lifecycle.ts` 沿 `header.parentSession` 解析图归属（`rootSession`）走的是同一类注册表查找。
 - **宿主侧**：`src/dag/dag-metrics.ts`（`tokenTotal` / `activeElapsedMs` / `nodeMetrics` / `mergeMetrics` /
   `measureDagNodes`；`readDagMetrics` 是它的薄封装），由 `/dsh-mint/dag` 调用；**只发实测过的字段**——
   缺失就是缺失，绝不写 0 猜测。
@@ -337,7 +344,8 @@
 ### 7.2 口径（本轮用户拍板）
 
 - **DAG 归属会话解析到根会话**：工具与生命周期监听都沿 `session.header.parentSession` 上溯（工具与
-  `rootSessionId` 同一规则：上限 16 跳 + visited 集合防环），子代理 `set` 与宿主 `subagent/start` 写的
+  `rootSession` 同一规则：上限 16 跳 + visited 集合防环；注册表答不出下一跳时回 `resolved:false`，
+  工具面据此拒绝、生命周期据此不认领——见 §3），子代理 `set` 与宿主 `subagent/start` 写的
   **就是 main 会话那张图**；面板只读 main 会话文件。
 - **`init` / `add` 不做身份硬拦**（只做数据校验），靠 skill 口径约束：
   `skill/references/plan-dag.md` §4.1——新增节点/连边归 main，子代理只 `set` 自己的节点、可 `get`。

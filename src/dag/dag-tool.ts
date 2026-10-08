@@ -12,8 +12,8 @@
  * Two properties shape the surface:
  *
  * - **One DAG per root session.** A subagent writes the graph of the session it
- *   was delegated from (`rootSessionId`), so the panel of the main session
- *   shows the whole run instead of one fragment per child.
+ *   was delegated from ({@link resolveToolOwner} → {@link rootSession}), so the
+ *   panel of the main session shows the whole run instead of one fragment per child.
  * - **A bounded answer.** Every action returns at most a few lines
  *   ({@link dagSummary}); the full graph goes to the panel through the read-only
  *   route, never back into the model's context.
@@ -34,7 +34,9 @@ import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf 
 import type { DagDoc, DagWrite } from './dag.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
-import { rootSessionId, sessionIdOf } from '../shared/session-id.js';
+import { delegationShape, readSubagentDepth, renderDagDepthNotice } from '../host/subagent-depth.js';
+import type { SubagentDepth } from '../host/subagent-depth.js';
+import { resolveToolOwner, sessionIdOf } from '../shared/session-id.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
   AgentsLike,
@@ -115,7 +117,10 @@ const DAG_TOOL_PARAMETERS: Record<string, unknown> = {
         type: 'object',
         additionalProperties: false,
         properties: {
-          id: { type: 'string', description: '节点 id，文档内唯一' },
+          id: {
+            type: 'string',
+            description: '节点 id（限字母数字与 . _ -，首字符须字母/数字，文档内唯一）',
+          },
           label: { type: 'string', description: '节点上显示的短标签（≤6 字）' },
           title: { type: 'string', description: '完整标题，悬停显示' },
           phase: { type: 'string', enum: ['research', 'exec'], description: '所属阶段' },
@@ -168,6 +173,17 @@ function refusal(reason: string): DagToolOutcome {
 /** An answer; the caller supplies the already-formatted body. */
 function answer(text: string): DagToolOutcome {
   return { ok: true, summary: `${PREFIX}${text}` };
+}
+
+/**
+ * 成功回答 + 可选的委派降级提示（单独一行）。
+ *
+ * 降级是**宿主设置**的事实，不是这次写入的结果，所以它只追加、绝不替代回答正文；
+ * 正常机器与读不到深度时 `renderDagDepthNotice` 返回空串，回答逐字不变。
+ */
+function withDepthNotice(text: string, depth: SubagentDepth | undefined): string {
+  const notice = depth === undefined ? '' : renderDagDepthNotice(delegationShape(depth));
+  return notice === '' ? text : `${text}\n${notice}`;
 }
 
 /** The document a write produced, or the reason there is none. */
@@ -304,6 +320,8 @@ function measuredNode(
  *   node), the optional DAG directory (tests point it at a temp directory), and
  *   the host services a settling measurement reads (`agents`/`projections`;
  *   absent means the sample step is skipped, never that the action fails).
+ *   `ownerError` 是 installer 解析归属失败时的原因：它在**任何文档读写之前**被回绝，
+ *   所以一个查不到根的调用不会先建文件再报错。
  * @param rawArgs - the tool call's arguments, however malformed.
  */
 export async function executeDagTool(
@@ -313,9 +331,15 @@ export async function executeDagTool(
     dagDir?: string;
     agents?: AgentsLike;
     projections?: SessionProjectionsLike;
+    /** 归属解析失败的文案；给了就整单拒绝，不碰文档。 */
+    ownerError?: string;
+    /** 宿主本次生效的 `subagent.maxDepth`，只用于在成功回答末尾追加降级提示。 */
+    subagentDepth?: SubagentDepth;
   },
   rawArgs: unknown
 ): Promise<DagToolOutcome> {
+  // 归属先于一切：链上缺人时连参数都不必解析——这条路径不该留下任何文件痕迹。
+  if (input.ownerError !== undefined) return refusal(input.ownerError);
   const parsed = parseDagAction(rawArgs);
   if ('error' in parsed) return refusal(parsed.error);
   const { sessionId } = input;
@@ -330,11 +354,11 @@ export async function executeDagTool(
     const read = await readDag(sessionId, dir);
     // A missing file is the normal "no plan yet" state, not a failure
     // (`notes/plan-dag.md` §1.5), so it answers ok with the empty-state line.
-    if (read.state === 'missing') return answer('本会话暂无 DAG');
+    if (read.state === 'missing') return answer(withDepthNotice('本会话暂无 DAG', input.subagentDepth));
     if (read.state === 'unreadable') {
       return { ok: false, summary: `${PREFIX}DAG 不可读：${read.error}（${read.file}）` };
     }
-    return answer(dagSummary(read.doc));
+    return answer(withDepthNotice(dagSummary(read.doc), input.subagentDepth));
   }
   // The write actions are one read-modify-write each: `applyDagWrite` owns the
   // graph rules and refuses without touching the file.
@@ -359,10 +383,14 @@ export async function executeDagTool(
   if ('error' in applied) return refusal(applied.error);
   const doc = applied.doc;
   if (parsed.action === 'init') {
-    return answer(`已初始化 DAG「${doc.title}」（session ${sessionId}）`);
+    return answer(
+      withDepthNotice(`已初始化 DAG「${doc.title}」（session ${sessionId}）`, input.subagentDepth)
+    );
   }
   if (parsed.action === 'add') {
-    return answer(`${addedCounts(parsed)}；${dagSummary(doc)}`);
+    return answer(
+      withDepthNotice(`${addedCounts(parsed)}；${dagSummary(doc)}`, input.subagentDepth)
+    );
   }
   // A node the model just settled is the host's last chance to measure its
   // child: the sample is written after the answer's own document, so it can
@@ -391,8 +419,8 @@ export async function executeDagTool(
  *
  * The plugin's root context is the global layer, so **every** agent inherits the
  * tool — including in-process subagents, which is exactly who needs to report a
- * node's status back (`rootSessionId` maps their call onto the main session's
- * graph).
+ * node's status back (`resolveToolOwner` maps their call onto the main session's
+ * graph; a chain that breaks mid-way is refused rather than written to a guess).
  *
  * @param ctx - the plugin's root context.
  * @param dagDir - DAG directory override; absent means `DAG_DIR`.
@@ -416,20 +444,25 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
     },
     execute: async (rawArgs, exec: ToolExecutionLike) => {
       const agents = ctx.get?.('agents') as AgentsLike | undefined;
-      const sessionId = rootSessionId(exec?.agent, agents);
+      const owner = resolveToolOwner(exec?.agent, agents);
       // 测量键 = 调用者**自己**的会话：子代理收尾自己节点时它必然活着，比节点上可能
-      // 错位的 `agent` 可靠；`rootSessionId` 只回答图归谁，两者不是一回事。
+      // 错位的 `agent` 可靠；归属解析只回答图归谁，两者不是一回事。
       const callerId = sessionIdOf(exec?.agent);
       // The sample step reads the same two host services the DAG route does,
       // resolved per call because a composition may mount them after this tool.
       const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+      // 降级提示同样每次现读：`subagents` 可能装在本插件之后，而设置改完**下一次
+      // 委派**就生效，所以缓存一个值必然过时。
+      const subagentDepth = readSubagentDepth(ctx);
       return executeDagTool(
         {
-          sessionId,
+          sessionId: owner.ok ? owner.id : undefined,
+          ...(owner.ok ? {} : { ownerError: owner.error }),
           callerId,
           ...(dagDir === undefined ? {} : { dagDir }),
           ...(agents === undefined ? {} : { agents }),
           ...(projections === undefined ? {} : { projections }),
+          subagentDepth,
         },
         rawArgs
       );

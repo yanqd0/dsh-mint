@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from '../../src/host/context.js';
+import {
+  renderDagDepthNotice,
+  renderOverviewDepthLine,
+} from '../../src/host/subagent-depth.js';
 import { DAG_TOOL_DESCRIPTION } from '../../src/dag/dag-tool.js';
 import { WORKTREE_TOOL_DESCRIPTION } from '../../src/dag/worktree-tool.js';
 import { MINT_ENTRY_WARNING } from '../../src/mint/mint.js';
@@ -224,5 +228,33 @@ describe('per-request injection budget', () => {
   it('keeps the record-gap line within budget', () => {
     expect(RECORD_GAP_LINE.startsWith('[Mint] ')).toBe(true);
     expect(bytes(RECORD_GAP_LINE)).toBeLessThanOrEqual(300);
+  });
+
+  // The delegation-downgrade lines are condition lines too: they render only on a
+  // host whose `subagent.maxDepth < 2`, so a normal machine pays **zero** extra
+  // bytes (the two-level/unknown shapes must stay empty strings). When they do
+  // render they are per-request, so each has its own small ceiling — but both the
+  // GUI path (the only way to fix it) and "next delegation" (when it lands) have
+  // to survive the trim.
+  it('keeps the delegation-downgrade lines small and gated', () => {
+    for (const shape of ['single-agent', 'no-delegation'] as const) {
+      const line = renderOverviewDepthLine(shape);
+      expect(line.startsWith('[Mint] '), shape).toBe(true);
+      expect(line, shape).toContain('设置 → 插件 → 子智能体 → 最大递归深度');
+      expect(line, shape).toContain('下一次委派');
+      expect(bytes(line), shape).toBeLessThanOrEqual(280);
+    }
+    // 正常机器（两级）与读不到深度都不渲染：零新增字节。
+    expect(renderOverviewDepthLine('two-level')).toBe('');
+    expect(renderOverviewDepthLine('unknown')).toBe('');
+    expect(renderDagDepthNotice('two-level')).toBe('');
+    expect(renderDagDepthNotice('unknown')).toBe('');
+
+    // 工具回答里的两条同源不同长：同样两件事都在。
+    for (const shape of ['single-agent', 'no-delegation'] as const) {
+      const notice = renderDagDepthNotice(shape);
+      expect(notice, shape).toContain('设置 → 插件 → 子智能体 → 最大递归深度');
+      expect(notice, shape).toContain('下一次委派');
+    }
   });
 });

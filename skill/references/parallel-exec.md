@@ -98,6 +98,8 @@
 - **返工 = reopen 同一 test 节点**：test `fail` → dev 侧改写 → **补 commit** → `set` test 节点 `running`
   重派二级子代理；**不新增节点、不加边、不成环**（`dag-exec.md` §5）。
 - **两级上限**：二级不得再往下派；受宿主 `subagent.maxDepth` 限制（本机设为 2）。
+- **宿主 `maxDepth < 2` 时由插件降级**：dev/test 对由同一个子代理（先按 dev 白名单改码提交、再在同会话内
+  只读自检）收尾，二级子代理不再派；`mint_plan_dag` 的回答与 `[Mint]` 概览里会给出恢复路径。
 
 ## 4. 单写者职责
 

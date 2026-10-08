@@ -36,7 +36,7 @@ import { isRecord } from '../mint/mint-json.js';
 import { runGit } from '../shared/git.js';
 import type { GitRunResult } from '../shared/git.js';
 import type { DagNodeView, DagWorktree } from '../shared/records.js';
-import { rootSessionId } from '../shared/session-id.js';
+import { resolveToolOwner } from '../shared/session-id.js';
 import { hasControlCharacter } from '../shared/text.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
@@ -155,6 +155,12 @@ export interface WorktreeToolInput {
    * than omitting the key (`exactOptionalPropertyTypes`).
    */
   sessionId?: string | undefined;
+  /**
+   * 归属解析失败的文案（installer 给）。节点动作要写某个会话的文档，所以先在
+   * {@link WorktreeToolInput.sessionId} 之前回绝；`list`/`prune` 是仓库级动作，
+   * 不读文档也不认节点，故不受它影响。
+   */
+  ownerError?: string;
   /** Absolute repository root the worktrees belong to. */
   repo?: string;
   /** DAG directory override; absent means `DAG_DIR`. */
@@ -304,6 +310,9 @@ export async function executeWorktreeTool(
     return answer(lines.join('\n'));
   }
 
+  // 归属解析失败（链上查不到人）比「这个会话还没有 DAG」更根本：它连该读哪张图都
+  // 不确定，所以在这里回绝，绝不退化成「先 init 建立」。
+  if (input.ownerError !== undefined) return refusal(input.ownerError);
   const sessionId = input.sessionId;
   if (sessionId === undefined) {
     return refusal('无法确定会话：请在本会话内调用（需要 agent session id）');
@@ -316,6 +325,11 @@ export async function executeWorktreeTool(
   // The graph is where the record lands, so every node action needs one: a
   // worktree nobody recorded is precisely the leftover this tool exists to avoid.
   if (read.state !== 'ok') {
+    // 「没有文档」与「有文档但读不了」是两件事：后者必须原样回显（readDag 的错误里
+    // 点名违规的节点 id），否则会被「先 init 建立」的文案盖掉真正的原因。
+    if (read.state === 'unreadable') {
+      return refusal(`DAG 不可读：${read.error}（${read.file}）`);
+    }
     return refusal('本会话暂无 DAG；先 mint_plan_dag({action:"init"}) 建立 DAG，再用 worktree');
   }
 
@@ -410,14 +424,15 @@ export function installWorktreeTool(ctx: DshContext, dagDir?: string): (() => vo
     },
     execute: async (rawArgs, exec: ToolExecutionLike) => {
       const agents = ctx.get?.('agents') as AgentsLike | undefined;
-      const sessionId = rootSessionId(exec?.agent, agents);
+      const owner = resolveToolOwner(exec?.agent, agents);
       // The tree lives inside the **root** session's repository (the same cwd the
       // panel's project reads), so the git runs where the agents that use the
       // path can reach it — not wherever a subagent happens to be.
       const repo = exec?.agent?.session?.header?.cwd;
       return executeWorktreeTool(
         {
-          sessionId,
+          sessionId: owner.ok ? owner.id : undefined,
+          ...(owner.ok ? {} : { ownerError: owner.error }),
           // `exactOptionalPropertyTypes`: an unresolved cwd omits the key rather
           // than passing `undefined`, which the executor reads as "no repo".
           ...(repo === undefined ? {} : { repo }),
