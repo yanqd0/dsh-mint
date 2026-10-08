@@ -46,12 +46,21 @@ function run(session: string | undefined, args: unknown): Promise<DagToolOutcome
   return executeDagTool({ sessionId: session, dagDir: dir }, args);
 }
 
-/** A context that records what `installDagTool` registers. */
-function toolContext(options?: { agents?: AgentsLike }): {
+/**
+ * A context that records what `installDagTool` registers.
+ *
+ * Services are looked up by name because the installer reads two independent ones
+ * (`agents` for ownership, `subagents` for the delegation-depth notice) and a
+ * composition may mount either one late.
+ */
+function toolContext(options?: { agents?: AgentsLike; subagents?: unknown }): {
   ctx: DshContext;
   registered: ToolDefinitionLike[];
 } {
   const registered: ToolDefinitionLike[] = [];
+  const services: Record<string, unknown> = {};
+  if (options?.agents !== undefined) services['agents'] = options.agents;
+  if (options?.subagents !== undefined) services['subagents'] = options.subagents;
   const ctx: DshContext = {
     on: () => () => {},
     tools: {
@@ -60,9 +69,14 @@ function toolContext(options?: { agents?: AgentsLike }): {
         return () => {};
       },
     },
-    ...(options?.agents === undefined ? {} : { get: () => options.agents }),
+    ...(options === undefined ? {} : { get: (name: string) => services[name] }),
   };
   return { ctx, registered };
+}
+
+/** 一份把 `maxDepth` 报成 `value` 的假 `subagents` 服务。 */
+function subagents(value: unknown): unknown {
+  return { resolveMaxDepth: () => value };
 }
 
 describe('installDagTool', () => {
@@ -173,6 +187,78 @@ describe('installDagTool', () => {
     expect(outcome.summary).toContain('查不到链上会话 mid');
     // 归属不定的调用不碰文档：链上那个会话的图一张都没建。
     expect((await readDag('mid', dir)).state).toBe('missing');
+  });
+});
+
+describe('installDagTool 的委派降级提示', () => {
+  /** 一个能让调用者解析到归属的最小注册表：`s1` 自己就是根。 */
+  const ROOT_AGENTS: AgentsLike = {
+    get: (id) => (id === 's1' ? { session: { id: 's1', header: {} } } : undefined),
+  };
+
+  /** 装好工具，返回「以 `s1` 身份调一次」的执行面；`service` 缺省即没有该服务。 */
+  function installer(
+    service?: unknown
+  ): (args: unknown) => Promise<DagToolOutcome> {
+    const { ctx, registered } = toolContext({
+      agents: ROOT_AGENTS,
+      ...(service === undefined ? {} : { subagents: service }),
+    });
+    installDagTool(ctx, dir);
+    const execute = registered[0]?.execute;
+    if (execute === undefined) throw new Error('installDagTool registered nothing');
+    return (args) =>
+      execute(args, {
+        name: TOOL_NAME,
+        arguments: {},
+        agent: { session: { id: 's1' } },
+      }) as Promise<DagToolOutcome>;
+  }
+
+  it('appends the downgrade line to init/add/get at maxDepth 1', async () => {
+    const run = installer(subagents(1));
+    const init = await run({ action: 'init', title: 'x' });
+    expect(init.summary).toContain('委派降级：宿主 subagent.maxDepth=1');
+    const add = await run({
+      action: 'add',
+      nodes: [{ id: 'a', label: '总①', title: 't', phase: 'exec' }],
+    });
+    expect(add.summary).toContain('委派降级：宿主 subagent.maxDepth=1');
+    const get = await run({ action: 'get' });
+    expect(get.summary).toContain('委派降级：宿主 subagent.maxDepth=1');
+  });
+
+  it('leaves set without the downgrade line, since it cannot change the dispatch shape', async () => {
+    const run = installer(subagents(1));
+    await run({ action: 'init', title: 'x' });
+    await run({
+      action: 'add',
+      nodes: [{ id: 'a', label: '总①', title: 't', phase: 'exec' }],
+    });
+    const set = await run({ action: 'set', id: 'a', status: 'running' });
+    expect(set.ok).toBe(true);
+    expect(set.summary).not.toContain('委派降级');
+  });
+
+  it('adds no downgrade line at two levels, when the method is missing, or when it throws', async () => {
+    const cases: ReadonlyArray<readonly [string, unknown]> = [
+      ['two levels', subagents(2)],
+      ['an undefined answer', subagents(undefined)],
+      ['a service without the method', {}],
+      [
+        'a throwing method',
+        {
+          resolveMaxDepth: () => {
+            throw new Error('service gone');
+          },
+        },
+      ],
+      ['no subagents service at all', undefined],
+    ];
+    for (const [label, service] of cases) {
+      const init = await installer(service)({ action: 'init', title: 'x' });
+      expect(init.summary, label).not.toContain('委派降级');
+    }
   });
 });
 

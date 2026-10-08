@@ -621,6 +621,43 @@ describe('registerMintContext', () => {
     expect(provider()).not.toContain(RECORD_GAP_LINE);
   });
 
+  it('adds the delegation-downgrade line when the host caps maxDepth at 1', async () => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    // 探针由装配处（`installOverviewChannel`）给根 ctx 的那个：这里直接注入。
+    registerMintContext(ctx, '/proj', undefined, undefined, () => ({
+      kind: 'reported',
+      maxDepth: 1,
+    }));
+    const provider = registered[0]?.text as () => string;
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    const text = provider();
+    expect(text).toContain('[Mint] 委派降级：宿主 subagent.maxDepth=1');
+    expect(text).toContain('设置 → 插件 → 子智能体 → 最大递归深度');
+    // 降级行在 body 之后：它是宿主事实，不是概览正文的一部分。
+    expect(text.endsWith('下一次委派生效）。')).toBe(true);
+  });
+
+  it.each([
+    ['two levels', { kind: 'reported', maxDepth: 2 } as const],
+    ['an unreadable depth', { kind: 'unknown' } as const],
+  ])('adds no delegation line for %s', async (_label, depth) => {
+    runMintMock
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
+      .mockResolvedValueOnce({ ok: true, text: 'mint 0.8.0-alpha.1\n' });
+    const { ctx, registered } = makeAgentCtx();
+    registerMintContext(ctx, '/proj', undefined, undefined, () => depth);
+    const provider = registered[0]?.text as () => string;
+    await vi.waitFor(() => expect(provider()).not.toBe(''));
+
+    expect(provider()).not.toContain('委派降级');
+  });
+
   it('remembers the project the overview resolved, keyed by directory', async () => {
     runMintMock
       .mockResolvedValueOnce({

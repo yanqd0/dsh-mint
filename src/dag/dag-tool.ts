@@ -34,6 +34,8 @@ import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf 
 import type { DagDoc, DagWrite } from './dag.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
+import { delegationShape, readSubagentDepth, renderDagDepthNotice } from '../host/subagent-depth.js';
+import type { SubagentDepth } from '../host/subagent-depth.js';
 import { resolveToolOwner, sessionIdOf } from '../shared/session-id.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
 import type {
@@ -171,6 +173,17 @@ function refusal(reason: string): DagToolOutcome {
 /** An answer; the caller supplies the already-formatted body. */
 function answer(text: string): DagToolOutcome {
   return { ok: true, summary: `${PREFIX}${text}` };
+}
+
+/**
+ * 成功回答 + 可选的委派降级提示（单独一行）。
+ *
+ * 降级是**宿主设置**的事实，不是这次写入的结果，所以它只追加、绝不替代回答正文；
+ * 正常机器与读不到深度时 `renderDagDepthNotice` 返回空串，回答逐字不变。
+ */
+function withDepthNotice(text: string, depth: SubagentDepth | undefined): string {
+  const notice = depth === undefined ? '' : renderDagDepthNotice(delegationShape(depth));
+  return notice === '' ? text : `${text}\n${notice}`;
 }
 
 /** The document a write produced, or the reason there is none. */
@@ -320,6 +333,8 @@ export async function executeDagTool(
     projections?: SessionProjectionsLike;
     /** 归属解析失败的文案；给了就整单拒绝，不碰文档。 */
     ownerError?: string;
+    /** 宿主本次生效的 `subagent.maxDepth`，只用于在成功回答末尾追加降级提示。 */
+    subagentDepth?: SubagentDepth;
   },
   rawArgs: unknown
 ): Promise<DagToolOutcome> {
@@ -339,11 +354,11 @@ export async function executeDagTool(
     const read = await readDag(sessionId, dir);
     // A missing file is the normal "no plan yet" state, not a failure
     // (`notes/plan-dag.md` §1.5), so it answers ok with the empty-state line.
-    if (read.state === 'missing') return answer('本会话暂无 DAG');
+    if (read.state === 'missing') return answer(withDepthNotice('本会话暂无 DAG', input.subagentDepth));
     if (read.state === 'unreadable') {
       return { ok: false, summary: `${PREFIX}DAG 不可读：${read.error}（${read.file}）` };
     }
-    return answer(dagSummary(read.doc));
+    return answer(withDepthNotice(dagSummary(read.doc), input.subagentDepth));
   }
   // The write actions are one read-modify-write each: `applyDagWrite` owns the
   // graph rules and refuses without touching the file.
@@ -368,10 +383,14 @@ export async function executeDagTool(
   if ('error' in applied) return refusal(applied.error);
   const doc = applied.doc;
   if (parsed.action === 'init') {
-    return answer(`已初始化 DAG「${doc.title}」（session ${sessionId}）`);
+    return answer(
+      withDepthNotice(`已初始化 DAG「${doc.title}」（session ${sessionId}）`, input.subagentDepth)
+    );
   }
   if (parsed.action === 'add') {
-    return answer(`${addedCounts(parsed)}；${dagSummary(doc)}`);
+    return answer(
+      withDepthNotice(`${addedCounts(parsed)}；${dagSummary(doc)}`, input.subagentDepth)
+    );
   }
   // A node the model just settled is the host's last chance to measure its
   // child: the sample is written after the answer's own document, so it can
@@ -432,6 +451,9 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
       // The sample step reads the same two host services the DAG route does,
       // resolved per call because a composition may mount them after this tool.
       const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
+      // 降级提示同样每次现读：`subagents` 可能装在本插件之后，而设置改完**下一次
+      // 委派**就生效，所以缓存一个值必然过时。
+      const subagentDepth = readSubagentDepth(ctx);
       return executeDagTool(
         {
           sessionId: owner.ok ? owner.id : undefined,
@@ -440,6 +462,7 @@ export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) |
           ...(dagDir === undefined ? {} : { dagDir }),
           ...(agents === undefined ? {} : { agents }),
           ...(projections === undefined ? {} : { projections }),
+          subagentDepth,
         },
         rawArgs
       );

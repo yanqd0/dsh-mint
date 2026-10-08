@@ -15,6 +15,7 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 │   └── session-id.ts / types.ts           # 结构面类型：宿主 Agent 会话身份、宿主服务形状
 ├── host/                                  # 会话集成，可 import shared 与 mint
 │   ├── context.ts                         # [Mint] 概览注入与工具指引兜底
+│   ├── subagent-depth.ts                  # 宿主 subagent.maxDepth 生效值探测与降级文案
 │   ├── reminders.ts                       # 工具调用后的事件提醒
 │   ├── planbind.ts / plan-mode.ts         # 计划模式退出/开工门禁 + 会话计划状态
 │   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀）
