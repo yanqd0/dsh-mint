@@ -44,6 +44,17 @@ const SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
 /** Node ids are referenced by other nodes, so they stay short and unpunctuated. */
 const NODE_ID_MAX = 64;
 
+/**
+ * 节点 id 的形状：只认这一种。
+ *
+ * 与 `SESSION_ID` 同源的理由——id 会进 URL 与路径段；这里更硬，因为 `node.id`
+ * 还被拼进**上库内容与 git 引用**：merge commit 的 subject、worktree 的分支名、
+ * 以及它落在 `git common dir` 下的路径段。所以这一条正则同时挡住三类东西：
+ * ① `#<数字>`（上库内容不得出现 mint ID）；② 空白 / `/` / `\` / 控制字符（git ref
+ * 的禁区）；③ 以 `.` 开头的 `.` / `..`（会让路径段逃出会话目录）。
+ */
+const NODE_ID = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+
 /** A subagent session id, as backfilled by the host's lifecycle pairing. */
 const AGENT_ID_MAX = 128;
 
@@ -177,7 +188,19 @@ function isDagVerdict(value: unknown): value is DagVerdict {
 }
 
 /**
- * A node id: short, non-empty, and free of control characters.
+ * A node id: short, non-empty, and drawn from the one charset that is safe on
+ * every surface the id reaches.
+ *
+ * 这个函数同时是**写路径**（`add`/`set`/`worktree` 的 `node` 参数）与**读路径**
+ * （{@link parseStoredNode}）的唯一校验口，但它管的不是「文档里干净」这一件事：
+ * `node.id` 会被拼进 merge commit 的 subject、worktree 的分支名、以及 worktree
+ * 落在 `git common dir` 下的路径段。于是 id 的取值面就是那条「上库内容不得出现
+ * mint ID」不变量的另一半——守卫扫的是源码文本，扫不到运行期拼进去的字符串。
+ * 控制字符由字符集一并挡住，故不再单独判。
+ *
+ * 收紧的代价在读路径上：存量含非法 id 的文档会整份判为不可读（fail-loud，错误里
+ * 带那个 id），而不是悄悄丢掉那个节点——文档只在 `/tmp`，改 JSON 或 `init` 重建
+ * 即可，静默丢节点才是不可接受的。
  *
  * Exported because the standalone `worktree` tool validates the same `node`
  * argument: one rule, one place, no second copy to drift.
@@ -185,7 +208,9 @@ function isDagVerdict(value: unknown): value is DagVerdict {
 export function checkNodeId(raw: unknown): string | { error: string } {
   if (typeof raw !== 'string' || raw.length === 0) return { error: '节点 id 必须是非空字符串' };
   if (codePoints(raw) > NODE_ID_MAX) return { error: `节点 id 过长（>${String(NODE_ID_MAX)} 字）` };
-  if (hasControlCharacter(raw)) return { error: `节点 id 含控制字符：${JSON.stringify(raw)}` };
+  if (!NODE_ID.test(raw)) {
+    return { error: `节点 id 只允许 [A-Za-z0-9._-] 且首字符须字母或数字：${JSON.stringify(raw)}` };
+  }
   return raw;
 }
 

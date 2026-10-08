@@ -27,6 +27,7 @@
 import { statSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
+import { checkNodeId } from './dag.js';
 import type { DagWorktree } from '../shared/records.js';
 import type { GitRunResult } from '../shared/git.js';
 
@@ -84,6 +85,20 @@ export type WorktreeOutcome =
 /** Short prefix of the session id, used in both the path and the branch name. */
 function sessionSlug(session: string): string {
   return session.replace(/[^A-Za-z0-9_-]/g, '').slice(0, SESSION_PREFIX);
+}
+
+/**
+ * 上库前再校验一次节点 id（三个写入口的第一道闸）。
+ *
+ * 工具层已经校验过 `node.id`，这里再走**同一个** `checkNodeId` 是防御纵深：subject、
+ * 分支名与路径段都由它拼出，这三处是「上库内容」与「仓库状态」的边界——未来多一个
+ * 直接调本模块的调用方，漏一次校验就会把 `#<数字>`、空格或 `..` 写进 commit 或盘上。
+ * 复用同一函数而非另写规则，所以两处不会漂移；失败时**一个 git 命令都不跑**。
+ */
+function checkRef(node: WorktreeNode): { error: string } | undefined {
+  const checked = checkNodeId(node.id);
+  if (typeof checked === 'string') return undefined;
+  return { error: `节点 id 不可用于 git 引用：${checked.error}` };
 }
 
 /**
@@ -320,6 +335,8 @@ export async function createWorktree(
   node: WorktreeNode,
   base?: string
 ): Promise<WorktreeOutcome> {
+  const invalid = checkRef(node);
+  if (invalid !== undefined) return { ok: false, error: invalid.error };
   const path = await worktreePath(deps, node);
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
@@ -394,6 +411,8 @@ export async function mergeWorktree(
   deps: WorktreeDeps,
   node: WorktreeNode
 ): Promise<WorktreeOutcome> {
+  const invalid = checkRef(node);
+  if (invalid !== undefined) return { ok: false, error: invalid.error };
   const path = await worktreePath(deps, node);
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
@@ -483,6 +502,8 @@ export async function removeWorktree(
   node: WorktreeNode,
   force = false
 ): Promise<WorktreeOutcome> {
+  const invalid = checkRef(node);
+  if (invalid !== undefined) return { ok: false, error: invalid.error };
   const path = await worktreePath(deps, node);
   // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
   if (typeof path !== 'string') return { ok: false, error: path.error };
