@@ -85,7 +85,7 @@ export function rootSession(
   return undefined;
 }
 
-/** What a tool面 resolved for one call: an owning session, or why it has none. */
+/** 一次调用解析出的工具面归属：要么给出归属会话，要么给出拒绝理由。 */
 export type OwnerResolution = { ok: true; id: string } | { ok: false; error: string };
 
 /**
