@@ -23,19 +23,21 @@
  *
  * 「哪次派发属于哪个节点」宿主不给（`SubagentRunInfo` 只有 runId/id/provider/local，
  * 见 `notes/plan-dag.md` §7.8.1），所以认领结果只能自己在 `start` 时记下来，`end` 时
- * 拿它兜底（{@link FALLBACK_MARK}）。两级委派下配对靠两条规则站住：**图归属**解析到
- * **根会话**（{@link rootSessionId}——孙代理的直接父是中间子代理，拿它当归属就会写到
- * 一张不存在的文件），**认领**改成**父感知**（先认父节点，再优先认 `depends_on` 指向
- * 它的等待节点，见 {@link claimNextNode}）。旧的「一批多节点从后往前占位」在并发下必错位
+ * 拿它兜底（{@link FALLBACK_MARK}）。两级委派下配对靠**三条**规则站住：**图归属**解析到
+ * **根会话**（{@link ownerOfSession}——孙代理的直接父是中间子代理，拿它当归属就会写到
+ * 一张不存在的文件），**链断在中途就不认领**（既不是根，也可能撞同名旧文档），**认领**
+ * 改成**父感知**（先认父节点，再优先认 `depends_on` 指向它的等待节点，见
+ * {@link claimNextNode}）。旧的「一批多节点从后往前占位」在并发下必错位
  * （§7.8.1 的历史结论），这条「test 依赖 dev」的边已经把它收敛掉。
  */
 import { DAG_NOTE_MAX, sampleOf } from './dag.js';
-import { rootSessionId } from '../shared/session-id.js';
+import { rootSession, sessionIdOf } from '../shared/session-id.js';
 import { nodeMetrics, rememberMeasurement } from './dag-metrics.js';
 import { updateDag } from './dag-store.js';
 import type { DagDoc, DagNode, DagSample } from './dag.js';
 import type { DagNodeMetrics, DagStatus } from '../shared/records.js';
 import type {
+  AgentCwdLike,
   AgentLike,
   AgentsLike,
   DshContext,
@@ -239,6 +241,32 @@ function nodeOf(doc: DagDoc, agentId: string): DagNode | undefined {
 }
 
 /**
+ * 一次派发的**图归属会话**：根会话，或「查不出来」。
+ *
+ * {@link rootSession} 的两种出口在这里各走一条：
+ *
+ * - 走到顶（`resolved`）→ 就是它；
+ * - 断在**起点**（无注册表的 lean 宿主，或调用者自己就是顶层）→ 取**直接父会话**
+ *   （`child.session.header.parentSession`）：一级委派的直接父就是根，这是没有注册表
+ *   时唯一可用的答案，也正是本改动前的口径；
+ * - 断在**中途** → `undefined` = **不认领**。中间会话既不是根（写它的文件不是 main 的
+ *   那张图），又可能撞上一份同名旧文档——宁可这次 `start`/`end` 不落痕，也不写错地方。
+ *
+ * 上溯直接失败（读不出起点 id / 成环 / 超过跳数上限）同样不认领：这时连「链上是谁」
+ * 都不知道，任何退回都是猜。
+ */
+function ownerOfSession(
+  child: AgentCwdLike | undefined,
+  agents: AgentsLike | undefined
+): string | undefined {
+  const root = rootSession(child, agents);
+  if (root === undefined) return undefined;
+  if (root.resolved) return root.id;
+  if (root.id === sessionIdOf(child)) return child?.session.header.parentSession;
+  return undefined;
+}
+
+/**
  * One live measurement, once: the session behind an agent, and its two numbers.
  *
  * Shared by the two host paths that persist a sample — the `subagent/end`
@@ -413,11 +441,10 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     // 是**根会话**（孙代理沿链上溯，写进 main 的那张图）。
     const parentAgentId = child?.session.header.parentSession;
     if (parentAgentId === undefined) return;
-    // 上溯不出来时退回直接父会话——那正是本改动前的口径，一级委派仍然正确；两条路径都
-    // 写不出文档时 `updateDag` 一样跳过，所以「注册表里没有这个 child 就跳过」的语义不变。
-    // 只有注册表形状漂移（entry 没有 `session.id`，如 `dag-tool.test.ts` 的最小夹具）、
-    // 链上有环或超过 16 跳才会走到退回这条。
-    const owner = rootSessionId(child, agents()) ?? parentAgentId;
+    // 归属解析不出来（链断在中途，或上溯直接失败）就不认领：写中间会话的文件既不是根，
+    // 也可能撞同名旧文档——跳过这次认领，让 main 收尾，见 {@link ownerOfSession}。
+    const owner = ownerOfSession(child, agents());
+    if (owner === undefined) return;
     // 先建对象再写 map，并让下面的 mutation 闭包**持有同一个对象**：认领是异步的
     // （排队等 `updateDag` 的锁），而 `subagent/end` 不排队等它——`end` 完全可以先到，
     // 把 map 里这一项 `pending.delete` 掉。map 只负责把对象交给回调；认领结果写在
@@ -440,13 +467,9 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
     // A session started before this plugin loaded (or one the `start` event
     // missed) still has a live agent to ask — and the question is the same one
     // `start` asked: the DAG belongs to the **root** session, not to the
-    // intermediate child a grandchild was delegated from. 上溯不出来时退回直接
-    // 父会话，与 `start` 同一口径（形状漂移 / 环 / 超深）。
-    const child = agents()?.get(info.id);
-    const parent =
-      remembered?.parent ??
-      rootSessionId(child, agents()) ??
-      child?.session.header.parentSession;
+    // intermediate child a grandchild was delegated from. 优先用 `start` 时链还完整的
+    // 那次记录（`remembered.parent`）；现算那条与 `start` 同一口径（断在中途即不认领）。
+    const parent = remembered?.parent ?? ownerOfSession(agents()?.get(info.id), agents());
     if (parent === undefined) return;
     // The measurement first, the settlement second: both are queued on the
     // session's own lock, so the order here is the order on disk — and a

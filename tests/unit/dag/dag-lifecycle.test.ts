@@ -56,6 +56,11 @@ interface Harness {
   end: (info: EndInfo) => void;
   /** Who the agent registry names as a session's parent, per session id. */
   parents: Map<string, string>;
+  /**
+   * 不在册的会话 id：注册表对这些 id 答 `undefined`（模拟宿主已放掉子会话，或形状漂移）。
+   * 缺省为空，既有用例零影响。
+   */
+  absent: Set<string>;
   /** The projection states, per session id. */
   states: Map<string, Record<string, unknown>>;
   /** Drop the `sessionProjections` service, as a lean composition has none. */
@@ -69,6 +74,7 @@ interface Harness {
 function harness(): Harness {
   const listeners: Record<string, (info: never) => void> = {};
   const parents = new Map<string, string>();
+  const absent = new Set<string>();
   const states = new Map<string, Record<string, unknown>>();
   let projections = true;
   const ctx: DshContext = {
@@ -80,6 +86,7 @@ function harness(): Harness {
       if (name === 'agents') {
         return {
           get: (id: string) => {
+            if (absent.has(id)) return undefined;
             const parent = parents.get(id);
             return {
               id,
@@ -102,6 +109,7 @@ function harness(): Harness {
     start: (info) => listeners['subagent/start']?.(info as never),
     end: (info) => listeners['subagent/end']?.(info as never),
     parents,
+    absent,
     states,
     withoutProjections: () => {
       projections = false;
@@ -553,6 +561,31 @@ describe('subagent/start 的根归属与父感知认领', () => {
     // `dev` 认出来了，但没有任何等待节点 `depends_on: ["dev"]` → 退回末尾的 `n2`。
     expect(nodeIn(read, 'n2')?.agent).toBe(GRAND);
     expect(nodeIn(read, 'n1')?.agent).toBeUndefined();
+  });
+
+  it('链断在中途时不认领：中间会话的文件不建，根会话的图也不动', async () => {
+    // 三链 GRAND → MID → SESSION，而 MID 不在册：MID **不是**根（写它的文件不是 main
+    // 的图），所以这次派发不认领——既不建 `mid.json`，也不动根会话的文档。
+    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    const events = harness();
+    events.parents.set(GRAND, MID);
+    events.parents.set(MID, SESSION);
+    events.absent.add(MID);
+
+    events.start({ runId: 'r1', id: GRAND });
+    await drain();
+    events.end({ runId: 'r1', id: GRAND, stopReason: 'error' });
+    await drain();
+
+    // ① 中间会话没有文件（拿它当归属就会写到这张不存在的文件里）。
+    expect((await stored(MID)).state).toBe('missing');
+    // ② 根会话的文档一个字节都没动。
+    const root = await stored(SESSION);
+    expect(root.state).toBe('ok');
+    if (root.state !== 'ok') return;
+    expect(root.doc.revision).toBe(1);
+    expect(root.doc.nodes[0]).toMatchObject({ id: 'a', status: 'running' });
+    expect(root.doc.nodes[0]?.agent).toBeUndefined();
   });
 });
 

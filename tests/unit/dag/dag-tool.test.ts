@@ -15,7 +15,7 @@ import {
   installDagTool,
 } from '../../../src/dag/dag-tool.js';
 import type { DagToolOutcome } from '../../../src/dag/dag-tool.js';
-import { rootSessionId } from '../../../src/shared/session-id.js';
+import { rootSession } from '../../../src/shared/session-id.js';
 import type {
   AgentCwdLike,
   AgentsLike,
@@ -108,10 +108,13 @@ describe('installDagTool', () => {
   });
 
   it('writes the DAG of the root session a subagent was delegated from', async () => {
-    const agents = new Map<string, AgentCwdLike>([
-      ['child', { session: { header: { parentSession: 'root' } } }],
-      ['mid', { session: { header: { parentSession: 'root' } } }],
-      ['root', { session: { header: {} } }],
+    // 真实宿主 entry 也带 `session.id`（`AgentsLike` 只声明本仓消费的那部分，故这里补上
+    // 交叉类型而不是手改结构面类型）。
+    type RegistryEntry = AgentCwdLike & { session: { id: string } };
+    const agents = new Map<string, RegistryEntry>([
+      ['child', { id: 'child', session: { id: 'child', header: { parentSession: 'root' } } }],
+      ['mid', { id: 'mid', session: { id: 'mid', header: { parentSession: 'root' } } }],
+      ['root', { id: 'root', session: { id: 'root', header: {} } }],
     ]);
     const lookup: AgentsLike = {
       get: (id) => agents.get(id),
@@ -149,36 +152,76 @@ describe('installDagTool', () => {
     expect(outcome.ok).toBe(false);
     expect(outcome.summary).toContain('无法确定会话');
   });
+
+  it('refuses a call whose delegation chain leaves the registry, naming the missing session', async () => {
+    // 链断在中途（`mid` 不在册）：写 `mid.json` 既不是 main 的图、也可能撞同名旧文档，
+    // 所以工具必须拒绝并**点名**那个查不到的会话，而不是猜一个归属。
+    const agents: AgentsLike = {
+      get: (id) =>
+        id === 'child'
+          ? { session: { id: 'child', header: { parentSession: 'mid' } } }
+          : undefined,
+    };
+    const { ctx, registered } = toolContext({ agents });
+    installDagTool(ctx, dir);
+    const outcome = (await registered[0]?.execute({ action: 'init', title: 'x' }, {
+      name: TOOL_NAME,
+      arguments: {},
+      agent: { session: { id: 'child', header: { parentSession: 'mid' } } },
+    })) as DagToolOutcome;
+    expect(outcome.ok).toBe(false);
+    expect(outcome.summary).toContain('查不到链上会话 mid');
+    // 归属不定的调用不碰文档：链上那个会话的图一张都没建。
+    expect((await readDag('mid', dir)).state).toBe('missing');
+  });
 });
 
-describe('rootSessionId', () => {
+describe('rootSession', () => {
   const agents: AgentsLike = {
     get: (id) =>
       ({
-        root: { session: { header: {} } },
-        mid: { session: { header: { parentSession: 'root' } } },
-        child: { session: { header: { parentSession: 'mid' } } },
+        root: { session: { id: 'root', header: {} } },
+        mid: { session: { id: 'mid', header: { parentSession: 'root' } } },
+        child: { session: { id: 'child', header: { parentSession: 'mid' } } },
       })[id],
   };
 
-  it('walks a delegation chain up to its root', () => {
-    expect(rootSessionId({ session: { id: 'child' } }, agents)).toBe('root');
+  it('walks a delegation chain up to its root, and marks it resolved', () => {
+    expect(rootSession({ session: { id: 'child' } }, agents)).toEqual({ id: 'root', resolved: true });
     // A middle session is not the root: the graph belongs to the top.
-    expect(rootSessionId({ session: { id: 'mid' } }, agents)).toBe('root');
-    expect(rootSessionId({ session: { id: 'root' } }, agents)).toBe('root');
+    expect(rootSession({ session: { id: 'mid' } }, agents)).toEqual({ id: 'root', resolved: true });
+    expect(rootSession({ session: { id: 'root' } }, agents)).toEqual({
+      id: 'root',
+      resolved: true,
+    });
+  });
+
+  it('stops at a session the registry no longer knows, and says so', () => {
+    // 断在中途**不是**「到根」：调用方必须能分辨「真的是根」与「走不下去停在中间」。
+    const missing: AgentsLike = {
+      get: (id) => (id === 'child' ? { session: { id: 'child', header: { parentSession: 'mid' } } } : undefined),
+    };
+    expect(rootSession({ session: { id: 'child' } }, missing)).toEqual({
+      id: 'mid',
+      resolved: false,
+    });
   });
 
   it('gives up instead of looping on a cyclic chain', () => {
     const cyclic: AgentsLike = {
-      get: (id) => ({ session: { header: { parentSession: id === 'a' ? 'b' : 'a' } } }),
+      get: (id) => ({ session: { id, header: { parentSession: id === 'a' ? 'b' : 'a' } } }),
     };
-    expect(rootSessionId({ session: { id: 'a' } }, cyclic)).toBeUndefined();
+    expect(rootSession({ session: { id: 'a' } }, cyclic)).toBeUndefined();
   });
 
-  it('returns undefined without an id or a registry', () => {
-    expect(rootSessionId(undefined, agents)).toBeUndefined();
-    expect(rootSessionId({ session: {} }, agents)).toBeUndefined();
-    expect(rootSessionId({ session: { id: 'child' } }, undefined)).toBe('child');
+  it('returns undefined without a start id, and an unresolved start without a registry', () => {
+    expect(rootSession(undefined, agents)).toBeUndefined();
+    expect(rootSession({ session: {} }, agents)).toBeUndefined();
+    // lean 宿主：第一跳就查不到，链到此为止（不是根）。
+    expect(rootSession({ session: { id: 'child' } }, undefined)).toEqual({
+      id: 'child',
+      resolved: false,
+    });
   });
 });
 
@@ -624,7 +667,13 @@ describe('installDagLifecycle', () => {
     }) => void;
   }
 
-  /** A context whose listeners are captured, with every child under `parent`. */
+  /**
+   * A context whose listeners are captured, with every child under `parent`.
+   *
+   * 注册表按真实宿主形状作答：entry 带 `session.id`，且 `parent` 自己**没有**父会话
+   * （否则 `rootSession` 会把 `parent → parent` 读成一个环，归属解析直接失败——
+   * 夹具形状漂移曾让这条路径悄悄换成「退回直接父会话」的旧口径）。
+   */
   function lifecycle(parent: string): Harness {
     const listeners: Record<string, (info: never) => void> = {};
     const ctx: DshContext = {
@@ -632,7 +681,12 @@ describe('installDagLifecycle', () => {
         listeners[event] = listener as (info: never) => void;
         return () => {};
       },
-      get: () => ({ get: () => ({ session: { header: { parentSession: parent } } }) }),
+      get: () => ({
+        get: (id: string) => ({
+          id,
+          session: { id, header: id === parent ? {} : { parentSession: parent } },
+        }),
+      }),
     };
     installDagLifecycle(ctx, dir);
     return {
