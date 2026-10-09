@@ -171,8 +171,10 @@ export function describeMintEntry(entry: string): string {
   } catch {
     // 不在磁盘上（或不可读）——就描述用户写下的东西。
   }
-  // pnpm store 路径又长又带版本标签：只留有意思的那段。
-  const faa = /mint-faa@([^/\\]+)/.exec(resolved);
+  // pnpm store 路径又长又带版本标签，两种布局都要认：本地虚拟存储是 `…/.pnpm/mint-faa@0.8.0/…`，
+  // 全局虚拟存储是 `…/links/@/mint-faa/0.8.0/<hash>/…`。版本段必须以数字起头，
+  // 否则路径里的 `mint-faa/node_modules/…` 也会被当成版本。
+  const faa = /mint-faa[@/](\d[^/\\]*)/.exec(resolved);
   if (faa?.[1] !== undefined) return `mint-faa@${faa[1]}`;
   const parts = resolved.split(/[/\\]+/).filter((part) => part.length > 0);
   return parts.length <= 3 ? resolved : `…/${parts.slice(-3).join('/')}`;

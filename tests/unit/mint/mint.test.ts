@@ -128,6 +128,16 @@ describe('describeMintEntry', () => {
     ).toMatch(/^mint-faa@\d/);
   });
 
+  // 全局虚拟存储把版本放进目录段（`mint-faa/0.8.0/<hash>/`）而不是 `@` 后缀，标签仍要点名版本。
+  // 用固定的 store 形状路径断言，这条契约便不再只由「本机恰好用哪种 store」决定。
+  it('labels the global virtual store layout by version too', () => {
+    expect(
+      describeMintEntry(
+        '/p/store/v11/links/@/mint-faa/0.8.0/5d0a/node_modules/mint-faa/run-mint.js'
+      )
+    ).toBe('mint-faa@0.8.0');
+  });
+
   it('labels a bare command as a PATH lookup', () => {
     expect(describeMintEntry('mint')).toBe('PATH:mint');
   });
