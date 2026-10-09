@@ -39,17 +39,22 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 | 同文件串行链（白名单相交） | 串行判据与 worktree 无关，见 `parallel-exec.md` §1 |
 | 本 plan 改的正是 worktree 能力本体（工具面 / `prune` 策略） | 「特性即隔离机制」：隔离手段自身不可用/不该用，共享工作区 + 一步一节点是**预期而非缺陷**（`parallel-exec.md` §1.1） |
 | 非 git 仓 / worktree 不可用 | 回退共享模式，本节不成立 |
-| 子代理需要 `build` / 全量 `lint` / `check-types` / `test:coverage` / 装依赖 / 重启 harness | worktree 内 pnpm 会触发重装且常在沙箱失败；这些重命令仍归主 agent（**节点内 UT 不在此列**，见下） |
+| 子代理需要 `build` / 全量 `lint` / `check-types` / `test:coverage` / 重启 harness | 全仓重命令、资源竞争源，仍归主 agent（**装依赖与节点内 UT 不在此列**，见下） |
 
-- **worktree 里不跑重命令**：新工作目录没有 `node_modules`，pnpm / tsc / 全量 `lint` 会重新解析依赖
-  （`build` / `test:coverage` / 装依赖 / 重启 harness 同理）；它们是**资源竞争源**，一律归主 agent
-  在主工作树、**merge 之后**串行跑。
+- **worktree 里不跑重命令**：`build` / `test:coverage` / 全量 `lint` / `check-types` / 重启 harness
+  是全仓级资源竞争源，一律归主 agent 在主工作树、**merge 之后**串行跑。
+- **装依赖不再是「worktree 装不了」**：需要时主 agent 用宿主 `pnpm` 工具把 `cwd` 指向该树跑
+  `pnpm install --frozen-lockfile` 即可——树在 `<repo>/.git/` 内、仍属会话工作区，不触发越界确认；
+  全局虚拟存储（`virtualStoreType: global`）下实测 **172ms**、`node_modules` **1.3M**、与主树
+  `node_modules/zod/package.json` **同 inode**，依赖链入口（`mint-faa`）在该树内直接可用。
+  **bash 里装依赖仍必然失败**（沙箱 + 显式 `storeDir` 关掉了项目内回退）：出路是工具，不是回避 worktree。
 - **允许：节点内 UT**。子代理**在自己的 worktree 内**跑**该节点相关的 UT**——用**主仓的 vitest 二进制**，
   在该 worktree 目录内执行 `node <repo>/node_modules/vitest/vitest.mjs run <该节点的测试文件…>`
   （或 `<repo>/node_modules/.bin/vitest run …`）；配置取该 worktree 里的 `vitest.config.ts`。
   可行是因为 worktree 落在 `<repo>/.git/dsh-mint/worktrees/<session前8位>/<node>`，从它沿目录向上
-  就能走到 `<repo>/node_modules`；万一在某台机器上解析不到，退路是在该 worktree 内
-  `ln -s <repo>/node_modules node_modules`（该树位于 `.git` 内，这个 symlink 不会出现在 `git status` 里）。
+  就能走到 `<repo>/node_modules`；万一在某台机器上解析不到，退路是上一条（用宿主 `pnpm` 工具在该树内
+  装一次），或在树内 `ln -s <repo>/node_modules node_modules`（该树位于 `.git` 内，这个 symlink
+  不会出现在 `git status` 里）。
   **为什么现在允许**：UT 贴着本次改动，成本低（只跑指定文件、秒级），能在 merge **之前**挡住红；
   真正吃资源的是上面那批重命令，它们与收口全量仍归主 agent。
 - 无 git 仓或 worktree 不可用 → **回退现有共享模式**，不是放弃并行。
@@ -137,6 +142,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 | 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <目标分支 sha>` |
 | 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
 | 测试命令 | 主 agent | 节点内 UT 归子代理（用主仓 vitest，§2/§3）；`build` / 全量 `lint` / `test:coverage` 归主 agent |
+| 装依赖 | 主 agent 直接跑 | 需要时主 agent 用宿主 `pnpm` 工具、`cwd` 指向该树（§2，秒级；bash 仍必失败） |
 
 ## 7. 保留现场与开工点清理
 
