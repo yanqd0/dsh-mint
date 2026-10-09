@@ -154,7 +154,7 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 | --- | --- |
 | 工具面 | `src/dag/worktree-tool.ts`（`TOOL_NAME`/`WORKTREE_TOOL_DESCRIPTION`/`parseWorktreeAction`/`executeWorktreeTool`/`installWorktreeTool`；注册器与执行器分离） |
 | git 层 | `src/dag/dag-worktree.ts`（`worktreeRoot`/`worktreePath`/`worktreeBranch`/`createWorktree`/`mergeWorktree`/`removeWorktree`/`installedWorktrees`/`pruneWorktrees`/`WorktreeDeps`） |
-| 文档记录 | `src/dag/dag.ts`（节点 `worktree` 字段的读写校验 `checkWorktree`）、`src/dag/dag-store.ts`（`updateDag`） |
+| 文档记录 | `src/dag/dag.ts` 的 `dag/internal`（节点 `worktree` 字段的读写校验 `checkWorktree` 在 `internal/validate.ts`）、`src/dag/dag-store.ts`（`updateDag`） |
 | 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用） |
 | 挂载 | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁） |
 | 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`） |

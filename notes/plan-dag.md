@@ -265,6 +265,12 @@
 
 ## 5. 落点与测试文件清单
 
+> 本节写的是首版落点；`src/dag/dag.ts` 与 `src/client/DagBody.tsx` 后来按文件限大
+> 规则原地拆分（入口不变、实现进同目录），本节的路径与行号按当时的记录保留：
+> 数据层现在的实现见 `src/dag/dag/internal/{model,validate,parse-action,parse-doc,write,graph}.ts`，
+> 面板的采样纯逻辑与子组件见 `src/client/dag-sampler.ts`、`src/client/NodeCard.tsx`、
+> `src/client/dag-labels.ts`。权威模块 tree 以 `src/AGENTS.md` 为准。
+
 ### 5.1 宿主新增
 
 - `src/dag/dag.ts`（纯数据 + 校验 + 分层）

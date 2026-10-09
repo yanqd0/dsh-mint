@@ -21,7 +21,8 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 │   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀）
 │   └── ...                                # session-ledger.ts：会话内 mint 写台账
 ├── dag/                                   # 依赖 shared + mint，并反向接 host
-│   ├── dag.ts                             # DAG 数据层（纯函数，无 node: 依赖）
+│   ├── dag.ts                             # DAG 数据层公开面（只再导出 dag/ 的实现）
+│   ├── dag/internal/                      # 按职责拆分：model / validate / parse-action / parse-doc / write / graph
 │   ├── dag-store.ts / dag-lifecycle.ts    # /tmp 文档读写与锁 / 子代理起止配对
 │   ├── dag-tool.ts / worktree-tool.ts     # mint_plan_dag 与 worktree 两个宿主工具
 │   └── ...                                # metrics / plan-reminder / worktree-sweep
@@ -53,7 +54,8 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 ## 文件限大与内部拆分
 
 - **≤500 逻辑行是硬门禁**（ESLint `max-lines`，口径 = 跳过空行与纯注释行），**高于单一职责**：职责再单一，超限也必须拆；未超限的强内联模块可以不拆。测试文件另见 `tests/AGENTS.md`。
-- **内部拆分**：超限文件原地变**同名目录**（`x.ts` → `x/`），`index.ts` 只做再导出，外部 import 说明符（`'./x.js'`）与 dist 产物出口都保持不变；拆出的文件各自职责单一，依赖保持单向。
+- **内部拆分**：超限文件**原地变目录**——入口文件仍叫 `x.ts`（只做再导出），实现按职责放 `x/internal/*.ts`。入口必须留成**文件**：NodeNext 对带 `.js` 扩展的说明符不做目录 index 查找（实测 `'./x.js'` 解析不到 `x/index.ts`），所以「`index.ts` + 同名目录」这一形式在本仓行不通。于是外部 import 说明符、TS 解析、dist 产物出口都不变，`eslint.config.mjs` 的 `max-lines` 按 `src/**/*.{ts,tsx}` 覆盖新文件，无需登记。
+- 拆出的文件各自职责单一，依赖保持单向；测试侧同构（入口测试留 `tests/unit/<域>/x.test.ts`，子模块测试进 `tests/unit/<域>/x/internal/*.test.ts`，共享 fixture 落 `x/internal/helpers.ts`，见 `tests/AGENTS.md`）。
 - 拆分后按「新模块清单」同步模块 tree 与全仓 `src/` 引用。
 
 ## 拆分与扩展

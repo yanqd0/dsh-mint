@@ -21,7 +21,7 @@ tests/                                     # 测试根：单元镜像 src/，守
 ```
 
 - 必须 `.test.ts`（其它后缀被 vitest 默认 glob 静默漏跑）；路径定位用 `tests/helpers/repo.ts`，不手数 `..`。
-- **镜像与拆分**：UT 结构与源码结构一致（`tests/unit/<域>/<模块>.test.ts` ↔ `src/<域>/<模块>.ts`；源文件拆成目录时，测试同构拆成同名目录）。**源文件拆分 → 测试文件必须随之拆分，无论多小；源未拆 → 测试不拆，无论多大**（故 `tests/**` 不设硬行数门禁，只留 lint warn 提示体量）。
+- **镜像与拆分**：UT 结构与源码结构一致（`tests/unit/<域>/<模块>.test.ts` ↔ `src/<域>/<模块>.ts`；源文件拆成 `x.ts` + `x/internal/*` 时，测试同构为 `x.test.ts` + `x/internal/*.test.ts`）。**源文件拆分 → 测试文件必须随之拆分，无论多小；源未拆 → 测试不拆，无论多大**（故 `tests/**` 不设硬行数门禁，只留 lint warn 提示体量）。`x/internal/helpers.ts` 是这一条的既定例外：拆出的子模块测试共用的 fixture 放这里（非 `.test.ts`，vitest 不收集），不再逐个复刻。
 
 **用例**：`describe` = 被测单元，`it` = 「场景 + 预期」（不用裸 `test()`、不写 class）；≥3 组同构输入用 `it.each`；一个 `it` 只断言一个行为，断言写具体值；循环断言要能定位失败输入。
 

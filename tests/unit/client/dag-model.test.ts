@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 
 import { describe, expect, it } from 'vitest';
 
@@ -23,6 +23,20 @@ import {
   nodeMetricsMap,
 } from '../../../src/client/dag-model.js';
 import type { DagLayout } from '../../../src/client/dag-model.js';
+
+/**
+ * 面板两个文件在 Node 里都 import 不了，源码守卫只能读文本。
+ *
+ * `DagBody` 限大拆成 `DagBody.tsx` + 同族小文件后，读单个文件已经覆盖不到
+ * 全部接线，因此这里读整个客户端面（`.ts`/`.tsx` 全量拼接）。
+ */
+function clientSource(): string {
+  const file = srcPath('client', 'DagBody.tsx');
+  const siblings = readdirSync(srcPath('client'))
+    .filter((name) => name.endsWith('.ts') || name.endsWith('.tsx'))
+    .map((name) => readFileSync(srcPath('client', name), 'utf8'));
+  return [readFileSync(file, 'utf8'), ...siblings].join('\n');
+}
 
 /** One node with the defaults a test does not care about spelled out. */
 function node(id: string, extra: Partial<DagNodeView> = {}): DagNodeView {
@@ -485,7 +499,7 @@ describe('DAG_COPY_KEYS', () => {
 // live in a `.tsx` file no Node test can import, so the guard reads the source.
 describe('DAG animation contract', () => {
   it('defines the keyframes and the reduced-motion opt-out the node class needs', () => {
-    const source = readFileSync(srcPath('client', 'DagBody.tsx'), 'utf8');
+    const source = clientSource();
     expect(source).toContain('@keyframes dsh-mint-dag-pulse');
     expect(source).toContain('prefers-reduced-motion: reduce');
     expect(source).toContain('animation: none');
@@ -498,7 +512,7 @@ describe('DAG animation contract', () => {
 // button below is the source guard that keeps the wiring from being dropped.
 describe('DAG live-metrics contract', () => {
   it('reads the model, the copy keys, and the styles the live line is built from', () => {
-    const source = readFileSync(srcPath('client', 'DagBody.tsx'), 'utf8');
+    const source = clientSource();
     // The sample: what to draw, which numbers to age, and which keys to say.
     expect(source).toContain('nodeMetricsMap');
     expect(source).toContain('liveElapsedMs');
@@ -513,7 +527,7 @@ describe('DAG live-metrics contract', () => {
   // it was taken — as a local clock string, because the copy only supplies the
   // label around it.
   it('dates a stored sample in the card', () => {
-    const source = readFileSync(srcPath('client', 'DagBody.tsx'), 'utf8');
+    const source = clientSource();
     expect(source).toContain('DAG_COPY_KEYS.measuredAt');
     expect(source).toContain('toLocaleTimeString');
   });
@@ -524,7 +538,7 @@ describe('DAG live-metrics contract', () => {
 // come from the envelope — the panel never touches git.
 describe('DAG worktree contract', () => {
   it('shows the branch and the state the node carries', () => {
-    const source = readFileSync(srcPath('client', 'DagBody.tsx'), 'utf8');
+    const source = clientSource();
     expect(source).toContain('node.worktree');
     expect(source).toContain('dagWorktreeTone');
     expect(source).toContain("copy('dag.worktree.branch'");

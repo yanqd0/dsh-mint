@@ -1,6 +1,7 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 
 import { srcPath } from '../../helpers/repo.js';
@@ -50,6 +51,25 @@ function width(text: string): number {
 /** True when the text carries a CJK/fullwidth character. */
 function hasWide(text: string): boolean {
   return [...text].some((char) => (char.codePointAt(0) ?? 0) >= 0x2e80);
+}
+
+/**
+ * 源码里**字符串字面量**中的 CJK：只有它们会渲染成面板文案。
+ *
+ * 判据必须是字面量而不是整份文本：注释按编码规范可以（也应当）用中文，
+ * 而整份文本扫描会把注释当成硬编码文案误杀。
+ */
+function literalWideText(source: string, fileName: string): string[] {
+  const file = ts.createSourceFile(fileName, source, ts.ScriptTarget.Latest, true);
+  const hits: string[] = [];
+  const visit = (node: ts.Node): void => {
+    if (ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) {
+      if (hasWide(node.text)) hits.push(node.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
+  return hits;
 }
 
 describe('panel copy', () => {
@@ -107,7 +127,7 @@ describe('panel copy', () => {
 
   it('is the only file the panel text lives in', () => {
     for (const { file, text } of callSites()) {
-      expect(hasWide(text), `${file} must not carry hard-coded Chinese copy`).toBe(false);
+      expect(literalWideText(text, file), `${file} must not carry hard-coded Chinese copy`).toEqual([]);
     }
   });
 
