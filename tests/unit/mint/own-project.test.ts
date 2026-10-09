@@ -43,6 +43,8 @@ describe('own-project memo', () => {
     expect(ownProjectOf('/proj', undefined)).toBe('new');
   });
 
+  // 门禁要的是「记得的正是这个项目」：认不出的目录必须答 false（fail closed），继续拦。
+  // 三个方向：同名 true、不同名 false、未记录的 cwd false。
   it('matches only the remembered name, and never an unknown directory', () => {
     noteOwnProject('/proj', undefined, 'dsh-mint');
 
@@ -52,6 +54,8 @@ describe('own-project memo', () => {
     expect(isOwnProject('/other', undefined, 'dsh-mint')).toBe(false);
   });
 
+  // 备忘录有上限：越界时必须先淘汰最旧的目录，不能无界增长。
+  // 灌入 MAX+1 条后断言第 0 条已不在、最后一条仍在。
   it('stays bounded, dropping the oldest directory first', () => {
     for (let index = 0; index <= MAX_OWN_PROJECTS; index += 1) {
       noteOwnProject(`/proj-${index}`, undefined, `project-${index}`);

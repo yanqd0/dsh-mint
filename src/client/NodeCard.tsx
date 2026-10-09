@@ -1,8 +1,6 @@
 /**
- * 节点盒子与悬停卡片：SVG 内的第二行测量值、以及 hover 时读到的全量字段。
- *
- * 卡片是 DOM 而非 SVG：同一套配色改用 `color` 而不是 `fill`；节点自身的工作树
- * 字段直接来自路由信封，组件不碰 git 或文件系统。
+ * 节点盒子与悬停卡片：SVG 内画第二行测量值，hover 卡片给出全量字段。卡片是 DOM 而非 SVG
+ * （同一套配色走 `color` 而非 `fill`）；工作树字段直接来自路由信封，组件不碰 git 或文件系统。
  */
 import type { CSSProperties, ReactElement } from 'react';
 
@@ -32,7 +30,6 @@ import { phaseLabel, statusLabel, verdictLabel, worktreeStateLabel } from './dag
 /** The token unit inside a node box: the box is 104 wide and the label 12px. */
 const TOKEN_UNIT = 't';
 
-/** What sits between the two measured numbers, in the secondary color. */
 const METRICS_SEPARATOR = ' · ';
 
 /** A running node whose sample has not arrived: a time is coming, none is known. */
@@ -52,12 +49,10 @@ const TOOLTIP_TITLE: CSSProperties = {
   fontWeight: 500,
 };
 
-/** One tooltip line; `margin: 0` keeps the block tight against the box. */
 const TOOLTIP_LINE: CSSProperties = {
   margin: 0,
 };
 
-/** The card's chip row: what the node is doing, and the issue it tracks. */
 const TOOLTIP_BADGES: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
@@ -66,12 +61,10 @@ const TOOLTIP_BADGES: CSSProperties = {
   margin: '0 0 4px',
 };
 
-/** A unit, a source note, or any other quiet text inside the card (DOM, so `color`). */
 const TOOLTIP_QUIET: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',
 };
 
-/** What one node box's measured line needs: the node, its sample, and the clock. */
 interface NodeMetricsLineProps {
   node: DagNodeView;
   metrics: DagNodeMetrics | undefined;
@@ -83,18 +76,12 @@ interface NodeMetricsLineProps {
 }
 
 /**
- * The second line inside a node box: what the host measured, in the box's colors.
+ * 节点盒子里的第二行：宿主测到的数字，用盒子自己的颜色——每个数字保留自己的填充色（token 琥珀、
+ * 时间紫），单位与分隔符走次级标签色，这样这一行读起来是「两个数」而不是一句话；token 单位只写一个
+ * `t`，因为盒子宽 104、写全 `tokens` 就占满。
  *
- * 每个数字保留自己的填充色（token 琥珀、时间紫），单位与分隔符用次级标签色，
- * 这样这一行读起来是「两个数」而不是一句话。token 单位只写一个 `t`：盒子宽 104，
- * 写全 `tokens` 就占满了。
- *
- * A `pending` node has no agent yet and therefore nothing to measure, so it
- * draws no line at all. A running node draws `?` in the time slot until a *live*
- * sample arrives (a time is coming, none is known) — a stored one is dated, not
- * running, so it shows the same `?`; a settled node with nothing in it draws `-`
- * (there is nothing left to wait for), and a settled node that only ever
- * reported tokens draws just those.
+ * `pending` 节点还没有 agent、无可测量，整行不画。`running` 节点在时间位画 `?`，直到*实时*样本到达
+ * （存量样本带日期、不算 running，同样显示 `?`）；已结束节点什么都没有画 `-`，只有 token 就只画 token。
  */
 export function NodeMetricsLine({
   node,
@@ -166,7 +153,6 @@ export function NodeMetricsLine({
   );
 }
 
-/** What one node's tooltip needs: the node, its sample, the clock, and the geometry. */
 interface NodeTooltipProps {
   node: DagNodeView;
   copy: MintBodyProps['copy'];
@@ -177,22 +163,16 @@ interface NodeTooltipProps {
 }
 
 /**
- * The hover card: the node's full text, then the fields a reader would otherwise
- * have to ask the tool for.
+ * hover 卡片：节点的完整文本，加上读者否则得去问工具的那些字段。
  *
- * The status and the verdict sit in the chip row, because the footer is the
- * quiet line; the measured numbers keep the colors the node box gave them, so
- * the card and the box read as one reading of the node. A card is DOM, not SVG:
- * the same palette is applied through `color`, not `fill`.
+ * status 与 verdict 放在 chip 行，因为页脚是那行安静的文字；测量数字沿用节点盒子给它们的颜色，
+ * 卡片与盒子因此读起来是对同一节点的同一次读数。卡片是 DOM 不是 SVG，同一套配色走 `color`。
  *
- * The time line is also where a *stored* reading gets its date: the
- * number beside it was measured when the child was alive, so the card names that
- * moment in the local clock instead of letting the reader take it for now.
+ * 时间行也是*存量*读数标明日期的地方：旁边那个数字是子代理还活着时测的，卡片因此用本地时钟点出
+ * 那一刻，免得读者把它当成现在。
  *
- * The node's isolated working tree, when it has one, is the card's other chip
- * row: the state is colored like a status pill, and the branch it works
- * on sits beside it. Nothing here touches git or the file system — the branch,
- * the state and the path are all the route's own fields.
+ * 节点独占的工作树是卡片的另一条 chip 行：状态按 status pill 上色，它工作的分支就在旁边。这里
+ * 不碰 git 或文件系统——分支、状态与路径都是路由自己的字段。
  */
 export function NodeTooltip({
   node,
@@ -284,20 +264,15 @@ export function NodeTooltip({
   );
 }
 
-/** What the card's measured token line needs: the count and the copy seat. */
 interface LiveTokensLineProps {
   copy: MintBodyProps['copy'];
   tokens: number;
 }
 
 /**
- * The card's measured token count, colored inside its own translated line.
- *
- * The dictionary's live line is one string with the count interpolated into it
- * (`{tokens} tokens (measured)`), and only the count may take the measure's
- * color — the unit and the source note stay secondary. The line is therefore
- * split around the number it interpolated, which is exact: neither locale's
- * surrounding text carries a digit of its own.
+ * 卡片里测到的 token 数，着色在它那句译文内部。词典的实时行是一整句、只把数量插进去
+ * （`{tokens} tokens (measured)`），而只有数量能取测量的颜色——单位与来源说明保持次级；这一行
+ * 因此围着被插进去的数字切开，这是精确的：两个 locale 的周边文本都不含数字。
  */
 function LiveTokensLine({ copy, tokens }: LiveTokensLineProps): ReactElement {
   const count = formatCount(tokens);

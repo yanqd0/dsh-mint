@@ -1,15 +1,9 @@
 /**
- * The plan DAG tab's body (spec: `notes/plan-dag.md`).
+ * plan DAG tab 的 body（spec: `notes/plan-dag.md`）：一个文档一张 SVG——节点是 `dag-model` 的盒子、
+ * 边是它的折线、状态配色用与模型测试同一套 tone 函数；组件只持模型管不了的三件事：何时读
+ * （可见性 + 2s 轮询）、宿主样本如何老化成实时时钟（1s tick，只在有东西真在跑时）、hover 显示什么。
  *
- * One SVG per document: nodes are `dag-model`'s boxes, edges its polylines, and
- * the status coloring comes from the same tone function the model tests cover.
- * The component owns only three things the model cannot: when to read (the tab's
- * visibility and its 2s poll), how a host sample is aged into a live clock (a 1s
- * tick, running only while something is), and what hover shows.
- *
- * The poll replaces the state only when the answered revision or the sample it
- * carried changed, so a quiet plan keeps its graph, while a node that is still
- * running keeps moving.
+ * 轮询只在答案的 revision 或它带的样本变了才替换状态：安静的计划图保持不动，仍在跑的节点继续走。
  */
 import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -33,23 +27,17 @@ import { NodeMetricsLine, NodeTooltip } from './NodeCard.js';
 import type { DagSample } from './dag-sampler.js';
 import { sameSample, sampleMetrics, sampleOf } from './dag-sampler.js';
 
-/** How often a visible DAG tab re-reads the document (spec §4.6). */
 const POLL_MS = 2000;
 
-/** How often the live line re-derives a running node's elapsed time. */
 const TICK_MS = 1000;
 
 /**
- * The two text baselines inside a node box, measured from the box's top.
- *
- * The box is 44 tall for exactly this: the label takes the first line and the
- * measured pair the second, and both are centered, so the two constants are one
- * line apart whatever the label's own metrics turn out to be.
+ * 节点盒子里两条文本基线，从盒子顶部量起。盒子做成 44 高正是为此：标签占第一行、测量对占第二行，
+ * 两行都居中，故这两个常量无论标签自身的度量如何都相隔一行。
  */
 const NODE_LABEL_DY = 16;
 const NODE_METRICS_DY = 32;
 
-/** The pulse the running node's border runs; injected once, next to the node. */
 const KEYFRAMES = `
 @keyframes dsh-mint-dag-pulse {
   0%, 100% { stroke-opacity: 1; }
@@ -64,11 +52,6 @@ const KEYFRAMES = `
 /** The seat's hook; a stable no-op keeps the call unconditional in lean harnesses. */
 const NO_TAB_INFO = (): TabInfoLike | undefined => undefined;
 
-/**
- * Render the DAG panel.
- *
- * @param props - session identity, copy, transport, and the seat's tab hook.
- */
 export function DagBody(props: MintBodyProps): ReactElement {
   const { api, copy, useTabInfo = NO_TAB_INFO } = props;
   const info = useTabInfo();
@@ -80,9 +63,8 @@ export function DagBody(props: MintBodyProps): ReactElement {
   const [hovered, setHovered] = useState<string | undefined>(undefined);
   const [reload, setReload] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
-  // The last reading the panel accepted. It is a ref rather than state because
-  // it guards a write, it never draws; and it remembers the sample as well as
-  // the revision, since the numbers move while the document does not.
+  // 面板最后接受的一次读数。用 ref 而非 state：它守的是一次写入、从不作画；而且它同时记住样本与
+  // revision，因为文档不动时数字仍在变。
   const lastSample = useRef<DagSample | undefined>(undefined);
 
   useEffect(() => {
@@ -98,10 +80,8 @@ export function DagBody(props: MintBodyProps): ReactElement {
         // The same document measured into the same numbers: re-setting the state
         // would re-render the same graph and drop an open tooltip for nothing.
         if (response.ok && sameSample(lastSample.current, sampleOf(response))) return;
-        // The whole payload is carried into the state — the guard above is about
-        // skipping writes, never about merging a stale sample into a fresh one.
-        // A failed answer forgets the reading, so a recovered session is never
-        // mistaken for "the same sample" and left on the notice.
+        // 整份 payload 进 state——上面的守卫只为跳过写入，从不把旧样本并进新样本。失败的答案忘掉
+        // 读数，这样恢复后的会话不会被误判成「同一样本」而一直停在提示上。
         lastSample.current = response.ok ? sampleOf(response) : undefined;
         setState(toLoadState(response));
       });
@@ -129,10 +109,8 @@ export function DagBody(props: MintBodyProps): ReactElement {
   const payload = state.status === 'ready' ? state.value : undefined;
   const metrics = sampleMetrics(payload);
   const sampledAtMs = payload?.sampled_at;
-  // The clock is only worth a timer while a running node is genuinely live: a
-  // node whose only reading is a stored sample is not accumulating, so every
-  // tick would redraw the same picture (its line shows the stored number, dated
-  // in the card).
+  // 只有真有 running 节点在活时，时钟才值得起定时器：只读到存量样本的节点不在累加，每次 tick
+  // 都只会重画同一张图（它的行显示存量数字，日期在卡片里）。
   const liveClock =
     payload?.dag?.nodes.some(
       (node) =>

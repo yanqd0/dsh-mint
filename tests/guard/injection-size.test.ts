@@ -107,6 +107,8 @@ function sampleOverview(): string {
 }
 
 describe('per-request injection budget', () => {
+  // 概览的截断边界：超过 TOP_ISSUES 只列前 5 条，且必须把真实总数说全（top 5 of 8）。
+  // 用 8 条真实形状的夹具跑 `renderOverview`，数 `- #` 行数，并用标题确认被截掉的那条没漏进来。
   it('renders at most TOP_ISSUES issue lines and states the real total', () => {
     const text = sampleOverview();
     const issueLines = text.split('\n').filter((line) => line.startsWith('- #'));
@@ -162,6 +164,8 @@ describe('per-request injection budget', () => {
     }
   });
 
+  // 回归钉：分页脚是 mint 0.8 的 `# Page x/y`，旧写法 `--- Page` 不许再出现在工具描述里。
+  // 直接对 `MINT_TOOL_DESCRIPTION` 做正反两条字符串断言。
   it('states the paging footer contract mint 0.8 writes', () => {
     expect(MINT_TOOL_DESCRIPTION).toContain('# Page');
     expect(MINT_TOOL_DESCRIPTION).not.toContain('--- Page');
@@ -171,6 +175,8 @@ describe('per-request injection budget', () => {
     expect(bytes(`[Mint] WARNING: ${MINT_ENTRY_WARNING}`)).toBeLessThanOrEqual(200);
   });
 
+  // 每请求固定开销的总验收线：概览 + 工具指引 + 工具描述三条加起来的预算。
+  // 把三者按 UTF-8 字节量相加，断言不超过 1500 B。
   it('keeps the whole fixed injection under 1500 bytes', () => {
     const total =
       bytes(sampleOverview()) + bytes(MINT_TOOL_GUIDANCE) + bytes(MINT_TOOL_DESCRIPTION);
@@ -183,6 +189,8 @@ describe('per-request injection budget', () => {
     expect(text).toContain('plan create --milestone 2');
   });
 
+  // 无 running milestone 时的降级提示：必须让模型去问用户，并明确不许自己置位。
+  // 用「只有 open milestone」的夹具渲染概览，断言提示里同时含最新版本、ASK the user 与不许自设。
   it('warns when no milestone is running, without setting it itself', () => {
     const text = renderOverview({
       issues: [],
@@ -244,7 +252,6 @@ describe('per-request injection budget', () => {
       expect(line, shape).toContain('下一次委派');
       expect(bytes(line), shape).toBeLessThanOrEqual(280);
     }
-    // 正常机器（两级）与读不到深度都不渲染：零新增字节。
     expect(renderOverviewDepthLine('two-level')).toBe('');
     expect(renderOverviewDepthLine('unknown')).toBe('');
     expect(renderDagDepthNotice('two-level')).toBe('');

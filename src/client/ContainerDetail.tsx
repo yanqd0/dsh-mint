@@ -1,9 +1,8 @@
 /**
- * One plan or milestone in full, with everything it holds.
+ * 一个 plan 或 milestone 的全貌，连同它持有的一切。
  *
- * The embedded lists are the outer lists: same rows, same decoration, only the
- * data source differs — they read everything the container holds (settled states
- * included) instead of whatever the outer list's filters left on screen.
+ * 内嵌列表就是外层列表：同样的行、同样的装饰，只有数据来源不同——它读的是容器持有的全部
+ * （含已结算状态），而不是外层列表的过滤条件留在屏幕上的那些。
  */
 import type { ReactElement } from 'react';
 
@@ -18,12 +17,11 @@ import { BODY, BUTTON, META, NOTE, TOOLBAR, pill } from './styles.js';
 
 export interface ContainerDetailProps {
   copy: CopyTranslate;
-  /** Which kind the payload holds, for the heading. */
   kind: 'plan' | 'milestone';
   state: LoadState<ContainerDetail>;
-  /** The issues the container holds, read with the embedded filter. */
+  /** 容器所辖的 issue，按内嵌过滤条件读出。 */
   issues: LoadState<MintListPayload<IssueItem>>;
-  /** The lookup tables the embedded rows are decorated from. */
+  /** 内嵌各行装饰所用的查表。 */
   meta: MintMetaPayload | undefined;
   onBack: () => void;
   onRefresh: () => void;
@@ -31,7 +29,7 @@ export interface ContainerDetailProps {
   onOpenPlan: (id: number) => void;
 }
 
-/** One embedded list of issues, drawn with the outer row. */
+/** 内嵌的 issue 列表，复用外层那一套行组件。 */
 function EmbeddedIssues({
   copy,
   state,
@@ -78,11 +76,6 @@ function EmbeddedIssues({
   );
 }
 
-/**
- * Render the container.
- *
- * @param props - copy, kind, loaded state, the lookup tables, and the callbacks.
- */
 export function ContainerDetail({
   copy,
   kind,
@@ -122,8 +115,7 @@ export function ContainerDetail({
 
   const item = state.value;
   const heading = `#${String(item.id)} ${item.title}`;
-  // A milestone's plans live in the all-states lookup table; without it there is
-  // no complete read to show.
+  // milestone 的 plan 住在全状态查表里；没有这张表就没有一份完整的读数可显示。
   const plans = kind === 'milestone' ? plansOfMilestone(meta, item.id) : undefined;
 
   return (

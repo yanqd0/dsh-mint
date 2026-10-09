@@ -97,12 +97,10 @@ export function checkNote(raw: unknown): string | { error: string } {
   return raw;
 }
 
-/** A non-negative safe integer; the one shape every count this module keeps has. */
 export function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
 
-/** A non-negative safe integer, e.g. a self-reported token count. */
 export function checkCount(raw: unknown, name: string): number | { error: string } {
   if (!isCount(raw)) return { error: `${name} 必须是非负整数` };
   return raw;
@@ -156,7 +154,6 @@ export function checkWorktree(raw: unknown, where: string): DagWorktree | { erro
   };
 }
 
-/** One `[from, to]` edge: exactly two non-empty node ids. */
 export function checkEdge(raw: unknown): [string, string] | { error: string } {
   if (!Array.isArray(raw) || raw.length !== 2) return { error: 'edges 的每一项必须是 [from, to]' };
   const [from, to] = raw as [unknown, unknown];

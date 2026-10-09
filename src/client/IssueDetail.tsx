@@ -1,8 +1,6 @@
 /**
- * One issue in full: identity, placement, labels, links, and the body.
- *
- * The item arrives from `show --json`, so this view renders exactly what the
- * route validated — no fields are carried over from the list row.
+ * 单条 issue 详情：身份、归位、标签、链接与正文。item 来自 `show --json`，
+ * 故只渲染路由已校验的字段，不从列表行带任何字段过来。
  */
 import type { ReactElement } from 'react';
 
@@ -16,18 +14,13 @@ import { BODY, BUTTON, META, NOTE, TOOLBAR, pill } from './styles.js';
 export interface IssueDetailProps {
   copy: CopyTranslate;
   item: IssueDetailRecord;
-  /** The lookup tables; the milestone's version label lives in them. */
+  /** milestone 的版本标签在查找表里，详情要用它。 */
   meta: MintMetaPayload | undefined;
-  /** True when the route cut the body at its byte budget. */
+  /** 路由按字节预算截断正文时为 true。 */
   truncated: boolean;
   onBack: () => void;
 }
 
-/**
- * Render the detail.
- *
- * @param props - the issue, whether its body was cut, and the way back.
- */
 export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetailProps): ReactElement {
   const links = item.links
     .map((link) => describeLink(link))

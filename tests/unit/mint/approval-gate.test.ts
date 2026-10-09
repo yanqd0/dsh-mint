@@ -71,6 +71,8 @@ describe('isMintCommand', () => {
     ['minty list', false],
     ['echo mint', false],
   ];
+  // 门禁只认「裸 mint 调用」：管道/分号/环境变量前缀/带引号参数都不算，不能替它们放行。
+  // it.each 表列出正反 17 条命令，逐条断言 isMintCommand。
   it.each(cases)('matches %j as %s', (command, expected) => {
     expect(isMintCommand(command)).toBe(expected);
   });
@@ -219,6 +221,8 @@ describe('installApprovalGate', () => {
     expect(next).toHaveBeenCalledTimes(2);
   });
 
+  // autoApprove 打开时第一次确认就直接放行（不经委派链），这是该配置的唯一作用点。
+  // 桩 next 记录调用，断言答案是 allowed-once 且 next 从未被调用。
   it('auto-allows the first ask when autoApprove is enabled', async () => {
     const { ctx, listeners } = makeCtx();
     installApprovalGate(ctx, { autoApprove: true });
@@ -229,6 +233,8 @@ describe('installApprovalGate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  // 读不出请求时必须退回委派链：门禁自己出错不能把确认吞掉。
+  // 用 toolName getter 抛异常的请求，断言结果来自 next 且 next 被调用。
   it('fails open to delegation when the request itself throws', async () => {
     const { ctx, listeners } = makeCtx();
     installApprovalGate(ctx, {});

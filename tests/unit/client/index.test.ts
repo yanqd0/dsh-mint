@@ -91,6 +91,8 @@ describe('mint client plugin', () => {
     expect(locales.map((entry) => entry.dict)).toEqual([{ ...ZH }, { ...EN }]);
   });
 
+  // 两个内置页类型（mint 面板 + plan DAG）是对宿主与右栏的对外契约：id/kind/priority 与 guide 入口都要对。
+  // 桩 ctx 捕获注册，断言两个类型定义、guide 顺序，以及页面类型不认领资源地址。
   it('declares two builtin page types, the mint panel and the plan DAG', () => {
     const { ctx, types } = clientDouble();
     apply(ctx);
@@ -166,6 +168,8 @@ describe('mint client plugin', () => {
     expect(opened).toEqual([]);
   });
 
+  // 精简宿主（无 effect、无 sidebarRight）也必须装配成功：缺可选服务不能抛，面板是可降级增强。
+  // 两次 apply 各去掉一个服务，断言不抛且两个页类型照常注册。
   it('registers without an effect seam', () => {
     const { ctx, types } = clientDouble();
     const lean: ClientContextLike = {

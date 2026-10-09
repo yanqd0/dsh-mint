@@ -111,6 +111,8 @@ describe('commitReminderListener', () => {
     expect(decision.content?.[1]?.text).toContain('记得用 mint 工具登记');
   });
 
+  // commit 没成功就不算落地：钩子被拒时提醒登记反倒误导，必须静默交给 next()。
+  // 夹具给 isError=true 且带 error.message 的结果，断言 next() 被调用、决策不带 content。
   it('stays silent when the commit failed', async () => {
     const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'git commit -m "x"' } };
     const failed: ToolResultLike = {
@@ -169,6 +171,8 @@ describe('isFailedResult', () => {
     expect(isFailedResult({ isError: true, content: [] })).toBe(true);
   });
 
+  // 失败判据不止宿主的 isError：uv/bash 把失败写成正文标记，漏认会让失败被当成成功。
+  // 覆盖退出码、被信号杀、超时、被停止四类标记文本，逐条断言 isFailedResult 为 true。
   it('reads the exit-code, kill, timeout and stop markers', () => {
     expect(isFailedResult(text('boom\n[exit code: 1]'))).toBe(true);
     expect(isFailedResult(text('boom\n[exit code: 130]'))).toBe(true);
@@ -196,6 +200,8 @@ describe('installCommitReminder', () => {
 describe('todoSyncChanged', () => {
   const mint = (args: string[]): ToolExecutionLike => ({ name: 'mint', arguments: { args } });
 
+  // 只有会改变台账的 mint 写（state 流转、plan plan/close）才该触发 todo 同步提醒。
+  // 夹具是 mint 工具的 argv 样本，逐条断言 todoSyncChanged 为 true。
   it('matches the mint calls that move ledger state', () => {
     expect(todoSyncChanged(mint(['issue', 'state', 'start', '119']))).toBe(true);
     expect(todoSyncChanged(mint(['plan', 'plan', '25']))).toBe(true);
@@ -265,6 +271,8 @@ describe('todoSyncReminderListener', () => {
     expect(next).toHaveBeenCalled();
   });
 
+  // todo 面板属于根代理：子代理做完状态流转不该弹提醒，否则父会话被无效打扰。
+  // 夹具在 session.header 写 delegationDepth=1，断言 next() 被调用（即未追加 content）。
   it('stays silent for a subagent session: the panel is the root agent’s', async () => {
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     await todoSyncReminderListener(exec(undefined, 1), successResult, next);
@@ -381,6 +389,8 @@ describe('installFailureSignal', () => {
     vi.restoreAllMocks();
   });
 
+  // 失败信号是最后的兜底：工具报错时必须在 stderr 提示去 mint 登记，不能静默吞掉。
+  // 桩 process.stderr.write 与 tools/result 监听，断言写出 [mint] 前缀与 issue add 指引。
   it('writes a hint when a tool fails', () => {
     const write = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
     const { ctx, listeners } = makeCtx();
@@ -467,6 +477,8 @@ describe('sleepPollReminderListener', () => {
     expect(decision.content?.[1]?.text).toBe(sleepPollHint);
   });
 
+  // 提示文案必须同时给出「事件会自动到达」与「只在真被阻塞时才等待」，防止退回轮询。
+  // 直接断言 sleepPollHint 的关键片段（list_agents/自动到达/job_output 等）。
   it('names the notification delay and the blocked-only escape hatch in the text', () => {
     expect(sleepPollHint).toContain('list_agents');
     expect(sleepPollHint).toContain('自动到达');
@@ -512,6 +524,8 @@ describe('readonlyDbHintListener', () => {
     ],
   };
 
+  // 只读库症状是外部文本契约：要认得出错文案本身，不依赖工具名或退出码标记。
+  // 用 READONLY_DB_SYMPTOM 拼出 mint 报错文本，对照正常输出断言 true/false。
   it('detects the symptom in any text block, without the tool name or exit code', () => {
     expect(isReadonlyDbFailure(readonlyResult)).toBe(true);
     expect(isReadonlyDbFailure({ isError: false, content: [{ type: 'text', text: 'ok' }] })).toBe(

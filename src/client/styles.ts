@@ -1,10 +1,8 @@
 /**
- * Shared style objects for the mint panel.
+ * mint 面板共用的样式对象。
  *
- * Only theme tokens (`--dsw-*`) are used, so the panel inherits the page's light
- * and dark palettes instead of carrying its own. Objects are shared by reference
- * between views, which is what keeps the whole panel consistent without a CSS
- * pipeline in the client bundle.
+ * 只用主题 token（`--dsw-*`），面板因此继承页面的明暗配色，而不自带一套；对象按引用
+ * 共享，整个面板由此保持一致，客户端包里也不需要 CSS 管线。
  */
 import type { CSSProperties } from 'react';
 
@@ -84,7 +82,7 @@ export const NOTE: CSSProperties = {
   fontSize: 12,
 };
 
-/** The label that wraps one filter checkbox, so both lists sit the same way. */
+/** 包住单个筛选勾选框的 label，两个列表因此排布一致。 */
 export const FILTER_LABEL: CSSProperties = {
   ...NOTE,
   display: 'flex',
@@ -125,7 +123,7 @@ export const PROSE: CSSProperties = {
   lineHeight: 1.5,
 };
 
-/** The pill that carries a mint lifecycle state. */
+/** 承载 mint 生命周期状态的小胶囊。 */
 export function pill(tone: StatusTone): CSSProperties {
   return {
     color: `var(--dsw-alias-state-${tone}-primary)`,
@@ -137,19 +135,15 @@ export function pill(tone: StatusTone): CSSProperties {
   };
 }
 
-/** The characters a label color may consist of before it is trusted in CSS. */
+/** label 颜色在被信任地插进 CSS 之前，允许出现的字符集。 */
 const HEX_COLOR = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 
 /**
- * The badge that carries one label.
+ * 承载单个 label 的徽标。
  *
- * Geometry mirrors the shell's `Tag` (fixed capsule, only the palette varies),
- * but the palette is the color mint recorded for that label rather than a theme
- * tone. The value comes out of the database through the CLI, so it is checked
- * here: an unrecognized color falls back to a neutral chip instead of being
- * interpolated into CSS.
- *
- * @param color - the label's recorded `#rgb` / `#rrggbb` value, or anything else.
+ * 几何形状对齐宿主 shell 的 `Tag`（固定胶囊，只有配色可变），但配色用的是 mint 为这个
+ * label 记下的颜色而非主题色调。该值经 CLI 从数据库里出来，故在这里校验：认不出的颜色
+ * 退回中性 chip，而不是被插进 CSS。
  */
 export function labelBadge(color: string): CSSProperties {
   const base: CSSProperties = {
@@ -180,7 +174,7 @@ export function labelBadge(color: string): CSSProperties {
   };
 }
 
-/** The line a row's label badges live on. */
+/** 一行行内 label 徽标所在的横排。 */
 export const LABELS: CSSProperties = {
   display: 'flex',
   flexWrap: 'wrap',
@@ -188,17 +182,13 @@ export const LABELS: CSSProperties = {
   gap: 4,
 };
 
-/** Which parent a row's chip names. */
 export type PlacementKind = 'plan' | 'direct' | 'viaPlan';
 
 /**
- * The chip that carries one parent reference.
+ * 承载一处父级引用的小 chip。
  *
- * A plan reads as an id in a quiet capsule; a milestone keeps the primary tone
- * when it is the issue's own and drops to a dashed secondary one when it is
- * reached through the plan — the difference is the point of showing both.
- *
- * @param kind - which parent the chip stands for.
+ * plan 只是一个安静胶囊里的 id；milestone 在属于 issue 自身时用主色、经 plan 关联时降为
+ * 虚线次色——这个差别正是两者都显示出来的意义。
  */
 export function placementChip(kind: PlacementKind): CSSProperties {
   const base: CSSProperties = {
@@ -233,8 +223,8 @@ export function placementChip(kind: PlacementKind): CSSProperties {
 }
 
 /**
- * The DAG pane's frame. Same column shape as {@link SHELL}, minus the header:
- * the pane is one scrollable canvas and one summary line.
+ * DAG 面板的外框：列方向排布与 {@link SHELL} 相同，只是没有 header——这个面板就是一块
+ * 可滚动画布加一行摘要。
  */
 export const DAG_SHELL: CSSProperties = {
   display: 'flex',
@@ -245,11 +235,10 @@ export const DAG_SHELL: CSSProperties = {
 };
 
 /**
- * The scrolling viewport around the SVG.
+ * SVG 外面的滚动视口。
  *
- * `position: relative` is what anchors the hover tooltip, and it must live on
- * the canvas rather than on a node: an absolutely positioned tooltip inside an
- * `<svg>` is not something every engine lays out the same way.
+ * `position: relative` 是悬停 tooltip 的定位锚点，且必须落在画布上而不是节点上：绝对定位
+ * 的 tooltip 放进 `<svg>` 里，各家引擎的排版并不一致。
  */
 export const DAG_CANVAS: CSSProperties = {
   position: 'relative',
@@ -260,11 +249,10 @@ export const DAG_CANVAS: CSSProperties = {
 };
 
 /**
- * The hover tooltip: the node's full text next to its box.
+ * 悬停 tooltip：节点全文紧挨着它的盒子显示。
  *
- * `maxHeight` plus `overflow: auto` is the contract from the spec — a node's
- * `note` is a subagent's conclusion quoted verbatim, and it can be long; the
- * tooltip scrolls instead of stretching past the pane.
+ * `maxHeight` 加 `overflow: auto` 是规格里定下的契约——节点的 `note` 是子代理结论的逐字
+ * 引用，可能很长，tooltip 要滚动，而不是撑出面板。
  */
 export const DAG_TOOLTIP: CSSProperties = {
   position: 'absolute',
@@ -284,18 +272,14 @@ export const DAG_TOOLTIP: CSSProperties = {
   pointerEvents: 'none',
 };
 
-/** The class a pulsing node carries; its keyframes live in the body's `<style>`. */
+/** 脉动节点带的 class；它的 keyframes 定义在 body 的 `<style>` 里。 */
 export const DAG_RUNNING_CLASS = 'dsh-mint-dag-running';
 
 /**
- * One node box, tinted by its tone.
+ * 单个节点盒子的样式，按色调着色。
  *
- * The fill is a mix of the tone into the panel's own layer, so a node keeps the
- * page's light/dark surface instead of becoming a flat swatch; the stroke is the
- * tone at full strength, which is what makes `running` read as brighter than
- * `done`.
- *
- * @param tone - the node's theme state tone.
+ * 填充是把色调混进面板自己的层里，节点因此保留页面的明暗表面而不至于变成一块死色；描边
+ * 用满强度的色调，`running` 由此比 `done` 更亮。
  */
 export function dagNodeStyle(tone: DagTone): CSSProperties {
   const token = `var(--dsw-alias-state-${tone}-primary)`;
@@ -306,7 +290,7 @@ export function dagNodeStyle(tone: DagTone): CSSProperties {
   };
 }
 
-/** The node label: the SVG text an ellipsis-free six-code-point label sits in. */
+/** 节点标签的 SVG 文本样式：六码点、不省略的标签放在其中。 */
 export const DAG_NODE_LABEL: CSSProperties = {
   fill: 'var(--dsw-alias-label-primary)',
   fontSize: 12,
@@ -314,10 +298,10 @@ export const DAG_NODE_LABEL: CSSProperties = {
 };
 
 /**
- * The node's second line: the measured metric pair, one size below the label.
+ * 节点的第二行：实测指标对，比标签小一号。
  *
- * It inherits the label's family so a node reads as one block of text, and it
- * is small enough that both numbers fit the 104px box beside their unit.
+ * 它继承标签的字体，让节点读起来是一整块文字；字号小到两个数字连同单位都塞得进 104px 的
+ * 盒子。
  */
 export const DAG_NODE_METRICS: CSSProperties = {
   fontSize: 9,
@@ -325,36 +309,31 @@ export const DAG_NODE_METRICS: CSSProperties = {
 };
 
 /**
- * The color a host-measured token count draws in.
+ * 宿主实测的令牌数所用颜色。
  *
- * Amber is the theme's warning tone, and in this palette that is also the color
- * of money: a measured count is budget spent, and the line spends the one state
- * color the theme already has for it rather than inventing a hue.
+ * 琥珀是主题的告警色，在这套配色里同时也是钱的颜色：实测计数就是花掉的预算，这一行用主题
+ * 本来就为它准备好的状态色，而不另造一个色相。
  */
 export const LIVE_TOKENS_COLOR = 'var(--dsw-alias-state-warn-primary)';
 
 /**
- * The color a host-measured elapsed time draws in.
+ * 宿主实测的耗时所用颜色。
  *
- * This theme carries no purple alias token — all 403 `--dsw-*` tokens were
- * checked, and purple survives only in the onboarding gradient and in shiki's
- * syntax palette — so the time line is a controlled literal, the same
- * concession {@link labelBadge} makes for a label's own recorded color. It must
- * be kept in step with the panel's light and dark surfaces by hand.
+ * 这套主题没有紫色的 alias token——全部 `--dsw-*` token 都查过，紫色只活在 onboarding
+ * 渐变和 shiki 的语法配色里——所以这一行用受控的字面量，与 {@link labelBadge} 为 label
+ * 自带颜色所做的让步相同。它必须人工跟上页面的明暗表面。
  */
 export const LIVE_TIME_COLOR = '#8b76f6';
 
-/** The fill of the measured token count inside a node box. */
 export function dagLiveTokensStyle(): CSSProperties {
   return { fill: LIVE_TOKENS_COLOR };
 }
 
-/** The fill of the measured elapsed time inside a node box. */
 export function dagLiveTimeStyle(): CSSProperties {
   return { fill: LIVE_TIME_COLOR };
 }
 
-/** One line of the tooltip: technical fields are secondary to the prose. */
+/** tooltip 里的一行：技术字段在正文面前是次要的。 */
 export const DAG_TOOLTIP_META: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',
   fontSize: 11,

@@ -185,6 +185,8 @@ describe('startDagAutoOpen', () => {
     stop();
   });
 
+  // autoOpen=false 是宿主的关闭闸：必须连定时器一起停，而不是每轮问一次再拒。
+  // 假定时器 + 桩 host，断言不 open、armed()=0，且后续 tick 也不再请求。
   it('stops probing for good when the host turns auto-open off', async () => {
     const clock = fakeTimers();
     const world = host(() => Promise.resolve(payload({ autoOpen: false })));
@@ -238,6 +240,8 @@ describe('startDagAutoOpen', () => {
     stop();
   });
 
+  // 失败信封与传输失败同等对待：不抛给宿主、不 open，但也不停表（下一轮继续探）。
+  // 桩 host 恒定答 `{ok:false}`，断言 opened 为空而 armed()=1。
   it('ignores a failure envelope', async () => {
     const clock = fakeTimers();
     const world = host(() => Promise.resolve({ ok: false as const, error: 'session-not-live' }));

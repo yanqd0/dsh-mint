@@ -102,6 +102,8 @@ describe('outstandingWorktrees', () => {
       updated_at: '2026-01-01T00:00:00.000Z',
     }) satisfies DagNodeView;
 
+  // 收尾台账的口径：只有还留在盘上的树（active/merged）算未收尾，removed 与没树的节点都不算。
+  // 用带 `worktree.state` 的夹具节点加一个完全没有 worktree 键的节点，断言留下的 id 序列。
   it('lists every worktree that is still on disk, not-removed', () => {
     // `exactOptionalPropertyTypes`: a node without a worktree omits the key
     // entirely rather than carrying `undefined` (the stored shape has no key).
@@ -160,6 +162,8 @@ describe('worktreeSweepListener', () => {
     expect(decision.content).toBeUndefined();
   });
 
+  // 触发门禁的三条否路：非 `plan close` 的 mint 调用、失败结果、子代理会话都不许提醒。
+  // 同一用例依次跑这三种调用，各自断言决策是裸 accept 且 `next` 被调用过。
   it('stays quiet for other mint calls, failures, and subagents', async () => {
     await seed('sess-1', 'active');
 
@@ -186,6 +190,8 @@ describe('worktreeSweepListener', () => {
     expect(spyChild).toHaveBeenCalled();
   });
 
+  // 兜底静默：没有 DAG 的会话与拿不到 session id 的调用都必须原样透传。
+  // 先查一个没写过文档的会话，再用不带 agent 的调用，断言两次都不附加内容。
   it('stays quiet without a DAG or a session id', async () => {
     const spyNoDag = vi.fn(next);
     expect(await worktreeSweepListener(closeExec('sess-none'), successResult, spyNoDag, dagDir)).toEqual({

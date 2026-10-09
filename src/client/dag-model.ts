@@ -1,38 +1,28 @@
 /**
- * The plan DAG's drawing model: status coloring, node geometry, and the
- * topological layout the panel renders as SVG (spec: `notes/plan-dag.md`).
+ * plan DAG 的绘制模型：状态配色、节点几何，以及面板渲染成 SVG 的分层布局
+ * （规格见 `notes/plan-dag.md`）。
  *
- * The host publishes no coordinates — the document is a graph, and one layout
- * here keeps the browser the single place that decides pixels. Everything in
- * this file is a pure function of the view, so the geometry can be checked in
- * Node without a DOM, and the same view always draws the same picture.
+ * 宿主不下发坐标——文档只是图，布局放在这里，让浏览器成为决定像素的唯一一处。
+ * 全文件都是视图的纯函数：无需 DOM 即可在 Node 里验证几何，同一视图永远画出同一张图。
  */
 import { dagLayers } from '../dag/dag.js';
 import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../shared/records.js';
 import type { StatusTone } from './model.js';
 
-/**
- * The node box: wide enough for a six-code-point label, short enough to stack.
- *
- * The height carries two lines — the label and, under it, the measured metric
- * pair — which is what took it from 34 to 44.
- */
+/** 节点框：宽度容得下六码点标签；高度要放两行（标签 + 实测指标），故为 44。 */
 export const DAG_NODE_W = 104;
 export const DAG_NODE_H = 44;
 
-/** Horizontal gap inside a layer; vertical gap between layers (edges run in it). */
+/** 层内水平间隙；层间垂直间隙（连线的肘部走在其中）。 */
 export const DAG_H_GAP = 16;
 export const DAG_V_GAP = 46;
 
-/** Canvas margin; also the minimum canvas, so an empty DAG still has a frame. */
+/** 画布留白，同时也是最小画布：空 DAG 也要有边框。 */
 export const DAG_PAD = 12;
 
 /**
- * The three theme state tones a node can take.
- *
- * A status and a verdict collapse into one axis here: `done` alone has no color
- * of its own, because what a reader needs to see is the outcome, not the fact
- * that the node stopped moving.
+ * 节点可取的三种主题状态色：status 与 verdict 在这里合成一轴——`done` 自身没有
+ * 颜色，读者要看的是结果，而不是「这个节点停下了」。
  */
 export type DagTone = 'warn' | 'success' | 'error';
 
@@ -44,7 +34,7 @@ export interface DagBox {
   h: number;
 }
 
-/** One edge as an SVG `<polyline>`: `points` is the `x,y x,y x,y` string. */
+/** 一条边即一条 SVG `<polyline>`：`points` 是 `x,y x,y x,y` 串。 */
 export interface DagEdgeLine {
   from: string;
   to: string;
@@ -59,12 +49,8 @@ export interface DagLayout {
 }
 
 /**
- * The theme tone a node draws in.
- *
- * `pending` is amber (waiting), `running` is green (in flight), and a settled
- * node reads its verdict — green for pass, red for fail. A `done` node with no
- * verdict is the host's own tolerance for a half-written document, and is drawn
- * as a success rather than as an error it is not.
+ * 节点盒子的色调：`pending` 琥珀（等待）、`running` 绿（进行中），已结算的看 verdict。
+ * `done` 而无 verdict 是宿主对半截文档的容忍，按成功画，不冤判成失败。
  */
 export function dagTone(node: DagNodeView): DagTone {
   if (node.status === 'pending') return 'warn';
@@ -72,19 +58,14 @@ export function dagTone(node: DagNodeView): DagTone {
   return node.verdict === 'fail' ? 'error' : 'success';
 }
 
-/** True for the one status whose box pulses, so the CSS class has one owner. */
 export function isRunning(node: DagNodeView): boolean {
   return node.status === 'running';
 }
 
 /**
- * The tone the node's status badge (`pill()`) draws in.
- *
- * A second reading of the same node on purpose, not {@link dagTone}: the badge
- * is a chip on a row and says what the node is *doing*, so `pending` and
- * `running` are both worth catching the eye — amber — while the box underneath
- * keeps its own axis (amber for waiting, green for in flight). Only a refuted
- * node is red in both.
+ * 节点状态徽标（`pill()`）的色调：与 {@link dagTone} 是同一节点的两种刻意读法——
+ * 徽标说的是节点*正在做什么*，故 `pending` 与 `running` 都用提醒色；只有被否决的
+ * 节点两处都红。
  */
 export function dagStatusTone(node: DagNodeView): StatusTone {
   if (node.status === 'pending' || node.status === 'running') return 'warn';
@@ -92,16 +73,9 @@ export function dagStatusTone(node: DagNodeView): StatusTone {
 }
 
 /**
- * The tone the chip on a node's worktree state draws in.
- *
- * The state is a fact about the branch, not about the node's own lifecycle, so
- * it is read on its own axis: an unmerged worktree is work that is still out
- * there (amber, like any unfinished node), a merge stopped on conflicts is the
- * one thing a reader must not miss (red), and a branch that is in the main line
- * is settled (green). A worktree that is gone is neither: it is a plain fact of
- * the workspace, so it takes the neutral chip rather than a warning it is not.
- *
- * @param state - the worktree state as the document carries it.
+ * 节点 worktree 状态 chip 的色调：该状态说的是分支，不是节点自身的生命周期，故另作
+ * 一轴——未合并是仍在外面的活（提醒色），冲突最不能漏（红），已进主线即已结算（绿）；
+ * worktree 已不在只是工作区的事实，用中性 chip，而非它并不是的告警。
  */
 export function dagWorktreeTone(state: DagWorktreeState): StatusTone {
   switch (state) {
@@ -117,13 +91,9 @@ export function dagWorktreeTone(state: DagWorktreeState): StatusTone {
 }
 
 /**
- * The union dependency graph as edges, keyed `child → parents`.
- *
- * `depends_on` and `edges` are two spellings of the same relation (`[from, to]`
- * means `to` depends on `from`), so an edge may arrive twice; the union keeps
- * one copy of each pair. References to unknown ids are dropped rather than
- * drawn, and the iteration starts from `view.nodes` so the result is ordered by
- * the document, not by a map's insertion history.
+ * 联合依赖图读成 `child → parents` 的边：`depends_on` 与 `edges` 是同一种关系的两种
+ * 写法（`[from, to]` 表示 to 依赖 from），故同一对去重；引用未知 id 的边丢掉不画，
+ * 遍历从 `view.nodes` 起步，顺序因此随文档而非 Map 的插入史。
  */
 function parentEdges(view: DagView): Array<[string, string]> {
   const known = new Set(view.nodes.map((node) => node.id));
@@ -143,33 +113,27 @@ function parentEdges(view: DagView): Array<[string, string]> {
   return pairs;
 }
 
-/** A coordinate in an SVG attribute: trimmed of float noise, never `1e-7`. */
+/** SVG 属性里的坐标：抹掉浮点噪声，绝不出现 `1e-7` 这种写法。 */
 function round(value: number): string {
   return String(Number(value.toFixed(3)));
 }
 
 /**
- * Lay one DAG out: layers top-down, nodes left-to-right and centered.
+ * 布局一张 DAG：分层自上而下，层内节点从左到右、整体居中。
  *
- * The layering is the host's own (`dagLayers`), which tolerates cycles and
- * dangling references instead of throwing — a hand-edited file must render as a
- * wrong picture, never as a blank panel.
- *
- * @param view - the document as the route published it.
+ * 分层复用宿主自己的 `dagLayers`，它容忍环与悬空引用而不抛错——手改坏的文件必须画出
+ * 一张错的图，绝不能是空白面板。
  */
 export function layoutDag(view: DagView): DagLayout {
-  // `dagLayers` already answers top-down: layer 0 is the nodes that wait for
-  // nothing, and a node sits one past its deepest dependency — which is exactly
-  // the row the drawing wants, with every edge running downward. Empty levels
-  // (only reachable through a cycle) are skipped by the loop below.
+  // dagLayers 的层号正好就是行号（层 0 是无依赖者，节点排在最深依赖之后）。
   const layers = dagLayers(view.nodes, view.edges);
   const depth = new Map<string, number>();
   layers.forEach((layer, level) => {
     for (const id of layer) depth.set(id, level);
   });
 
-  // Groups follow `view.nodes` order, so a node the layering dropped (it cannot
-  // happen today, but the shapes are independent) still gets a box.
+  // 分组随 `view.nodes` 顺序：万一分层漏掉某节点（今天不会，但两者的形状互不保证），
+  // 它仍然会有盒子。
   const groups: string[][] = [];
   for (const node of view.nodes) {
     const level = depth.get(node.id) ?? 0;
@@ -181,8 +145,6 @@ export function layoutDag(view: DagView): DagLayout {
     if (group === undefined || group.length === 0) continue;
     width = Math.max(width, group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP);
   }
-  // An empty document still gets a frame: a zero-width SVG would collapse to
-  // nothing, and the pane's empty state is the notice above it, not the canvas.
   width = Math.max(width, DAG_NODE_W);
 
   const boxes: DagBox[] = [];
@@ -209,9 +171,8 @@ export function layoutDag(view: DagView): DagLayout {
     const parent = at.get(from);
     const child = at.get(to);
     if (parent === undefined || child === undefined) continue;
-    // Three points: out of the parent's bottom edge, across at the middle of the
-    // gap, into the child's top edge. Only the middle y needs choosing, and the
-    // gap is wide enough for the two horizontal runs to read as one elbow.
+    // 三点折线：出父节点底边、在间隙中部横折、入子节点顶边。只有中段 y 需要挑，间隙
+    // 也够宽，两段横线读起来像一个肘部。
     const x1 = parent.x + parent.w / 2;
     const y1 = parent.y + parent.h;
     const x2 = child.x + child.w / 2;
@@ -232,7 +193,6 @@ export function layoutDag(view: DagView): DagLayout {
   };
 }
 
-/** The node/edge/status counts the panel's summary line is built from. */
 export function dagCounts(view: DagView): {
   nodes: number;
   edges: number;
@@ -252,12 +212,9 @@ export function dagCounts(view: DagView): {
 }
 
 /**
- * The copy keys the node's measured line is built from.
- *
- * `DagBody` is the only caller and is a `.tsx` this module cannot
- * import from, so the keys are named once here instead of being spelled in two
- * files. It also answers the panel's copy guard, which reads source text: a key
- * the dictionary carries but no source ever quotes is a dead key.
+ * 节点实测行所用 copy key 的集中命名处：唯一调用方 `DagBody` 是 `.tsx`，本模块无法
+ * import；面板的 copy 守卫又只读源码文本——字典里有、源码里却无人引用的 key 会被判成
+ * 死键，故这些 key 必须在这份源码里出现。
  */
 export const DAG_COPY_KEYS = {
   liveTokens: 'dag.liveTokens',
@@ -265,25 +222,18 @@ export const DAG_COPY_KEYS = {
   measuredAt: 'dag.measuredAt',
 } as const;
 
-/** A metric value the panel is willing to draw, or `undefined`. */
 function measuredInt(value: unknown): number | undefined {
-  // The host publishes the pair, but the route is JSON: a negative, fractional,
-  // or non-numeric value is a bug worth dropping, not a number worth drawing.
+  // 宿主发的是一对数，但路由过的是 JSON：负数、小数、非数都是该丢的 bug，而不是
+  // 一个该画出来的数。
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 /**
- * One node's entry, field by field: a bad `tokens` keeps a good `elapsed_ms`.
+ * 逐字段收下一个节点的实测：坏的 `tokens` 不该连累好的 `elapsed_ms`。
  *
- * `at` is the third field and the one with a meaning of its own: it is present
- * only on a *stored* sample, so it is what tells the panel "this reading is from
- * an earlier turn" instead of "this is what the host is measuring right now".
- * A missing `at` is therefore kept as missing — absence is the live case — while
- * a present one must be a usable stamp: a bogus time would be drawn as a
- * measurement that never happened, so the entry is dropped rather than relabelled.
- *
- * @param raw - the route's entry, however malformed.
- * @returns the fields that may be drawn; `undefined` when not one of them is.
+ * `at` 有独立含义——只有**已落库**的采样带它，故它区分「这是上一轮的读数」与「宿主此刻
+ * 正在测」；缺失即现场，保持缺失；一旦出现就必须是可用的时间戳：坏时间宁可整条丢掉，
+ * 也不能改标成一次从未发生的测量。
  */
 function keepMetrics(raw: unknown): DagNodeMetrics | undefined {
   const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
@@ -302,15 +252,9 @@ function keepMetrics(raw: unknown): DagNodeMetrics | undefined {
 }
 
 /**
- * The host's per-node measurements, filtered down to what may be drawn.
- *
- * The route may measure nodes this answer's document no longer carries, and a
- * half-read sample may hold one good field beside a bad one; both are dropped
- * per rule, so a node shows what is true rather than what it was typed as. The
- * result is empty — never a zero guess — when there is no document, when the
- * answer carries no metrics at all, or when nothing survived.
- *
- * @param payload - the route answer, reduced to the two fields that matter.
+ * 宿主的分节点实测，过滤到可以画的部分：路由可能带着本文档已经没有的节点，半截采样也
+ * 可能好字段旁躺着坏字段，两种都按规则丢掉，让节点显示真值而非它被写成什么。没有文档、
+ * 答案不带 metrics、或无一存活时一律给空表——绝不用 0 去猜。
  */
 export function nodeMetricsMap(payload: {
   metrics?: Record<string, DagNodeMetrics>;
@@ -329,20 +273,14 @@ export function nodeMetricsMap(payload: {
   return kept;
 }
 
-/** `1.2` / `123`: one decimal below a hundred, whole at or above it. */
 function scaled(value: number): string {
-  // `String` drops a trailing `.0`, so the exact thousands read `1k`, not `1.0k`.
+  // `String` 会抹掉末尾的 `.0`，所以整千读作 `1k` 而不是 `1.0k`。
   return String(value >= 100 ? Math.round(value) : Math.round(value * 10) / 10);
 }
 
 /**
- * A token count as one short label: `999`, `1.2k`, `123k`, `1.5M`.
- *
- * Below a thousand the count is exact; above it, scaled and rounded — one
- * decimal until the scaled value reaches a hundred, where a decimal is
- * precision the reader cannot use and columns the box does not have.
- *
- * @param tokens - a non-negative token count.
+ * 令牌数的一行短标签：`999` / `1.2k` / `123k` / `1.5M`——千以下精确，以上缩放取整，
+ * 缩放值到百位后不再留小数：那一位读者用不上，盒子里也没有那一列。
  */
 export function formatCount(tokens: number): string {
   if (tokens < 1e3) return String(tokens);
@@ -351,16 +289,9 @@ export function formatCount(tokens: number): string {
 }
 
 /**
- * An elapsed time as seconds, the way the live line shows it.
- *
- * Always seconds: a node is a subagent run, and minutes-and-seconds would spend
- * columns without adding reach. Under a minute the value is truncated to whole
- * seconds (`3200` → `3`, `59999` → `59`); from a minute on it keeps one decimal
- * (`75400` → `75.4`). Truncation rather than rounding is deliberate — the line
- * may not claim a second that has not elapsed. Negative time is clock skew and
- * reads as zero.
- *
- * @param ms - elapsed milliseconds, as the host measured or the panel derived.
+ * 耗时一律读成秒：节点是一次子代理运行，分秒写法只会占列而不会增信息。一分钟内截断为
+ * 整秒（`3200` → `3`），此后留一位小数（`75400` → `75.4`）。截断是刻意的——这一行不
+ * 得声称一个尚未走完的秒。负值是时钟偏移，读作 0。
  */
 export function formatSeconds(ms: number): string {
   if (ms <= 0) return '0';
@@ -369,17 +300,10 @@ export function formatSeconds(ms: number): string {
 }
 
 /**
- * The elapsed time a running node should show right now.
- *
- * The host samples `elapsed_ms` only when it answers, so a live line between
- * two answers is that sample plus the time since — which needs the anchor's
- * clock (`sampled_at`) as much as the browser's `now`. The two clocks need not
- * agree: a negative gap is skew, not time travel, and adds nothing. A host that
- * published no anchor is trusted to be current.
- *
- * @param elapsedMs - the host's last sample, or `undefined` before the first.
- * @param sampledAtMs - the host time that sample was taken at.
- * @param nowMs - the browser's current time.
+ * running 节点此刻该显示的耗时：宿主只在应答时采样 `elapsed_ms`，两次应答之间的实时值
+ * 就是「那次采样 + 此后经过的时间」，所以既需要宿主锚点时钟（`sampled_at`），也需要浏览
+ * 器的 `now`。两个时钟不必一致：负的间隔是偏移而非时光倒流，按 0 计；宿主没给锚点时
+ * 就信它是当前值。
  */
 export function liveElapsedMs(
   elapsedMs: number | undefined,

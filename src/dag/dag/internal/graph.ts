@@ -133,14 +133,12 @@ export function dagLayers(
   return layers;
 }
 
-/** The node/edge/status counts both summaries are built from. */
 export function dagCounts(doc: DagDoc): DagCounts {
   const counts: DagCounts = { nodes: doc.nodes.length, edges: doc.edges.length, pending: 0, running: 0, done: 0 };
   for (const node of doc.nodes) counts[node.status] += 1;
   return counts;
 }
 
-/** `节点 8，边 6：pending 3 / running 2 / done 3`, plus the running ids. */
 export function dagSummary(doc: DagDoc | undefined): string {
   if (doc === undefined) return '本会话暂无 DAG';
   const counts = dagCounts(doc);

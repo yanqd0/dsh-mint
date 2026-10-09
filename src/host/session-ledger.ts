@@ -10,62 +10,51 @@ import type {
 } from '../shared/types.js';
 
 /**
- * Session-scoped mint-write ledger.
+ * 会话内的 mint 写台账。
  *
- * The plan-binding gate (`planbind.ts`) can only see that *some* plan in the
- * project is `running` — a project-level fact. The question "has this session
- * recorded anything?" needs a session-level fact, and the only reliable evidence
- * of it is a mint write performed by this session. This module keeps exactly
- * that: a bounded set of session ids that wrote to **their own** project.
+ * 计划绑定门禁（`planbind.ts`）只能看到项目里*某个*计划是 `running`——那是项目级事实。
+ * 「本会话登记过东西吗？」需要一条会话级事实，而唯一可靠证据就是本会话执行过的 mint
+ * 写操作。本模块只管这一件事：一个有界的会话 id 集合，记住哪些会话写过**自己的**项目。
  *
- * Deliberately an observer over `tools/result`:
+ * 刻意做成 `tools/result` 的观察者：
  *
- * - it never participates in the `tools/post-execute` waterfall, so it cannot
- *   change or veto a tool's content;
- * - it reads the invocation through the same classifier the cross-project gate
- *   uses (`invocationsOf` + `isWriteInvocation`), so "what counts as a write"
- *   has one definition;
- * - a mint *domain* failure (an invalid state transition, which the tool reports
- *   as `ok: false` without an error result) still counts. The ledger answers
- *   "did this session touch the ledger", not "did the write succeed" — and that
- *   is why the `mint` tool itself needs no change here.
+ * - 从不参与 `tools/post-execute` 瀑布，所以改不了也否决不了任何工具内容；
+ * - 用与跨项目门禁同一个分类器读调用（`invocationsOf` + `isWriteInvocation`），
+ *   让「什么算写」只有一个定义；
+ * - mint 的*领域*失败也算（非法状态转移，工具以 `ok: false` 报告而不带 error
+ *   result）。台账回答的是「本会话碰过台账没有」，不是「写成功没有」——正因如此
+ *   `mint` 工具本身这里无需改动。
  *
- * A cross-project write (`-p <project>` / `MINT_PROJECT`) is **not** a record of
- * this session's work in this project, so it does not count — but `-p <本项目>`
- * is, because it writes to the very ledger the default path writes.
+ * 跨项目写（`-p <项目>` / `MINT_PROJECT`）不算本会话在**本项目**的工作记录，所以不计数
+ * ——但 `-p <本项目>` 算，因为它写的就是默认路径写的那个台账。
  */
 
-/** How many sessions are remembered; matches the other bounded session maps. */
+/** 记住多少个会话；与其它有界会话表一致。 */
 export const MAX_SESSIONS = 100;
 
-/** Sessions that performed at least one own-project mint write, oldest first. */
+/** 至少执行过一次本项目 mint 写的会话，最早在前。 */
 const writes = new Set<string>();
 
-/** Sessions whose log recorded leaving plan mode, oldest first. */
+/** 日志里记录过「离开计划模式」的会话，最早在前。 */
 const planModeExits = new Set<string>();
 
 /**
- * Sessions whose log recorded plan mode **active** / **inactive**.
+ * 日志里记录过计划模式 **active** / **inactive** 的会话。
  *
- * Two mutually exclusive sets rather than one map: they share the bounded
- * insertion helper with every other session fact here, and "unknown" is then
- * simply "in neither set" — the answer a session restored after a restart
- * deserves, since its `plan/mode` events happened in the previous process.
+ * 两个互斥集合而非一张 map：与其它会话事实共用有界插入与淘汰，而「未知」就等于「两个
+ * 集合都不在」——这正是重启后恢复的会话应得的答案（它的 `plan/mode` 事件发生在上一个
+ * 进程里）。
  */
 const planModeActive = new Set<string>();
 const planModeInactive = new Set<string>();
 
-/**
- * Sessions that were already told about the missing record — by the tool-result
- * notice or by the one-shot overview line. Oldest first.
- */
+/** 已经被告知过记录缺失的会话（工具结果提醒或一次性概览行送达）。最早在前。 */
 const recordGapNotified = new Set<string>();
 
 /**
- * Remember one session id in a bounded set, evicting the oldest entry.
+ * 把某个会话 id 记进有界集合，淘汰最旧一条。
  *
- * All session facts in this module share the bound and the eviction order, so
- * they share the insertion helper too.
+ * 本模块所有会话事实共用同一个上限与淘汰顺序，于是共用这个插入辅助函数。
  */
 function remember(set: Set<string>, sessionId: string): void {
   if (set.has(sessionId)) return;
@@ -76,29 +65,29 @@ function remember(set: Set<string>, sessionId: string): void {
   set.add(sessionId);
 }
 
-/** Record one own-project mint write for a session. */
+/**
+ * 记下本会话的一次本项目 mint 写。
+ */
 export function recordMintWrite(sessionId: string | undefined): void {
   if (sessionId === undefined) return;
   remember(writes, sessionId);
 }
 
 /**
- * True when this session has already written to its own project's ledger.
+ * 本会话是否已经写过自己项目的台账。
  *
- * An unknown session id answers `false`: the caller either stays silent (the
- * plan-mode reminder) or asks the user (a future hard gate) rather than
- * pretending a record exists.
+ * 会话 id 未知时答 `false`：调用方要么保持安静（计划模式提醒），要么去问用户
+ * （未来的硬门禁），而不是假装已有记录。
  */
 export function hasMintWrite(sessionId: string | undefined): boolean {
   return sessionId !== undefined && writes.has(sessionId);
 }
 
 /**
- * Record that a session's log left plan mode.
+ * 记下某会话的日志已离开计划模式。
  *
- * The `/plan off` command and the GUI toggle both end as a `plan/mode`
- * `{active:false}` session event — there is no tool result to enrich, which is
- * the coverage hole this ledger exists to cover.
+ * `/plan off` 命令与 GUI 开关都以 `plan/mode` `{active:false}` 会话事件收尾——没有
+ * 工具结果可供增补，这正是台账要补的覆盖缺口。
  */
 export function notePlanModeExit(sessionId: string | undefined): void {
   if (sessionId === undefined) return;
@@ -106,13 +95,11 @@ export function notePlanModeExit(sessionId: string | undefined): void {
 }
 
 /**
- * Record the plan-mode value a session's log last carried.
+ * 记下某会话日志最后携带的计划模式值。
  *
- * The plan-mode service lives in an **isolated cordis group**, so a plugin at
- * the root layer cannot ask it anything; this ledger is the reachable fallback
- * (see `planbind.ts`). Only transitions the host actually appended are known —
- * a session that never toggled plan mode in *this* process answers
- * `undefined`, and the caller must then stay out of the way (fail-open).
+ * 计划模式服务在**隔离的 cordis group** 里，根层插件问不到它；这个台账是可达到的兜底
+ * （见 `planbind.ts`）。只有主机真正追加过的转移才是已知的——*本*进程从未切换过计划模式
+ * 的会话答 `undefined`，调用方必须让路（fail-open）。
  */
 export function notePlanModeState(sessionId: string | undefined, active: boolean): void {
   if (sessionId === undefined) return;
@@ -121,7 +108,7 @@ export function notePlanModeState(sessionId: string | undefined, active: boolean
   drop.delete(sessionId);
 }
 
-/** The plan-mode value this process observed for a session, or `undefined`. */
+/** 本进程为该会话观察到的计划模式值，或 `undefined`。 */
 export function planModeKnownState(sessionId: string | undefined): boolean | undefined {
   if (sessionId === undefined) return undefined;
   if (planModeActive.has(sessionId)) return true;
@@ -130,14 +117,12 @@ export function planModeKnownState(sessionId: string | undefined): boolean | und
 }
 
 /**
- * Mark the record-gap notice as delivered for this session.
+ * 标记该会话的「记录缺失」提醒已送达。
  *
- * The `exit_plan_mode` tool path appends its notice to the tool result,
- * and that delivery must satisfy the overview channel too — otherwise one exit
- * would be announced twice. Marking on the *call* rather than on the appended
- * text makes the two channels mutually exclusive regardless of when the host
- * appends the `plan/mode` event (it does so at the next request assembly, after
- * the tool result was already enriched).
+ * `exit_plan_mode` 工具路径把提醒追加到工具结果里，那次送达必须同时满足概览通道——
+ * 否则一次退出会被播报两次。在**调用**时标记而非在追加文本时标记，使两条通道互斥，
+ * 且不受主机何时追加 `plan/mode` 事件影响（主机在下次请求装配时才追加，那时工具结果
+ * 早已增补完毕）。
  */
 export function noteRecordGapNotified(sessionId: string | undefined): void {
   if (sessionId === undefined) return;
@@ -145,12 +130,11 @@ export function noteRecordGapNotified(sessionId: string | undefined): void {
 }
 
 /**
- * Consume the one-shot "left plan mode with nothing recorded" notice.
+ * 取用一次性的「离开计划模式却什么都没登记」提醒。
  *
- * Answers `true` at most once per session, and only while all three facts hold:
- * the session left plan mode, it never wrote to its own project, and no notice
- * has been delivered yet. A non-tool exit therefore surfaces exactly one overview
- * line, and a session that records its work never sees one at all.
+ * 每个会话至多答一次 `true`，且要三个事实同时成立：会话离开过计划模式、从未写过自己
+ * 的项目、还没有送达过提醒。于是非工具路径的退出恰好浮出一行概览，而登记过工作的会话
+ * 一行都看不到。
  */
 export function takeRecordGapNotice(sessionId: string | undefined): boolean {
   if (sessionId === undefined || !planModeExits.has(sessionId)) return false;
@@ -159,7 +143,7 @@ export function takeRecordGapNotice(sessionId: string | undefined): boolean {
   return true;
 }
 
-/** Forget every recorded session (tests: state must not leak between cases). */
+/** 清空全部已记录会话（测试：状态不得跨用例泄漏）。 */
 export function resetSessionLedger(): void {
   writes.clear();
   planModeExits.clear();
@@ -168,7 +152,7 @@ export function resetSessionLedger(): void {
   recordGapNotified.clear();
 }
 
-/** True when a tool result carries an own-project mint write. */
+/** 工具结果是否携带一次本项目 mint 写。 */
 export function isOwnProjectMintWrite(
   exec: ToolExecutionLike,
   result?: ToolResultLike,
@@ -180,29 +164,25 @@ export function isOwnProjectMintWrite(
     return invocationsOf(exec).some((invocation) => {
       if (!isWriteInvocation(invocation)) return false;
       if (invocation.project === undefined) return true;
-      // `-p <本项目>` writes to this session's own ledger, so it *is* a record of
-      // this session's work — unlike a real cross-project write. An
-      // unknown own name keeps the old answer: no evidence.
+      // `-p <本项目>` 写的就是本会话自己的台账，所以它*是*本会话工作的记录——与真正的
+      // 跨项目写不同。本项目名未知时保持旧答案：没有证据。
       return cwd !== undefined && isOwnProject(cwd, entry, invocation.project);
     });
   } catch {
-    // An unreadable call is not evidence of a record.
+    // 读不出来的调用不构成记录的证据。
     return false;
   }
 }
 
 /**
- * Register the ledger's observers.
+ * 注册台账的观察者。
  *
- * `tools/result` and `session/event` are both emit-only (the host contains
- * listener failures), and the event type / tool name are checked before any
- * work, so unrelated activity costs nothing.
+ * `tools/result` 与 `session/event` 都是只发不收的事件（宿主会兜住监听器异常），且事件
+ * 类型/工具名在动手之前先判，所以无关活动零成本。
  *
- * The `session/event` listener is the coverage point for that gap: a user leaving plan
- * mode with `/plan off` or the GUI toggle produces no tool result at all, so the
- * signal has to come from the session log itself. It also records the direction
- * of every `plan/mode` event, which is the reachable half of the host plan
- * state (the plan-mode service itself is isolated from this layer).
+ * `session/event` 监听器正是上述缺口的覆盖点：用户用 `/plan off` 或 GUI 开关离开计划
+ * 模式时不产生任何工具结果，信号只能来自会话日志本身。它还记录每个 `plan/mode` 事件的
+ * 方向，那是主机计划状态里可达到的一半（计划模式服务本身对本层隔离）。
  */
 export function installSessionLedger(ctx: DshContext, entry?: string): () => void {
   const offResult = ctx.on('tools/result', (exec: ToolExecutionLike, result: ToolResultLike) => {
@@ -213,11 +193,11 @@ export function installSessionLedger(ctx: DshContext, entry?: string): () => voi
   const offEvent = ctx.on('session/event', (session: SessionLike, event: SessionEventLike) => {
     try {
       if (event?.type !== 'plan/mode' || typeof event.data?.active !== 'boolean') return;
-      // The gate needs both directions, not only the exit.
+      // 两个方向门禁都要，不只是退出。
       notePlanModeState(session?.id, event.data.active);
       if (event.data.active === false) notePlanModeExit(session?.id);
     } catch {
-      // An unreadable event is not evidence of anything; stay silent.
+      // 读不出来的事件不构成任何证据；保持安静。
     }
   });
   return () => {

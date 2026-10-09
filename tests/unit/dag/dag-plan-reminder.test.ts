@@ -141,6 +141,8 @@ describe('dagPlanReminderListener', () => {
     expect(second).toEqual({ kind: 'accept' });
   });
 
+  // 「init 过了」不等于「开过工」：文档在、图是空的，是提醒必须单独覆盖的一个缺口。
+  // 用真实 store 落一份 0 节点文档，连调两次，只有第一次带出空图提醒。
   it('treats an initialized but node-less DAG as its own gap, and says so (init still not enough)', async () => {
     // The trap this reminder exists for: `init` alone never opens the panel
     // (`src/client/dag-open.ts` requires `nodes.length > 0`), so it leaves no
@@ -228,6 +230,8 @@ describe('dagPlanReminderListener', () => {
     expect(decision).toEqual({ kind: 'accept' });
   });
 
+  // 失败的调用不算缺口：文本带退出码标记的结果必须原样透传，不许叠提醒。
+  // 造一个 `isError:false`、正文含 `[exit code: 1]` 的完成态结果来触发这条分支。
   it('stays quiet when the tool call failed', async () => {
     // A non-zero exit is a *completed* call whose text carries the marker.
     const failed: ToolResultLike = {
@@ -242,6 +246,8 @@ describe('dagPlanReminderListener', () => {
     expect(decision).toEqual({ kind: 'accept' });
   });
 
+  // 降级契约：DAG 路径拼不出来时必须静默，绝不把提醒升级成工具调用错误。
+  // 会话 id 带 `/`，让 `readDag` 在任何文件访问之前抛 `DagPathError`。
   it('swallows an unbuildable DAG path and does not throw', async () => {
     // An invalid session id makes `readDag` throw `DagPathError` before any file
     // access; a reminder must never turn that into a tool-call error.
@@ -254,6 +260,8 @@ describe('dagPlanReminderListener', () => {
     expect(decision).toEqual({ kind: 'accept' });
   });
 
+  // 计划态的优先级契约：projection 的判定压过 ledger，反之从盘上恢复的会话也能被认出。
+  // 一个用例跑两个方向：projection 报 false 而 ledger 有记录；清空 ledger 后 projection 报 true。
   it('trusts the projection over the ledger, and vice versa', async () => {
     // The projection is authoritative: `active:false` outranks the ledger's `true`,
     // so the reminder must not fire for a session the host says is not planning.
@@ -275,6 +283,8 @@ describe('dagPlanReminderListener', () => {
     const decision = await call(exec, makeResult(), next, on);
     expect(decision.content?.map((block) => block.text)).toContain(DAG_PLAN_REMINDER);
   });
+  // 提醒集合的容量边界：喂满后挤掉最旧的会话 id，与 ledger 的淘汰口径保持一致。
+  // 按 `MAX_REMINDED_SESSIONS` 逐个缺口喂满，再多喂一个挤掉 `s-0`，最后回头验证 `s-0` 会重新提醒。
   it('keeps the reminded set bounded, evicting the oldest id (like the ledger)', async () => {
     // Fill the bound with one nudge per session: each session is a *different*
     // gap key, so each one is delivered and recorded.

@@ -1,12 +1,10 @@
 /**
- * The panel's transport: `fetch` against the host's read-only `/dsh-mint/` routes.
+ * 面板的传输层：用 `fetch` 打宿主那组只读的 `/dsh-mint/` 路由。
  *
- * Paths resolve against `document.baseURI` rather than the origin — the page can
- * be mounted under a prefix (reverse proxy, multiple deployments behind one
- * host), and a root-absolute path would miss that prefix and 404. Every failure
- * comes back as `{ ok: false, error }` rather than a throw, so the panel renders
- * one error state for a dead session, a broken mint entry, and a CLI failure
- * alike.
+ * 路径对 `document.baseURI` 解析而非对 origin——页面可能挂在某个前缀下（反向代理、一个
+ * 宿主后面挂多份部署），写成根绝对的路径会漏掉前缀而 404。所有失败都以
+ * `{ ok: false, error }` 返回而不抛：会话已死、mint 入口坏掉、CLI 失败，面板渲染的是
+ * 同一个失败态。
  */
 import type {
   ContainerDetail,
@@ -25,10 +23,8 @@ import { routePath } from '../shared/route-paths.js';
 import type { MintApiLike } from './types.js';
 
 /**
- * One route's path, derived from the host's own route table.
- *
- * Exported for the drift guard: the host's `ROUTE_NAMES` and this table must
- * describe the same seven paths, and only a comparison can keep it that way.
+ * 每条路由的路径都从宿主自己的路由表推出：宿主的 `ROUTE_NAMES` 与本表必须描述同一组
+ * 路径，而只有比对才能让它保持如此，故这里导出给漂移守卫用。
  */
 export const ROUTES = {
   issues: routePath('issues'),
@@ -42,11 +38,9 @@ export const ROUTES = {
 } as const;
 
 /**
- * Resolve a route path against the directory the page is served from.
+ * 把路由路径解析到页面所在的目录下。
  *
- * @param path - the route's path, with or without a leading slash.
- * @param baseUri - the page's base; defaults to `document.baseURI`, falling back
- *   to the origin for non-browser callers (tests).
+ * `baseUri` 缺省取 `document.baseURI`；非浏览器调用方（测试）退回 origin。
  */
 export function apiPath(path: string, baseUri?: string): string {
   const relative = path.replace(/^\/+/, '');
@@ -54,7 +48,6 @@ export function apiPath(path: string, baseUri?: string): string {
   return new URL(relative, new URL(base, 'http://localhost/')).pathname;
 }
 
-/** Serialize defined, non-empty query values; order is insertion order. */
 export function queryString(query: Record<string, string | undefined>): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
@@ -64,25 +57,20 @@ export function queryString(query: Record<string, string | undefined>): string {
   return text.length === 0 ? '' : `?${text}`;
 }
 
-/** True for the refusal envelope both the routes and this module produce. */
+/** 路由与本模块共用的一种失败信封的判定。 */
 function isFailure(value: unknown): value is MintFailurePayload {
   return typeof value === 'object' && value !== null && (value as { ok?: unknown }).ok === false;
 }
 
 export interface CreateApiOptions {
-  /** The session whose project every request reads. */
+  /** 每个请求都按它去读该会话的项目。 */
   sessionId: string;
-  /** Test seam; defaults to the page's `fetch`. */
+  /** 测试缝；缺省用页面的 `fetch`。 */
   fetch?: typeof globalThis.fetch;
-  /** Test seam for the mount point; defaults to `document.baseURI`. */
+  /** 挂载点的测试缝；缺省用 `document.baseURI`。 */
   baseUri?: string;
 }
 
-/**
- * Build the panel's transport.
- *
- * @param options - session identity plus the two test seams.
- */
 export function createApi(options: CreateApiOptions): MintApiLike {
   const doFetch = options.fetch ?? globalThis.fetch;
   const { sessionId } = options;
@@ -129,8 +117,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
       get<MintDetailPayload<ContainerDetail>>(ROUTES.plan, { id: String(id) }, signal),
     milestone: (id, signal) =>
       get<MintDetailPayload<ContainerDetail>>(ROUTES.milestone, { id: String(id) }, signal),
-    // The DAG route takes no query beyond the session: the prober and the panel
-    // both read the same per-session file.
+    // DAG 路由除会话外不接受查询参数：探测与面板读的是同一份按会话落盘的文件。
     dag: (signal) => get<MintDagPayload>(ROUTES.dag, {}, signal),
   };
 }

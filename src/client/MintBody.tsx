@@ -1,13 +1,7 @@
 /**
- * The mint tab's body.
- *
- * Owns the tab's chrome (the three read-only views) and the request state behind
- * each one: what to read, when, and how a failure is presented. Every decision it
- * makes is delegated to `model.ts`, so this file stays a wiring layer over values
- * another test can check in Node.
- *
- * Reads are aborted and re-run when their inputs change — filters, page, the
- * tab's refresh command, and the tab record's own lifetime (`tab.signal`).
+ * mint 页签的主体：只做接线——把三个只读视图与各自的请求状态（读什么、何时读、
+ * 失败怎么呈现）拼起来，判定逻辑全交给 `model.ts`。筛选、页码、页签刷新命令与
+ * 页签自身的 `tab.signal` 一变，旧请求即中止并重读。
  */
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -33,7 +27,6 @@ import type { ContainerTarget, LoadState } from './model.js';
 import { HEADER, NOTE, SHELL, TAB, TAB_ACTIVE } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
 
-/** The three read-only views, in tab order. */
 const VIEW_KEYS = ['view.issues', 'view.plans', 'view.milestones'] as const;
 
 type ViewKey = (typeof VIEW_KEYS)[number];
@@ -41,17 +34,11 @@ type ViewKey = (typeof VIEW_KEYS)[number];
 /** How many rows one page holds; mint accepts up to 100. */
 const PAGE_SIZE = 20;
 
-/** How long the search box settles before it becomes a request. */
 const SEARCH_DEBOUNCE_MS = 300;
 
 /** The seat's hook; a stable no-op keeps the call unconditional in lean harnesses. */
 const NO_TAB_INFO = (): TabInfoLike | undefined => undefined;
 
-/**
- * Render the panel.
- *
- * @param props - session identity, copy, transport, and the seat's tab hook.
- */
 export function MintBody(props: MintBodyProps): ReactElement {
   const { api, copy, useTabInfo = NO_TAB_INFO } = props;
   const info = useTabInfo();
@@ -61,12 +48,10 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [view, setView] = useState<ViewKey>('view.issues');
   const [reload, setReload] = useState(0);
 
-  // The lookup tables: plans, milestones, labels, and where each issue sits.
-  // They do not depend on any filter or page, so one read serves every view and
-  // only an explicit refresh replaces it.
+  // 查找表（plan / milestone / label 与 issue 的归位）不随任何筛选或页码变化，
+  // 故一次读取服务所有视图，只有显式刷新才替换。
   const [meta, setMeta] = useState<LoadState<MintMetaPayload>>({ status: 'loading' });
 
-  // Issue view.
   const [issueAllStates, setIssueAllStates] = useState(false);
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
@@ -75,9 +60,8 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [openIssueId, setOpenIssueId] = useState<number | undefined>(undefined);
   const [issue, setIssue] = useState<LoadState<MintIssuePayload> | undefined>(undefined);
 
-  // Plan / milestone views. Both tabs read a container list and share one
-  // filter: the settled-state default is a property of the list, not of the
-  // table it reads.
+  // 计划 / 里程碑两个页签读同一份容器列表、共用一个筛选：默认隐藏已结算状态
+  // 是列表查询自身的属性，不随所读的表变化。
   const kind: 'plan' | 'milestone' | undefined =
     view === 'view.plans' ? 'plan' : view === 'view.milestones' ? 'milestone' : undefined;
   const [containerAllStates, setContainerAllStates] = useState(false);
@@ -90,13 +74,11 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [container, setContainer] = useState<LoadState<ContainerDetailRecord> | undefined>(
     undefined
   );
-  // The detail view's own container, if the open target belongs to this tab.
   const active = kind === undefined ? undefined : activeContainer(openContainer, kind);
   const [embeddedIssues, setEmbeddedIssues] = useState<LoadState<MintListPayload<IssueItem>>>({
     status: 'loading',
   });
 
-  // Settle the search box before it becomes a request.
   useEffect(() => {
     if (draft === search) return;
     const timer = setTimeout(() => {
@@ -108,7 +90,6 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
   }, [draft, search]);
 
-  // Read the lookup tables once per mount and per explicit refresh.
   useEffect(() => {
     if (signal?.aborted === true) return;
     const controller = new AbortController();
@@ -128,7 +109,6 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
   }, [api, reload, signal]);
 
-  // Read the issue page whenever a filter, the page, or the refresh counter moves.
   useEffect(() => {
     if (view !== 'view.issues') return;
     if (signal?.aborted === true) return;
@@ -157,7 +137,6 @@ export function MintBody(props: MintBodyProps): ReactElement {
     };
   }, [api, view, issueAllStates, search, issuePage, reload, signal]);
 
-  // Read one plan or milestone page when that view is showing.
   useEffect(() => {
     if (kind === undefined) return;
     if (signal?.aborted === true) return;
@@ -208,7 +187,7 @@ export function MintBody(props: MintBodyProps): ReactElement {
     });
   }, [actions]);
 
-  // One issue in full, including the body the list omits.
+  // 列表行不带正文，打开详情需另取整条 issue。
   useEffect(() => {
     if (openIssueId === undefined) {
       setIssue(undefined);
@@ -269,10 +248,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
     setReload((count) => count + 1);
   };
 
-  /** The lookup tables when they are usable; rows degrade to what they carry. */
+  /** 查找表可用时给出，否则 undefined：行退化为只渲染自身携带的字段。 */
   const tables = meta.status === 'ready' ? meta.value : undefined;
 
-  /** The issue view, list or detail. */
   const issueView = (): ReactElement => {
     if (openIssueId === undefined) {
       return (
@@ -324,7 +302,6 @@ export function MintBody(props: MintBodyProps): ReactElement {
     );
   };
 
-  /** The plan or milestone view, list or detail. */
   const containerView = (tab: 'plan' | 'milestone'): ReactElement => {
     if (active === undefined) {
       return (

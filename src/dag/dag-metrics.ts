@@ -36,7 +36,6 @@ const TOKEN_BUCKETS = [
   'cacheWriteTokens',
 ] as const;
 
-/** True for the only accepted metric value: a non-negative safe integer. */
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
@@ -99,12 +98,6 @@ export function activeElapsedMs(
  * The whole body is one `try`/`catch`: `stateOf` belongs to another package and
  * may throw for a session it does not know, which must cost this node its
  * metrics, not the route its answer.
- *
- * @param input.session - the child session the projections are keyed by.
- * @param input.projections - the host's registry.
- * @param input.status - the node's lifecycle, for the timing formula.
- * @param input.sampledMs - the host clock (epoch ms) this sample is taken at.
- * @returns only the fields that were actually read; `{}` when neither was.
  */
 export function nodeMetrics(input: {
   session: unknown;
@@ -128,7 +121,6 @@ export function nodeMetrics(input: {
   }
 }
 
-/** Everything one metrics read needs: the DAG to read and the host to read it from. */
 export interface MeasureDagNodesInput {
   sessionId: string;
   /** DAG directory override; absent means {@link DAG_DIR}. */
@@ -156,10 +148,7 @@ export type DagMetricsInput = MeasureDagNodesInput;
  * it read itself — a half-bad one is trimmed, and one with nothing left is
  * dropped rather than published.
  *
- * @param input.live - what the host just measured, keyed by node id.
- * @param input.stored - the document's `samples`, or `undefined` when it has none.
  * @param input.nodes - the document's nodes; iteration order is the output's.
- * @returns one entry per node that has either source.
  */
 export function mergeMetrics(input: {
   live: Record<string, DagNodeMetrics>;
@@ -201,10 +190,6 @@ export function mergeMetrics(input: {
  * the point: a node whose child session has settled (or a composition with no
  * projection registry at all) still answers with the last sample the host
  * persisted, so "measured once" survives the session that measured it.
- *
- * @param input - the session whose DAG to read, plus the host services.
- * @returns the metrics of every node that has at least one of them, plus the
- *   document they were read from (`undefined` when there is none to read).
  */
 export async function measureDagNodes(
   input: MeasureDagNodesInput
@@ -249,19 +234,7 @@ export async function measureDagNodes(
   };
 }
 
-/**
- * Every node's host-measured usage, keyed by node id.
- *
- * The DAG document names each node's child session in `agent`; this walks it and
- * asks each session's projections for their live numbers, falling back to the
- * node's persisted sample. A node without an agent, with nothing readable and
- * without a stored sample is left out entirely, so the panel can iterate the
- * result without a presence check.
- *
- * @param input - the session whose DAG to read, plus the host services.
- * @returns the metrics of every node that has at least one of them; `{}` when
- *   the document is missing/unreadable or nothing could be measured.
- */
+/** {@link measureDagNodes} 的只读面：只要 metrics；没测到任何值的节点整条缺席。 */
 export async function readDagMetrics(
   input: DagMetricsInput
 ): Promise<Record<string, DagNodeMetrics>> {
@@ -289,9 +262,6 @@ const measurements = new Map<string, Map<string, DagNodeMetrics>>();
  * and a session keeps at most {@link MEASUREMENT_MAX} entries, oldest evicted
  * first (a `Map` iterates in insertion order).
  *
- * @param sessionId - the owning (root) session id.
- * @param nodeId - the node the measurement belongs to.
- * @param metrics - what the host just measured; an empty or malformed reading is ignored.
  * @param at - when that reading was taken (epoch ms); defaults to now. It travels
  *   with the numbers because a sample persisted later must carry the moment it
  *   was *measured*, not the moment it happened to be written.
@@ -319,19 +289,12 @@ export function rememberMeasurement(
   }
 }
 
-/** Every remembered reading of one session, as {@link mergeMetrics} takes them. */
 function rememberedMetrics(sessionId: string): Record<string, DagNodeMetrics> {
   const entries = measurements.get(sessionId);
   if (entries === undefined) return {};
   return Object.fromEntries([...entries].map(([nodeId, metrics]) => [nodeId, { ...metrics }]));
 }
 
-/**
- * The most recent remembered measurement for one node, if any.
- *
- * @param sessionId - the owning (root) session id.
- * @param nodeId - the node the measurement belongs to.
- */
 export function lastMeasurement(sessionId: string, nodeId: string): DagNodeMetrics | undefined {
   const found = measurements.get(sessionId)?.get(nodeId);
   // A copy: the caller is about to merge this reading into a document, and must
@@ -339,11 +302,6 @@ export function lastMeasurement(sessionId: string, nodeId: string): DagNodeMetri
   return found === undefined ? undefined : { ...found };
 }
 
-/**
- * Test seam: forget everything (one session's entries when `sessionId` is given).
- *
- * @param sessionId - the session to forget; absent forgets every session.
- */
 export function clearMeasurements(sessionId?: string): void {
   if (sessionId === undefined) {
     measurements.clear();

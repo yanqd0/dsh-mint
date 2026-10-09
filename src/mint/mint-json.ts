@@ -1,13 +1,11 @@
 /**
- * Shape guards for the mint CLI's `--json` output.
+ * mint CLI `--json` 输出的形状守卫。
  *
- * mint is a subprocess, so a `mint-faa` bump can rename a field without any
- * import failing. Every reader therefore validates the fields it renders and
- * reports a warning instead of letting a shrunken list read as real data.
+ * mint 是子进程，所以 `mint-faa` 升级可以悄悄改动字段名而不触发任何 import 失败。因此每个
+ * 读者都校验它要渲染的字段，并报出告警，而不是让缩水的列表读成真实数据。
  *
- * Two callers share this module with different appetites: the per-request
- * overview renders a handful of fields (`context.ts` keeps its own minimal
- * predicate), while the client-face routes hand the panel whole records.
+ * 两个调用方以不同胃口共用本模块：每请求概览只渲染少量字段（`context.ts` 留着自己那份最小
+ * 谓词），而客户端面路由把整条记录交给面板。
  */
 import type {
   ContainerDetail,
@@ -18,41 +16,37 @@ import type {
   PlanItem,
 } from '../shared/records.js';
 
-/** True for a JSON object (not `null`, not an array). */
+/** 是 JSON 对象（不是 `null`，不是数组）。 */
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-/** True for a `string`. */
 function isString(value: unknown): value is string {
   return typeof value === 'string';
 }
 
-/** True for a `number`. */
 function isNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value);
 }
 
-/** True for a `number` or an explicit `null` (the CLI's "unset" for foreign keys). */
+/** 是 `number` 或显式 `null`（CLI 对外键的「未设置」）。 */
 function isNumberOrNull(value: unknown): value is number | null {
   return value === null || isNumber(value);
 }
 
 /**
- * True for a `string` or an explicit `null`.
+ * 是 `string` 或显式 `null`。
  *
- * mint serializes most optional columns straight from `Option<String>` /
- * `Option<i64>`, so `null` is a **declared** answer for them, not shape drift:
- * an issue or container without a `body`, a plan whose `version` follows an
- * absent `milestone_id`, a label without a recorded `color`.
- * Requiring a string here dropped those whole records and reported them as
- * "missing required fields".
+ * mint 多数可选列直接从 `Option<String>` / `Option<i64>` 序列化而来，所以对它们来说 `null`
+ * 是**声明过的**答案而非形状漂移：没有 `body` 的 issue/容器、跟在缺失 `milestone_id` 之后的
+ * plan `version`、没记 `color` 的 label。以前要求必须是字符串，会把这些整条记录丢掉并报成
+ * “missing required fields”。
  */
 function isStringOrNull(value: unknown): value is string | null {
   return value === null || isString(value);
 }
 
-/** True for a `boolean`. */
+/** 是 `boolean`。 */
 function isBoolean(value: unknown): value is boolean {
   return typeof value === 'boolean';
 }
@@ -72,12 +66,12 @@ function isOptional(value: unknown, accepts: (candidate: unknown) => boolean): b
   return value === undefined || accepts(value);
 }
 
-/** True for an array of strings. */
+/** 是字符串数组。 */
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(isString);
 }
 
-/** A `list --json` issue must carry every field the panel renders. */
+/** 一条 `list --json` issue 必须携带面板渲染的每个字段。 */
 export function isIssueItem(value: unknown): value is IssueItem {
   if (!isRecord(value)) return false;
   return (
@@ -97,7 +91,7 @@ export function isIssueItem(value: unknown): value is IssueItem {
   );
 }
 
-/** A `plan list --json` record must carry every field the panel renders. */
+/** 一条 `plan list --json` 记录必须携带面板渲染的每个字段。 */
 export function isPlanItem(value: unknown): value is PlanItem {
   if (!isRecord(value)) return false;
   return (
@@ -112,7 +106,7 @@ export function isPlanItem(value: unknown): value is PlanItem {
   );
 }
 
-/** A `milestone list --json` record must carry every field the panel renders. */
+/** 一条 `milestone list --json` 记录必须携带面板渲染的每个字段。 */
 export function isMilestoneItem(value: unknown): value is MilestoneItem {
   if (!isRecord(value)) return false;
   return (
@@ -126,7 +120,7 @@ export function isMilestoneItem(value: unknown): value is MilestoneItem {
   );
 }
 
-/** A `label list --json` record must carry the color the panel tints with. */
+/** 一条 `label list --json` 记录必须携带面板用来上色的 color。 */
 export function isLabelItem(value: unknown): value is LabelItem {
   if (!isRecord(value)) return false;
   return (
@@ -140,7 +134,7 @@ export function isLabelItem(value: unknown): value is LabelItem {
   );
 }
 
-/** A `show --json` container must carry the body and the issue list it embeds. */
+/** 一条 `show --json` 容器必须携带 body 与它内嵌的 issue 列表。 */
 export function isContainerDetail(value: unknown): value is ContainerDetail {
   if (!isRecord(value)) return false;
   return (
@@ -165,11 +159,11 @@ export function isContainerDetail(value: unknown): value is ContainerDetail {
 }
 
 /**
- * `show <id> --json` must carry the list fields plus the body.
+ * `show <id> --json` 必须携带列表字段加 body。
  *
- * `list --json` 从不带 body，老 CLI 上也不带有效 milestone，所以详情读是面板唯一
- * 能确定同时拿到两者的地方。创建时没给 `--body` 的 issue 会答 `"body": null`，面板
- * 显示为「无 body」，而不是当成读不出的记录丢掉。
+ * `list --json` 从不带 body，老 CLI 上也不带有效 milestone，所以详情读是面板唯一能确定
+ * 同时拿到两者的地方。创建时没给 `--body` 的 issue 会答 `"body": null`，面板显示为「无
+ * body」，而不是当成读不出的记录丢掉。
  *
  * `milestone_id` 在这里保持**必到**——与 {@link isIssueItem} 上的可选新字段不同——
  * 因为详情读一直返回它。
@@ -188,28 +182,26 @@ export interface ParsedItems<T> {
   warning?: string;
 }
 
-/** Read a CLI pagination counter, falling back to the item list's own size. */
+/** 读一个 CLI 分页计数，缺失时回退到条目列表自身的大小。 */
 function counter(value: unknown, fallback: number): number {
   return isNumber(value) && value >= 0 ? value : fallback;
 }
 
 export interface ParseNoun {
-  /** What an unreadable response costs, used in the warning text. */
+  /** 读不出来的应答代价是什么，用于告警文本。 */
   noun?: string;
 }
 
 /**
- * Parse a `{ items: [...] }` CLI response, validating every item.
+ * 解析 `{ items: [...] }` 形式的 CLI 应答，逐条校验。
  *
- * Mirrors the command-level failure contract: never throws, but never lets a
- * shape mismatch pass as real data either. Items that fail validation are
- * dropped and the caller surfaces a warning, so a renamed field degrades to a
- * visible note rather than a silent empty list.
+ * 与命令级失败契约一致：绝不抛，但也绝不让形状不符冒充真实数据。校验不过的条目被丢掉、由
+ * 调用方浮出告警，于是被改名的字段降级成一条可见说明，而不是静默的空列表。
  *
- * @param source - the command name, quoted back in the warning.
- * @param text - raw stdout.
- * @param isItem - the caller's own appetite for an item.
- * @param options - `noun` names what a failed read costs (default "overview").
+ * @param source - 命令名，会在告警里被引用。
+ * @param text - 原始 stdout。
+ * @param isItem - 调用方自己对一条条目的胃口。
+ * @param options - `noun` 命名读失败的代价（默认 "overview"）。
  */
 export function parseItems<T>(
   source: string,
@@ -243,7 +235,7 @@ export function parseItems<T>(
     : { items, page, pageSize, pages, total, warning };
 }
 
-/** An unreadable list still reports its page shape, so callers need no branch. */
+/** 读不出来的列表仍给出页形状，好让调用方不必分支。 */
 function emptyPage<T>(warning: string): ParsedItems<T> {
   return { items: [], page: 1, pageSize: 0, pages: 1, total: 0, warning };
 }
@@ -254,11 +246,11 @@ export interface ParsedDetail<T> {
 }
 
 /**
- * Parse a single-object `--json` response (`plan show`, `milestone show`).
+ * 解析单对象的 `--json` 应答（`plan show`、`milestone show`）。
  *
- * @param source - the command name, quoted back in the warning.
- * @param text - raw stdout.
- * @param isDetail - the caller's validator for the whole object.
+ * @param source - 命令名，会在告警里被引用。
+ * @param text - 原始 stdout。
+ * @param isDetail - 调用方对整对象的校验器。
  */
 export function parseDetail<T>(
   source: string,

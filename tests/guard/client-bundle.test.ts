@@ -106,6 +106,8 @@ describe('client bundle', () => {
     ]);
   });
 
+  // 打包契约：bundle 只许请求平台表里的模块，越界的 specifier 必须在清单的 external 里声明。
+  // 用记账用的 stub `require` 记下 factory 真正请求过的 specifier，逐个比对 `PLATFORM_MODULES`。
   it('requires only modules from the platform table', () => {
     const bundle = loadBundle();
     materialize(bundle);
@@ -114,6 +116,8 @@ describe('client bundle', () => {
     }
   });
 
+  // 回归钉：产物必须是 loader 工厂包起来的脚本，顶层 ESM 语法在浏览器里直接 SyntaxError。
+  // 先把产物放进无 Node 全局的 V8 上下文执行，再对原始字节断言前缀与工厂尾部形状。
   it('wraps esbuild output in the loader factory, not in ESM syntax', () => {
     expect(code.startsWith('window.__ModuleLoader__.load({ id: "@yanqd0/dsh-mint"')).toBe(true);
     // The source-map trailer follows the closing wrapper, so anchor on the

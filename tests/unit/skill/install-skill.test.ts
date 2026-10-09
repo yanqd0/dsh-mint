@@ -86,6 +86,8 @@ describe('frontmatterName', () => {
   });
 });
 
+// 所有权判据区分「自家副本 / 旧版副本 / 异主」三态：判错就会覆盖别人的 skill 目录。
+// 用 tmpdir 手写目录树：带所有权标记、只带 frontmatter、以及异主与不存在的目录。
 describe('looksLikeOurSkill', () => {
   it('recognises a marked copy', () => {
     const target = join(tempDir(), 'mint');
@@ -224,6 +226,8 @@ describe('installSkill', () => {
     expect(looksLikeOurSkill(target)).toBe(true);
   });
 
+  // 异主目录必须原样留下并告警：这不是本插件的产物，既不能清也不能覆盖。
+  // seed 一个 name: someone-elses 的目录，断言 ok:false、两个文件未动且日志点名。
   it('leaves a foreign directory alone', () => {
     const root = tempDir();
     const source = join(root, 'src');
@@ -258,6 +262,8 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'SKILL.md'), 'utf8')).toBe('ours');
   });
 
+  // 开发态符号链接优先：运行时同步永不把它换成副本，否则改 skill 后必须重新构建才生效。
+  // 目标先建符号链接再跑 installSkill，断言返回 symlink 且链接与源内容都未动。
   it('leaves a dev symlink untouched', () => {
     const root = tempDir();
     const source = join(root, 'src');
@@ -277,6 +283,8 @@ describe('installSkill', () => {
     expect(readFileSync(join(target, 'SKILL.md'), 'utf8')).toBe('dev');
   });
 
+  // 悬空链接同样是异主证据：必须报错留链，不能顺手覆盖。
+  // 链接指向不存在的目录，断言 ok:false / reason 为 dangling symlink 且链接仍在。
   it('reports a dangling symlink instead of clobbering it', () => {
     const root = tempDir();
     const source = join(root, 'src');

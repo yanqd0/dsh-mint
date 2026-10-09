@@ -1,20 +1,17 @@
 /**
- * Minimal structural types for the DSH host surface.
+ * DSH 宿主面的最小结构类型：刻意不 import 闭源的 `@deepseek-ai/*` 类型包，只用结构近似
+ * ——宿主给的是超集，这里只声明消费到的子集。
  *
- * The host provides these services at runtime; we deliberately avoid importing
- * the closed-source `@deepseek-ai/*` type packages, so these are structural
- * approximations (supersets are accepted by the host, subsets are what we
- * consume). Verify against the live host with `cordis_inspect_*` at load time.
+ * 与真实宿主的核对以加载期的 `cordis_inspect_*` 为准。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
-/** Subset of a host text content block. */
 export interface ContentBlockLike {
   type: 'text';
   text: string;
 }
 
-/** Subset of the host's `ToolExecution` (bash tool: name 'bash', args.command). */
+/** 宿主 `ToolExecution` 的子集；bash 工具形如 name='bash' 加 args.command。 */
 export interface ToolExecutionLike {
   name: string;
   /** Opaque call identity used to correlate executions with approval asks. */
@@ -46,14 +43,13 @@ export interface ToolExecutionLike {
   signal?: AbortSignal;
 }
 
-/** Subset of the host's `ToolExecutionResult`. */
 export interface ToolResultLike {
   isError: boolean;
   error?: { message?: string };
   content: ContentBlockLike[];
 }
 
-/** Subset of the host's `PostToolDecision` (enrich = accept + content). */
+/** 宿主 `PostToolDecision` 的子集；enrich 即 accept 加 content。 */
 export interface PostToolDecisionLike {
   kind: 'accept' | 'block';
   content?: ContentBlockLike[];
@@ -96,7 +92,6 @@ export interface SystemPromptSectionSpec {
   text: string;
 }
 
-/** Subset of the host's `systemPrompt` service. */
 export interface SystemPromptLike {
   context(spec: { name: string; order: number; text: string | (() => string) }): () => void;
   /**
@@ -164,7 +159,6 @@ export interface ApprovalRequestLike {
   signal?: unknown;
 }
 
-/** Subset of the host's `ApprovalOutcome`. */
 export type ApprovalOutcomeLike = 'allowed-once' | 'rejected' | 'cancelled' | 'unavailable';
 
 /**
@@ -190,7 +184,6 @@ export interface SessionEventLike {
   data?: { active?: boolean };
 }
 
-/** Structural listener union for the events dsh-mint consumes. */
 export type EventListener =
   | ((payload: { agent?: AgentLike }) => void)
   | ((session: SessionLike, event: SessionEventLike) => void)

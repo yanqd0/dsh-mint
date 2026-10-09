@@ -46,6 +46,8 @@ const CASES = testFiles()
   .map((relative) => ({ relative, source: `src/${relative.replace(/\.test\.ts$/, '')}` }));
 
 describe('unit tests mirror src', () => {
+  // 枚举守卫自身必须非空：空集会让下面每条断言真空通过（tests/AGENTS.md 契约守卫段）。
+  // 直接统计 `tests/unit/**` 下收集到的用例文件数量。
   it('enumerates a non-empty test set', () => {
     expect(CASES.length).toBeGreaterThan(0);
   });
@@ -54,6 +56,8 @@ describe('unit tests mirror src', () => {
     expect(hasSource(relative), `${relative} has no counterpart under src/`).toBe(true);
   });
 
+  // fixture 例外只有一处：拆出模块共用的 `internal/helpers.ts`，其余非用例文件一律不许存在。
+  // 列出所有非 `.test.ts` 的文件，逐个要求落在 `helpers.ts` 上，失败信息点名违规文件。
   it('keeps the fixture escape hatch to named helpers files', () => {
     const fixtures = testFiles().filter((relative) => !relative.endsWith('.test.ts'));
     for (const relative of fixtures) {

@@ -47,7 +47,6 @@ import type {
   ToolExecutionLike,
 } from '../shared/types.js';
 
-/** The tool's registered name; the model calls it as `mint_plan_dag`. */
 export const TOOL_NAME = 'mint_plan_dag';
 
 /**
@@ -159,18 +158,15 @@ const DAG_TOOL_OUTPUT = {
   additionalProperties: false,
 };
 
-/** The one-answer summary rendered back into the conversation. */
 export interface DagToolOutcome {
   ok: boolean;
   summary: string;
 }
 
-/** A refusal, worded once so every failure path reads the same way. */
 function refusal(reason: string): DagToolOutcome {
   return { ok: false, summary: `${PREFIX}拒绝：${reason}` };
 }
 
-/** An answer; the caller supplies the already-formatted body. */
 function answer(text: string): DagToolOutcome {
   return { ok: true, summary: `${PREFIX}${text}` };
 }
@@ -186,24 +182,19 @@ function withDepthNotice(text: string, depth: SubagentDepth | undefined): string
   return notice === '' ? text : `${text}\n${notice}`;
 }
 
-/** The document a write produced, or the reason there is none. */
 type WriteOutcome = { doc: DagDoc } | { error: string };
 
-/** `+2 节点 / +1 边` for an `add`: what the model needs to confirm the write. */
 function addedCounts(action: Extract<DagWrite, { action: 'add' }>): string {
   return `+${String(action.nodes.length)} 节点 / +${String(action.edges.length)} 边`;
 }
 
-/** `a → done/pass` (or `a → running`), the node's line in a `set` answer. */
 function setHeadline(action: Extract<DagWrite, { action: 'set' }>): string {
   const verdict = action.verdict === undefined ? '' : `/${action.verdict}`;
   return `${action.id} → ${action.status}${verdict}`;
 }
 
-/** Everything one `set`-to-`done` measurement needs. */
 export interface DagSampleInput {
   sessionId: string;
-  /** The node that just settled. */
   nodeId: string;
   /**
    * 这次读数按哪个会话读：`own` 为 true 时是**调用者自己的会话**（子代理收尾
@@ -237,8 +228,6 @@ export interface DagSampleInput {
  * The reading is remembered as well as stored, so the route can still flush it
  * for a node that was re-opened (and is therefore `running` again) later.
  *
- * @param input - the owning session, the session this reading is keyed by (the
- *   caller's own, or the node's `agent`), and the host services.
  * @returns nothing; every failure is a measurement that was not taken.
  */
 export async function persistNodeSample(input: DagSampleInput): Promise<void> {
@@ -287,12 +276,6 @@ export async function persistNodeSample(input: DagSampleInput): Promise<void> {
  * （这正是修掉「没有 agent 的节点结构上永远没有读数」的地方）；② 否则退回节点自己
  * 的 `agent`（旧路径：main 收尾一个曾经派过子代理的节点，仍只写 `samples`）；
  * ③ main 给自己的节点（没有 `agent`）→ 不测——读到的会是整条主会话的累计，语义不对。
- *
- * @param doc - {@link applyDagWrite} 产出的文档。
- * @param action - 产出它的那次写入。
- * @param callerId - 调用者自己的会话 id；`undefined` 表示身份不可知，退回旧路径。
- * @param rootId - 文档归属的根会话 id；与 `callerId` 相同即 main 自己在收尾。
- * @returns 节点 id、测量键、以及这次读的是否是调用者自己的会话。
  */
 function measuredNode(
   doc: DagDoc,
@@ -322,7 +305,6 @@ function measuredNode(
  *   absent means the sample step is skipped, never that the action fails).
  *   `ownerError` 是 installer 解析归属失败时的原因：它在**任何文档读写之前**被回绝，
  *   所以一个查不到根的调用不会先建文件再报错。
- * @param rawArgs - the tool call's arguments, however malformed.
  */
 export async function executeDagTool(
   input: {
@@ -421,10 +403,6 @@ export async function executeDagTool(
  * tool — including in-process subagents, which is exactly who needs to report a
  * node's status back (`resolveToolOwner` maps their call onto the main session's
  * graph; a chain that breaks mid-way is refused rather than written to a guess).
- *
- * @param ctx - the plugin's root context.
- * @param dagDir - DAG directory override; absent means `DAG_DIR`.
- * @returns the disposer, or `undefined` on a context without a tool registry.
  */
 export function installDagTool(ctx: DshContext, dagDir?: string): (() => void) | undefined {
   const tools = ctx.tools;

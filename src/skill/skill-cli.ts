@@ -20,65 +20,62 @@ import {
 } from './install-skill.js';
 
 /**
- * The skill command line (`dist/install-skill.js`) — one implementation of the
- * install forms and their guards, shared by `scripts/install-dsh.sh` and
- * `pnpm skill`.
+ * skill 命令行（`dist/install-skill.js`）——安装形态与其守卫的唯一实现，由
+ * `scripts/install-dsh.sh` 与 `pnpm skill` 共用。
  *
- * Why the guards live here and not in the shell script: removing the skill must
- * be as safe as installing it (dsh has no plugin uninstall hook, so a leftover
- * copy is normal). Every mode refuses to touch a path it
- * cannot identify as this plugin's own, a symlink is only ever unlinked (never
- * followed), and `--force` is the single way to take such a path over.
+ * 为什么守卫住在这里而不是 shell 脚本里：卸载 skill 必须和安装它一样安全（dsh 没有插件卸载
+ * 钩子，所以残留副本是常态）。每个模式都拒绝碰它无法识别为本插件自己的路径，符号链接只会被
+ * 摘链（绝不跟随），而 `--force` 是接管这类路径的唯一方式。
  *
- * `uninstallSkill` and `linkSkill` mirror `installSkill`'s ownership rules so
- * that install and removal can never disagree about what is ours.
+ * `uninstallSkill` 与 `linkSkill` 镜像 `installSkill` 的所有权规则，好让安装与移除对「什么
+ * 是我们的」永不产生分歧。
  */
 
-/** Modes the command line accepts; exactly one may be given. */
+/** 命令行接受的模式；只能给一个。 */
 const MODES = ['--copy', '--link', '--uninstall', '--status'] as const;
 
 type Mode = (typeof MODES)[number];
 
 const USAGE = 'usage: install-skill.js [--copy|--link|--uninstall|--status] [--force]';
 
-/** Options shared by the tools below. */
+/** 下面各工具共用的选项。 */
 export interface SkillOptions {
-  /** Harness config root; defaults to `$DSH_HOME` or `~/.dsh`. */
+  /** harness 配置根；默认 `$DSH_HOME` 或 `~/.dsh`。 */
   dshHome?: string | undefined;
-  /** Bundled skill directory; defaults to `dist/skill` beside this module. */
+  /** 随包 skill 目录；默认本模块旁的 `dist/skill`。 */
   source?: string | undefined;
-  /** Take over a target that cannot be identified as this plugin's own. */
+  /** 接管无法识别为本插件所有的目标。 */
   force?: boolean | undefined;
-  /** One line per outcome worth explaining. */
+  /** 每个值得解释的结果一行。 */
   log?: ((message: string) => void) | undefined;
 }
 
-/** Outcome of {@link uninstallSkill}. */
+/** {@link uninstallSkill} 的结果。 */
 export interface SkillRemoval {
-  /** Why the target was left alone, or that this plugin's install is gone. */
+  /** 目标为何被放过，或本插件的安装已移除。 */
   reason: 'absent' | 'removed' | 'kept';
 }
 
-/** Outcome of {@link linkSkill}. */
+/** {@link linkSkill} 的结果。 */
 export interface SkillLinkResult {
-  /** Why no link was created, or that the target now is one. */
+  /** 为何没建链接，或目标现在就是一个链接。 */
   reason: 'linked' | 'kept' | 'source missing';
 }
 
-/** The installed skill's shape, as reported by {@link skillStatus}. */
+/** {@link skillStatus} 报告的已安装 skill 形状。 */
 export interface SkillStatus {
-  /** `$DSH_HOME/skills/mint`, whether or not anything is there. */
+  /** `$DSH_HOME/skills/mint`，无论那里有没有东西。 */
   target: string;
   form: 'absent' | 'symlink' | 'copy' | 'foreign';
-  /** Link target, for the symlink form. */
+  /** 链接目标，符号链接形态才有。 */
   linkTarget?: string | undefined;
-  /** Symlink form: the link does not resolve. */
+  /** 符号链接形态：链接解析不了。 */
   dangling?: boolean | undefined;
-  /** Copy form: every bundled file matches byte for byte. */
+  /** 副本形态：随包每个文件都逐字节一致。 */
   inSync?: boolean | undefined;
 }
 
-/** `lstatSync` without the throw, so a link is reported as a link. */
+/** `lstatSync` 不抛的版本，好让链接被报成链接。 */
 function lstatOrUndefined(path: string): Stats | undefined {
   try {
     return lstatSync(path);
@@ -91,15 +88,15 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** True when `target` is a symlink that resolves to this plugin's skill. */
+/** `target` 是否是解析到本插件 skill 的符号链接。 */
 function isOurLink(target: string): boolean {
   return existsSync(target) && looksLikeOurSkill(target);
 }
 
 /**
- * Report where the installed skill stands.
+ * 报告已安装 skill 的状态。
  *
- * Reads only: no branch creates, removes or rewrites anything.
+ * 只读：没有任何分支会创建、移除或改写东西。
  */
 export function skillStatus(options: SkillOptions = {}): SkillStatus {
   const target = skillTarget(options.dshHome ?? resolveDshHome());
@@ -121,7 +118,7 @@ export function skillStatus(options: SkillOptions = {}): SkillStatus {
   return { target, form: 'foreign' };
 }
 
-/** One line summarising {@link skillStatus}. */
+/** 汇总 {@link skillStatus} 的一行。 */
 export function statusLine(status: SkillStatus): string {
   const details: string[] = [];
   if (status.linkTarget !== undefined) details.push(`-> ${status.linkTarget}`);
@@ -135,11 +132,10 @@ export function statusLine(status: SkillStatus): string {
 }
 
 /**
- * Point `$DSH_HOME/skills/mint` at the bundled skill (the dev/dogfood form).
+ * 把 `$DSH_HOME/skills/mint` 指向随包 skill（开发/dogfood 形态）。
  *
- * Idempotent: an existing symlink that already points at the source is left
- * alone. A foreign directory (or file) is reported and kept; `force` replaces
- * it. Never follows a symlink.
+ * 幂等：已经指向源目录的现有符号链接原样保留。异主目录（或文件）只报告并保留；`force` 才替换
+ * 它。绝不跟随符号链接。
  */
 export function linkSkill(options: SkillOptions = {}): SkillLinkResult {
   const log = options.log;
@@ -155,7 +151,7 @@ export function linkSkill(options: SkillOptions = {}): SkillLinkResult {
     if (existing !== undefined) {
       if (existing.isSymbolicLink()) {
         if (readlinkSync(target) === source) return { reason: 'linked' };
-        // unlink removes the link itself, never the directory it points at
+        // unlink 摘的是链接本身，绝不是它指向的目录
         unlinkSync(target);
       } else if (existing.isDirectory()) {
         if (!force && !looksLikeOurSkill(target)) {
@@ -183,12 +179,10 @@ export function linkSkill(options: SkillOptions = {}): SkillLinkResult {
 }
 
 /**
- * Remove what this plugin installed at `$DSH_HOME/skills/mint`.
+ * 移除本插件装在 `$DSH_HOME/skills/mint` 的东西。
  *
- * Idempotent (absent is success) and guarded: a foreign directory or file is
- * reported and kept, a symlink is unlinked without following it, and a link
- * that cannot be confirmed as this plugin's own is only removed with `force`.
- * Never throws.
+ * 幂等（不存在即成功）且有守卫：异主目录或文件只报告并保留，符号链接摘链而不跟随，而无法确认
+ * 为本插件所有的链接只有带 `force` 才移除。绝不抛。
  */
 export function uninstallSkill(options: SkillOptions = {}): SkillRemoval {
   const log = options.log;
@@ -207,7 +201,7 @@ export function uninstallSkill(options: SkillOptions = {}): SkillRemoval {
         );
         return { reason: 'kept' };
       }
-      // unlink removes the link itself, never the directory it points at
+      // unlink 摘的是链接本身，绝不是它指向的目录
       unlinkSync(target);
     } else if (existing.isDirectory()) {
       if (!force && !looksLikeOurSkill(target)) {
@@ -229,23 +223,22 @@ export function uninstallSkill(options: SkillOptions = {}): SkillRemoval {
   return { reason: 'removed' };
 }
 
-/** Output sinks for {@link runSkillCli}; the defaults write to stdout/stderr. */
+/** {@link runSkillCli} 的输出汇；默认写 stdout/stderr。 */
 export interface SkillCliIo extends SkillOptions {
-  /** Usage and refusals; defaults to stderr. */
+  /** 用法与拒绝；默认 stderr。 */
   error?: ((message: string) => void) | undefined;
 }
 
 /**
- * Run the skill command line and return the process exit code.
+ * 跑 skill 命令行并返回进程退出码。
  *
- * A **bare** invocation only installs (the copy form, the packaged-install
- * shape) and always answers 0: skill installation is best-effort and must never
- * fail `pnpm install`. Explicit modes carry a real code instead, so a
- * script can tell a guarded refusal (1) from success (0); a usage error is 2.
+ * **裸**调用只做安装（复制形态，即打包安装的形状）且总答 0：skill 安装是尽力而为，绝不能
+ * 让 `pnpm install` 失败。显式模式给真实退出码，好让脚本能区分带守卫的拒绝（1）与成功（0）；
+ * 用法错误是 2。
  *
- * @param argv - arguments without the `node script` prefix.
- * @param io - sinks and path overrides; tests inject a scratch `dshHome`.
- * @returns the exit code for this invocation.
+ * @param argv - 不含 `node script` 前缀的参数。
+ * @param io - 输出汇与路径覆写；测试注入临时 `dshHome`。
+ * @returns 本次调用的退出码。
  */
 export function runSkillCli(argv: readonly string[], io: SkillCliIo = {}): number {
   const log = io.log ?? ((message: string) => process.stdout.write(`${message}\n`));
@@ -280,8 +273,8 @@ export function runSkillCli(argv: readonly string[], io: SkillCliIo = {}): numbe
   if (mode === '--link') {
     return linkSkill(common).reason === 'linked' ? 0 : 1;
   }
-  // Bare invocation and `--copy`: install (or re-sync) the whole tree.
+  // 裸调用与 `--copy`：安装（或重新同步）整棵树。
   const installed = installSkill(common);
-  if (mode === undefined) return 0; // best-effort install: never fail the caller
+  if (mode === undefined) return 0; // 尽力而为的安装：绝不让调用方失败
   return installed.ok ? 0 : 1;
 }

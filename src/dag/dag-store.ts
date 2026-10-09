@@ -42,7 +42,6 @@ export function dagFilePath(sessionId: string, dir: string = DAG_DIR): string {
   return join(dir, `${sessionId}.json`);
 }
 
-/** What a read found: no file, a document, or a file that cannot be trusted. */
 export type DagRead =
   | { state: 'missing'; file: string }
   | { state: 'ok'; file: string; doc: DagDoc }
@@ -62,9 +61,6 @@ function messageOf(error: unknown): string {
  * A missing file is a **normal** answer (`state: 'missing'`), never an error:
  * "this session has no DAG yet" is the state every session starts in, and the
  * route answers it as `dag: null` rather than a failure.
- *
- * @param sessionId - the owning (root) session id.
- * @param dir - the DAG directory; tests point it at a temp directory.
  */
 export async function readDag(sessionId: string, dir: string = DAG_DIR): Promise<DagRead> {
   const file = dagFilePath(sessionId, dir);
@@ -98,7 +94,6 @@ export async function readDag(sessionId: string, dir: string = DAG_DIR): Promise
  */
 export type DagMutation = (state: DagRead) => { doc: DagDoc } | { skip: true } | { error: string };
 
-/** The outcome of one {@link updateDag}: the stored document, or why not. */
 export type DagUpdate =
   | { ok: true; doc: DagDoc }
   | { ok: true; skipped: true }
@@ -125,7 +120,6 @@ function withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Replace the file atomically: temporary sibling, then `rename` over the target. */
 async function writeAtomic(file: string, doc: DagDoc): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
   const temporary = `${file}.${String(process.pid)}.${randomUUID()}.tmp`;
@@ -138,13 +132,6 @@ async function writeAtomic(file: string, doc: DagDoc): Promise<void> {
   }
 }
 
-/**
- * Run one read-modify-write under the session's lock.
- *
- * @param sessionId - the owning (root) session id.
- * @param mutate - decides the next document from what is on disk right now.
- * @param dir - the DAG directory; tests point it at a temp directory.
- */
 export async function updateDag(
   sessionId: string,
   mutate: DagMutation,

@@ -66,7 +66,6 @@ const NO_REASON = 'subagent ended without a verdict';
  */
 const FALLBACK_MARK = '[fallback 认领] ';
 
-/** Grow a string from a fixed suffix until it fits the byte budget. */
 function prefixWithinBytes(text: string, suffix: string): string {
   const budget = NOTE_MAX_BYTES - Buffer.byteLength(suffix, 'utf8');
   const points = Array.from(text);
@@ -279,7 +278,6 @@ function ownerOfSession(
  * numbers came back empty. None of them is an error worth reporting, and the
  * node's own `tokens` stays the fallback the panel already knows.
  *
- * @param input.agentId - the child session an agent-registry lookup is keyed by.
  * @param input.status - the node's lifecycle, which is what the timing formula
  *   branches on (`running` measures against the sample clock, a settled node
  *   against the `through` its projection recorded).
@@ -345,15 +343,7 @@ export function withSample(
   };
 }
 
-/**
- * Install the subagent ↔ DAG node pairing.
- *
- * @param ctx - the plugin's root context; the listeners are registered there so
- *   every subagent's lifecycle is seen.
- * @param dagDir - DAG directory override; absent means `DAG_DIR`.
- */
 export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
-  /** runId → 配对记录（**图归属会话** + 认领到的节点 id），见 {@link PendingRun}。 */
   const pending = new Map<string, PendingRun>();
 
   const agents = (): AgentsLike | undefined => ctx.get?.('agents') as AgentsLike | undefined;
@@ -392,8 +382,6 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
    * is what lets the route and the `set` path persist the reading later even if
    * this document write loses the race or fails.
    *
-   * @param parent - the DAG-owning session, resolved once by the caller.
-   * @param info - the host's own `subagent/end` payload.
    * @param fallbackId - 这次派发**认领过的**节点 id；只在该 agent 在文档里找不到
    *   任何节点时用来定位样本落点，见 {@link settleNodeById} 的边界。
    */
@@ -424,8 +412,6 @@ export function installDagLifecycle(ctx: DshContext, dagDir?: string): void {
         if (metrics === undefined) return undefined;
         const sample = sampleOf(metrics, sampledMs);
         if (sample === undefined) return undefined;
-        // The cache is written first: it is what lets the route or the `set`
-        // path persist this reading later even if this write loses the race.
         rememberMeasurement(parent, node.id, metrics);
         return withSample(doc, node.id, sample, new Date(sampledMs).toISOString());
       });

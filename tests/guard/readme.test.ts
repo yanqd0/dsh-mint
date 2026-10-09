@@ -91,12 +91,16 @@ describe('README bilingual pair', () => {
     expect(ZH).toContain('(README.md)');
   });
 
+  // 双语对的结构契约：两页的小节层级序列必须逐项相同（文案可译，骨架不可漂）。
+  // 各自只取围栏代码块之外的行，抽出 `#` 层级序列后整体比对，另要求英文页节数不为个位数。
   it('keeps the same section structure', () => {
     const english = headingLevels(EN);
     expect(english.length).toBeGreaterThan(5);
     expect(headingLevels(ZH)).toEqual(english);
   });
 
+  // 内链可达性门禁：`](#锚点)` 必须落在真实标题上，断链在双语两侧都点名。
+  // 用 GitHub 风格的 slug 规则把两份文档的标题收成锚点集合，再筛出没有对应锚点的链接目标。
   it('resolves every in-document link to a heading', () => {
     for (const [language, markdown] of [
       ['README.md', EN],

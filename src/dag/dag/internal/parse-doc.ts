@@ -29,10 +29,6 @@ import {
  * can be junk while the other was really measured, and throwing the good one away
  * would be the same guess this module refuses to make. (Reading a *stored* entry
  * is stricter — see {@link parseDagDoc}.)
- *
- * @param metrics - the measured numbers, from a projection or from a file.
- * @param at - the host clock (epoch ms) the measurement was sampled at.
- * @returns the sample to store, or `undefined` when nothing is storable.
  */
 export function sampleOf(
   metrics: { tokens?: number; elapsed_ms?: number },
@@ -46,7 +42,6 @@ export function sampleOf(
   return { ...kept, at };
 }
 
-/** True for a stored sample field that is either absent or a usable count. */
 function isSampleField(value: unknown): boolean {
   return value === undefined || isCount(value);
 }
@@ -110,8 +105,6 @@ function parseStoredNode(raw: unknown): DagNode | { error: string } {
 }
 
 /**
- * Validate one stored document.
- *
  * `samples` is the deliberate exception to the strictness: a bad entry there is
  * dropped on its own (see the loop below), because a measurement the host can no
  * longer trust must not take a readable plan down with it.

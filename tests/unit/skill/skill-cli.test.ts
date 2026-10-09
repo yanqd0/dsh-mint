@@ -104,6 +104,8 @@ describe('runSkillCli install modes', () => {
     expect(status.out.join('\n')).toContain('ok');
   });
 
+  // 目录所有权门禁：异主目录必须拒绝接手，只有显式 --force 才接管。
+  // 预置带 someone-elses 的 SKILL.md，断言 --copy 退出 1 且内容未动，--force 后才覆盖。
   it('refuses a foreign directory and takes it over with --force', () => {
     const f = fixture();
     foreignDir(f.target);
@@ -145,6 +147,8 @@ describe('runSkillCli removal mode', () => {
     expect(again.out.join('\n')).toContain('nothing to remove');
   });
 
+  // 卸载只摘自家的链接，绝不碰它指向的源目录（那是开发态的真身）。
+  // --link 后跑 --uninstall，断言链接消失、源目录的 SKILL.md 仍可读。
   it('unlinks our symlink without touching the directory it points at', () => {
     const f = fixture();
     run(f, ['--link']);
@@ -169,6 +173,8 @@ describe('runSkillCli removal mode', () => {
     expect(existsSync(f.target)).toBe(false);
   });
 
+  // 悬空符号链接也算异主路径：不能跟进覆盖、不能当自家副本清掉。
+  // 把链接指向不存在的目录后跑 --uninstall，断言退出 1 且链接仍在，--force 才摘。
   it('keeps a dangling symlink and exits 1 until forced', () => {
     const f = fixture();
     mkdirSync(join(f.dshHome, 'skills'), { recursive: true });

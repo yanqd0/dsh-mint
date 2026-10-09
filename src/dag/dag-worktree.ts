@@ -31,7 +31,6 @@ import { checkNodeId } from './dag.js';
 import type { DagWorktree } from '../shared/records.js';
 import type { GitRunResult } from '../shared/git.js';
 
-/** How many characters of the session id go into the path and the branch. */
 const SESSION_PREFIX = 8;
 
 /** Default branch prefix; the `dsh-` namespace keeps it out of user branches. */
@@ -46,17 +45,13 @@ export const DEFAULT_WORKTREE_BRANCH_PREFIX = 'dsh-mint/wt';
  */
 export const WORKTREE_SUBDIR = 'dsh-mint/worktrees';
 
-/** The subset of a node a worktree operation needs. */
 export interface WorktreeNode {
   id: string;
 }
 
-/** What the caller supplies; everything has a default except the git runner and repo. */
 export interface WorktreeDeps {
   git(cwd: string, args: readonly string[]): Promise<GitRunResult>;
-  /** The main repository root (absolute). */
   repo: string;
-  /** The owning (root) session id. */
   session: string;
   /** 绝对目录覆盖（测试用）：给定时直接当根，不再取 git common dir。 */
   worktreeDir?: string;
@@ -82,7 +77,6 @@ export type WorktreeOutcome =
   | { ok: true; worktree: DagWorktree; note?: string }
   | { ok: false; error: string; conflict?: readonly string[]; worktree?: DagWorktree };
 
-/** Short prefix of the session id, used in both the path and the branch name. */
 function sessionSlug(session: string): string {
   return session.replace(/[^A-Za-z0-9_-]/g, '').slice(0, SESSION_PREFIX);
 }
@@ -116,7 +110,6 @@ async function commonGitDir(deps: WorktreeDeps): Promise<string | { error: strin
   return resolve(deps.repo, result.stdout.trim());
 }
 
-/** The directory one session's worktrees live in. */
 export async function worktreeRoot(deps: WorktreeDeps): Promise<string | { error: string }> {
   // 覆盖目录视为绝对路径（测试用），不再拼 git common dir 与 WORKTREE_SUBDIR。
   if (deps.worktreeDir !== undefined) return join(deps.worktreeDir, sessionSlug(deps.session));
@@ -125,7 +118,6 @@ export async function worktreeRoot(deps: WorktreeDeps): Promise<string | { error
   return join(root, WORKTREE_SUBDIR, sessionSlug(deps.session));
 }
 
-/** The path one node's worktree occupies. */
 export async function worktreePath(
   deps: WorktreeDeps,
   node: WorktreeNode
@@ -135,7 +127,6 @@ export async function worktreePath(
   return join(root, node.id);
 }
 
-/** The branch one node's worktree is checked out on. */
 export function worktreeBranch(deps: WorktreeDeps, node: WorktreeNode): string {
   const prefix = deps.branchPrefix ?? DEFAULT_WORKTREE_BRANCH_PREFIX;
   return `${prefix}/${sessionSlug(deps.session)}/${node.id}`;
@@ -150,7 +141,6 @@ function stderrOf(result: GitRunResult): string {
 
 /** 一棵已安装 worktree 的仓库级读数（list 的输出源；prune 也复用同一扫描）。 */
 export interface InstalledWorktree {
-  /** 绝对路径（`worktree list --porcelain` 的原样输出）。 */
   path: string;
   /** 该树签出的分支名；detached 时为 `''`。 */
   branch: string;
@@ -225,20 +215,17 @@ export async function installedWorktrees(deps: WorktreeDeps): Promise<InstalledW
   return found.sort((left, right) => left.path.localeCompare(right.path));
 }
 
-/** 一条 `list` 明细的时间列：分支头提交的 ISO 时间，缺分支/读不到时 `''`。 */
 async function tipCommit(deps: WorktreeDeps, branch: string): Promise<string> {
   if (branch === '') return '';
   const result = await deps.git(deps.repo, ['log', '-1', '--format=%cI', branch]);
   return result.ok ? result.stdout.trim() : '';
 }
 
-/** `path` 是否正好是 `<commonGitDir>/dsh-mint/worktrees/<session8>/<node>`（多一层少一层都不算）。 */
 function isNodePath(root: string, path: string): boolean {
   const parts = path.slice(join(root, WORKTREE_SUBDIR).length + 1).split(sep);
   return parts.length === 2 && parts[0] !== '' && parts[1] !== '';
 }
 
-/** Paths git currently registers as worktrees of this repository. */
 async function registeredWorktrees(deps: WorktreeDeps): Promise<string[]> {
   const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
   // 老 git（< 2.5）不认 `worktree` 子命令，这里会落成空表。这是有意为之：
@@ -280,7 +267,6 @@ async function degradationHint(deps: WorktreeDeps): Promise<string> {
   );
 }
 
-/** The repository's current `HEAD` in short form, or `''` when unreadable. */
 async function shortHead(deps: WorktreeDeps, cwd = deps.repo): Promise<string> {
   const result = await deps.git(cwd, ['rev-parse', '--short=7', 'HEAD']);
   return result.ok ? result.stdout.trim() : '';
@@ -308,7 +294,6 @@ async function currentBranch(deps: WorktreeDeps): Promise<string> {
   return result.ok ? result.stdout.trim() : '';
 }
 
-/** Resolve a commit argument; `HEAD` when the caller supplied none. */
 async function resolveBase(
   deps: WorktreeDeps,
   base: string | undefined
@@ -377,7 +362,6 @@ async function mainTreeClean(deps: WorktreeDeps): Promise<boolean> {
   return result.ok && result.stdout.trim() === '';
 }
 
-/** Files a stopped merge left conflicted, as git reports them. */
 async function conflictedFiles(deps: WorktreeDeps): Promise<string[]> {
   const result = await deps.git(deps.repo, ['diff', '--name-only', '--diff-filter=U']);
   if (!result.ok) return [];
@@ -567,7 +551,6 @@ export interface PruneOptions {
  */
 export type PruneVerdict = 'removed' | 'unmerged' | 'dirty' | 'recent' | 'unmeasured' | 'failed';
 
-/** 一棵树的处置结果，供调用方按 `verdict` 计数与排版。 */
 export interface PruneResult {
   path: string;
   session: string;

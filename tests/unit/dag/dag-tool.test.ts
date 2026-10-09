@@ -80,6 +80,8 @@ function subagents(value: unknown): unknown {
 }
 
 describe('installDagTool', () => {
+  // 精简组合的降级：宿主没给 `tools` 服务时静默跳过注册，而不是抛错。
+  // 传一个只有事件订阅的 ctx，断言 `installDagTool` 返回 undefined。
   it('does nothing without a tool registry', () => {
     expect(installDagTool({ on: () => () => {} })).toBeUndefined();
   });
@@ -240,6 +242,8 @@ describe('installDagTool 的委派降级提示', () => {
     expect(set.summary).not.toContain('委派降级');
   });
 
+  // 误报门禁：两级深度、方法缺失/抛错、根本没有服务，五种形状都不许出现降级提示。
+  // 一张「标签 + 假服务」表逐个装好工具再调 `init`，断言结果不含「委派降级」。
   it('adds no downgrade line at two levels, when the method is missing, or when it throws', async () => {
     const cases: ReadonlyArray<readonly [string, unknown]> = [
       ['two levels', subagents(2)],
@@ -293,6 +297,8 @@ describe('rootSession', () => {
     });
   });
 
+  // 环链回归钉：注册表互指成环时必须放弃并返回 undefined，绝不无限上溯。
+  // 造一个 `a → b → a` 的假注册表，断言 `rootSession` 返回 undefined。
   it('gives up instead of looping on a cyclic chain', () => {
     const cyclic: AgentsLike = {
       get: (id) => ({ session: { id, header: { parentSession: id === 'a' ? 'b' : 'a' } } }),
@@ -345,6 +351,8 @@ describe('executeDagTool', () => {
     expect(get.summary).toContain('总①(a)');
   });
 
+  // 空态契约：没有 DAG 是正常的空态而不是错误，工具必须回 `ok:true`。
+  // 直接对空目录调 `get`，断言结果恰好是「本会话暂无 DAG」。
   it('reports a session without a DAG as an empty state, not an error', async () => {
     const outcome = await run(SESSION, { action: 'get' });
     expect(outcome).toEqual({ ok: true, summary: '[plan-dag] 本会话暂无 DAG' });
@@ -524,7 +532,6 @@ describe('executeDagTool', () => {
       expect(read.state).toBe('ok');
       if (read.state !== 'ok') return;
       expect(read.doc.samples).toBeUndefined();
-      // 自报值原样保留。
       expect(read.doc.nodes[0]?.tokens).toBe(999);
     });
 
@@ -611,6 +618,8 @@ describe('executeDagTool', () => {
     });
   });
 
+  // 顺序门禁：没 `init` 就 add/set 必须拒绝，且不得替调用方建出文件。
+  // 先 add 断言拒绝，再 get 确认仍是空态（没有留下半份文档）。
   it('refuses add/set before init without creating a file', async () => {
     const add = await run(SESSION, {
       action: 'add',
@@ -623,6 +632,8 @@ describe('executeDagTool', () => {
     expect(get.summary).toContain('暂无 DAG');
   });
 
+  // 校验门禁总表：未知依赖、跨声明成环、重复 id、超长标签等七种坏图都必须拒绝且不落盘。
+  // 一张「标签 + 入参 + 期望文案」表逐个调用，另收集误接受的用例名并断言存储文档没变。
   it('rejects the modelled graph while keeping the stored one intact', async () => {
     await run(SESSION, { action: 'init', title: 'x' });
     await run(SESSION, {
@@ -699,6 +710,8 @@ describe('executeDagTool', () => {
     expect(outcome.summary).toContain('done 1');
   });
 
+  // 入参与会话门禁：缺 action、非对象、没有会话、会话 id 越界都必须拒绝并给出原因。
+  // 依次跑四种坏调用，分别断言文案含 action、「对象」、「无法确定会话」与「不可用于路径」。
   it('refuses malformed arguments and a missing session', async () => {
     const missingAction = await run(SESSION, {});
     expect(missingAction.ok).toBe(false);

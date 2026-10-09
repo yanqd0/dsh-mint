@@ -57,6 +57,8 @@ describe('dagFilePath', () => {
     expect(dagFilePath('a_b-C9', '/tmp/x')).toBe('/tmp/x/a_b-C9.json');
   });
 
+  // 路径门禁：会话 id 若会拼出目录之外的文件名，必须在拼路径这一步就抛 `DagPathError`。
+  // 逐个喂空串、`..`、带 `/` 与超长 id，断言每次抛出的都是 `DagPathError`。
   it('refuses an id that would escape the directory', () => {
     for (const id of ['', '..', '../x', 'a/b', 'x'.repeat(65)]) {
       expect(() => dagFilePath(id, '/tmp/x'), id).toThrow(DagPathError);
@@ -80,13 +82,14 @@ describe('readDag', () => {
     expect(read.state).toBe('ok');
     if (read.state !== 'ok') throw new Error('expected a document');
     expect(read.doc).toEqual(written);
-    // The file is pretty-printed JSON, and no temporary sibling survives.
     const text = readFileSync(read.file, 'utf8');
     expect(text.endsWith('\n')).toBe(true);
     expect(JSON.parse(text)).toEqual(written);
     expect(readdirSync(where)).toEqual([`${SESSION}.json`]);
   });
 
+  // 读侧的降级口径：坏 JSON、未来版本、别的会话的文档都归为 unreadable，且要点名原因。
+  // 三个临时目录各写一种坏文件，分别断言错误文案含 `JSON`、`version`、`other-session`。
   it('reports broken JSON, an unknown version, and a foreign session as unreadable', async () => {
     const broken = dir();
     writeFileSync(dagFilePath(SESSION, broken), '{ not json');
@@ -111,6 +114,8 @@ describe('readDag', () => {
     expect(foreignRead.error).toContain('other-session');
   });
 
+  // 边界区分：文件位上是目录属于「读不了」而不是「没有」，绝不静默当成缺文档。
+  // 在目标路径上 `mkdirSync` 出目录占位，断言 `readDag` 回 unreadable。
   it('treats a directory in the file slot as unreadable rather than missing', async () => {
     const where = dir();
     const squatting = join(where, `${SESSION}.json`);
@@ -172,6 +177,8 @@ describe('updateDag', () => {
     expect(read.doc).toMatchObject({ title: 'second', revision: 2 });
   });
 
+  // 并发回归钉：12 个 add 并发跑完不能丢更新，revision 必须等于 1 + 12。
+  // 用 `Promise.all` 同时发 12 次真实 `updateDag`，最后读回节点数与 revision 并确认没留临时文件。
   it('serializes concurrent read-modify-writes instead of losing updates', async () => {
     const where = dir();
     await write(where, { action: 'init', title: 'fan-out' });
@@ -195,6 +202,8 @@ describe('updateDag', () => {
     expect(readdirSync(where)).toEqual([`${SESSION}.json`]);
   });
 
+  // 写失败契约：落盘出错时返回错误对象而不是抛出，让工具层能原样回显。
+  // 在目录位放一个普通文件让 `mkdir` 失败，断言 `ok:false` 且文案含「写入 DAG 失败」。
   it('reports a write failure instead of throwing', async () => {
     // A regular file where the directory should be: `mkdir` cannot create it.
     const blocked = join(root, 'blocked');
@@ -204,10 +213,11 @@ describe('updateDag', () => {
     expect(blockedWrite.error).toContain('写入 DAG 失败');
   });
 
+  // 串行链排空后锁要重新可用：第二次独立写入必须还能看到上一次的文件。
+  // 先 init 再 add，断言第二次拿到的文档含 1 个节点且 revision 为 2。
   it('reopens the lock once the chain drains', async () => {
     const where = dir();
     await write(where, { action: 'init', title: '' });
-    // A second, independent write after the first settled still sees the file.
     const second = await write(where, {
       action: 'add',
       nodes: [{ id: 'b', label: '分', title: 'b', phase: 'exec' }],

@@ -65,6 +65,8 @@ describe('load state', () => {
     expect(toLoadState(payload)).toEqual({ status: 'ready', value: payload });
   });
 
+  // 拒绝要变成失败态并保住 mint 的 stderr：这是面板上唯一说明「为什么失败」的信息。
+  // 两条作答（只有 error / error + stderr），断言失败态与 message、stderr 的取值。
   it('turns a refusal into a failure state, keeping stderr when mint wrote one', () => {
     expect(toLoadState({ ok: false, error: 'session-not-live' })).toEqual({
       status: 'failed',
@@ -180,6 +182,8 @@ describe('containers and pagination', () => {
     });
   });
 
+  // 没有版本的容器不能把 version 印成 "null"：面板上要留空，而不是显示一个假版本。
+  // 造一条 version: null 的记录，断言 meta 里没有 null 字样。
   it('omits a version mint does not have instead of printing null', () => {
     expect(
       containerRow(
@@ -237,6 +241,8 @@ describe('containers and pagination', () => {
     expect(plansOfMilestone(undefined, 2)).toBeUndefined();
   });
 
+  // 详情作答可能挂在 plan 或 milestone 键下：两种都要读出同一个容器。
+  // 同一份 detail 分别以两个键名作答，断言解析结果相同。
   it('reads the container out of whichever key the route filled', () => {
     const detail: ContainerDetail = {
       id: 3,
@@ -253,6 +259,8 @@ describe('containers and pagination', () => {
     expect(detailContainer({ ok: true, milestone: detail })).toEqual(detail);
   });
 
+  // 页码要夹进已加载范围：越界、非数字与小数都不能给出一个不存在的页。
+  // 六组 (page, pages) 断言夹取结果（含 NaN 与 2.7）。
   it('clamps a page into the loaded range', () => {
     expect(clampPage(0, 5)).toBe(1);
     expect(clampPage(3, 5)).toBe(3);

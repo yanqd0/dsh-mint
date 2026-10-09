@@ -160,6 +160,8 @@ function toolContext(options?: { agents?: AgentsLike }): {
 }
 
 describe('installWorktreeTool', () => {
+  // 精简组合的降级：宿主没给 `tools` 服务时静默跳过注册，而不是抛错。
+  // 传一个只有事件订阅的 ctx，断言 `installWorktreeTool` 返回 undefined。
   it('does nothing without a tool registry', () => {
     expect(installWorktreeTool({ on: () => () => {} })).toBeUndefined();
   });
@@ -263,6 +265,8 @@ describe('parseWorktreeAction', () => {
     return parsed.error;
   }
 
+  // 入参门禁：非对象、数组或未知 action 一律拒绝并点名 action。
+  // 依次喂 `undefined`、字符串、数组、空对象与未知 action，断言文案含「对象」或 action。
   it('refuses arguments that are not an object or name no known action', () => {
     expect(errorOf(undefined)).toContain('对象');
     expect(errorOf('create')).toContain('对象');
@@ -294,6 +298,8 @@ describe('parseWorktreeAction', () => {
     });
   });
 
+  // 动作与字段的匹配门禁：给动作塞它用不到的字段必须拒绝，免得模型以为参数生效了。
+  // 逐条喂 node/base/force 的错配组合，断言文案点名「该动作需要」或「只用于」。
   it('refuses a field that means nothing to the action that carried it', () => {
     expect(errorOf({ action: 'create' })).toContain('该动作需要 node');
     expect(errorOf({ action: 'merge' })).toContain('该动作需要 node');
@@ -321,6 +327,8 @@ describe('parseWorktreeAction', () => {
 });
 
 describe('executeWorktreeTool', () => {
+  // 触 git 之前的两道本地拒绝：节点不在图里、仓库根解析不出来，都不该去跑命令。
+  // 先查一个不存在的节点，再摘掉 repo 调用执行器，断言两条拒绝文案。
   it('refuses an unknown node and a bad repo before touching git', async () => {
     await seedGraph();
     const unknown = await runWorktree({ action: 'create', node: 'nope' });
@@ -533,6 +541,8 @@ describe('executeWorktreeTool', () => {
     expect(listed.summary).not.toContain('unmerged');
   });
 
+  // 清单的显示边界：最多 20 行，其余折成一行「还有 N 条」，不能悄悄截断。
+  // 造 21 棵真树后跑 `list`，剥掉首行前缀数行数，断言 20 行且带剩余计数。
   it('lists at most twenty rows and counts the rest', async () => {
     await seedGraph();
     for (let index = 0; index < 21; index += 1) {
@@ -595,7 +605,6 @@ describe('executeWorktreeTool prune', () => {
     expect(pruned.summary).toContain(`removed ${SESSION}/a1`);
     expect(pruned.summary).toContain(`kept ${SESSION}/b1`);
     expect(pruned.summary).toContain('未合并');
-    // 现场按 verdict 落地：够格的没了，未合并的还在盘上。
     expect(existsSync(old)).toBe(false);
     expect(existsSync(b1)).toBe(true);
   });

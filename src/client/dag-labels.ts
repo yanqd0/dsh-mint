@@ -16,7 +16,6 @@ export function phaseLabel(copy: MintBodyProps['copy'], phase: DagNodeView['phas
   }
 }
 
-/** As {@link phaseLabel}, for a node's lifecycle state. */
 export function statusLabel(copy: MintBodyProps['copy'], status: DagNodeView['status']): string {
   switch (status) {
     case 'pending':
@@ -28,7 +27,6 @@ export function statusLabel(copy: MintBodyProps['copy'], status: DagNodeView['st
   }
 }
 
-/** As {@link phaseLabel}, for a settled node's outcome. */
 export function verdictLabel(copy: MintBodyProps['copy'], verdict: DagVerdict): string {
   switch (verdict) {
     case 'pass':
@@ -38,7 +36,6 @@ export function verdictLabel(copy: MintBodyProps['copy'], verdict: DagVerdict): 
   }
 }
 
-/** As {@link phaseLabel}, for the state of a node's isolated working tree. */
 export function worktreeStateLabel(copy: MintBodyProps['copy'], state: DagWorktreeState): string {
   switch (state) {
     case 'active':

@@ -9,6 +9,8 @@ describe('isValidDagSession', () => {
     }
   });
 
+  // 路径与 id 的门禁：空串、分隔符、`..`、非 ASCII、控制字符与超长一律拒绝。
+  // 逐个喂入非法样本，断言返回 false，失败信息带上被拒的那个 id。
   it('refuses anything that could escape the directory or is not an id', () => {
     for (const id of ['', 'a/b', '..', '../x', 'a.b', 'a b', 'a\nb', 'é', 'x'.repeat(65)]) {
       expect(isValidDagSession(id), JSON.stringify(id)).toBe(false);

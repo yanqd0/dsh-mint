@@ -1,18 +1,16 @@
 /**
- * Read-only HTTP routes backing the right-sidebar mint panel.
+ * 支撑右侧边栏 mint 面板的只读 HTTP 路由。
  *
- * An installed (static) plugin's browser half cannot reach the host through the
- * Typert Remote assembly — `dsh-api-remotes` fixes its capability set at build
- * time — and `harness.handle`/`host.call` belong to the *dynamic* Cordis package
- * runner. The working seam is the other one every shipped feature uses: the host
- * registers exact routes on `ctx.webServer`, the browser half `fetch`es them.
+ * 已安装（静态）插件的浏览器半边到不了主机：Typert Remote 装配在构建期就固定了能力集
+ * （`dsh-api-remotes`），而 `harness.handle`/`host.call` 属于*动态* Cordis 包运行器。
+ * 可用的接缝是每个已发布特性都在用的那一条：主机在 `ctx.webServer` 上注册精确路由，
+ * 浏览器半边 `fetch` 它们。
  *
- * What this module may run is deliberately tiny: a fixed subcommand per route
- * plus numeric/enumerated arguments. Nothing here can express a write, and
- * `READ_ONLY_SUBCOMMANDS` is asserted by the tests rather than trusted.
+ * 本模块能跑的东西刻意极少：每条路由一个固定子命令，外加数字/枚举参数。这里表达不出
+ * 任何写操作，而且 `READ_ONLY_SUBCOMMANDS` 是被测试断言而非被信任。
  *
- * The project a request reads is derived from its session — never from a path
- * the browser supplies — so the panel cannot be pointed at an arbitrary database.
+ * 一次请求读哪个项目由它的会话推导——绝不来自浏览器给的路径——所以面板无法被指向任意
+ * 数据库。
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -41,36 +39,33 @@ import { hasControlCharacter } from '../shared/text.js';
 import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from '../shared/types.js';
 
 /**
- * Re-exported from {@link ./route-paths.js}: the prefix is shared with the
- * browser half, which builds the same paths for its `fetch`es.
+ * 从 {@link ./route-paths.js} 再导出：该前缀与浏览器半边共用，后者为它的 `fetch`
+ * 拼同样的路径。
  */
 export { ROUTE_PREFIX };
 
 /**
- * How far a running node's measured time may move before its stored sample is
- * rewritten. The document lives on `/tmp`, so this is churn control, not
- * a size limit: a shorter interval buys nothing the live read does not already
- * show the panel.
+ * 运行中节点的实测时间要变化多少，才值得重写它已存的采样。文档落在 `/tmp`，所以这是
+ * 抗抖动、不是大小上限：更短的间隔换不来任何实时读取本就已经给面板看的东西。
  */
 const SAMPLE_WRITE_MS = 10_000;
 
-/** The panel truncates an issue body at this many UTF-8 bytes. */
+/** 面板按这么多 UTF-8 字节截断 issue body。 */
 export const BODY_MAX_BYTES = 256 * 1024;
 
-/** Where pagination starts when the panel asks for nothing. */
+/** 面板什么都没要时，分页从哪里开始。 */
 export const DEFAULT_PAGE = 1;
 export const DEFAULT_PAGE_SIZE = 20;
-/** mint's `--page-size` is happy with more, but a panel is not a report. */
+/** mint 的 `--page-size` 能吃更大，但面板不是报表。 */
 export const MAX_PAGE_SIZE = 100;
 
-/** Longest accepted filter value; a filter is a needle, not a document. */
+/** 接受的最长过滤值；过滤条件是针，不是文档。 */
 const MAX_FILTER_LENGTH = 200;
 
 /**
- * The only mint subcommands these routes run. Everything reachable from here is
- * a read: `list`, `show`, `plan list`, `plan show`, `milestone list`,
- * `milestone show`, `label list`. Any argv whose head is outside this list is a
- * bug — `label` is here for the color dictionary only, never `label set`.
+ * 这些路由唯一会跑的 mint 子命令。从这里可达的一切都是读：`list`、`show`、
+ * `plan list`、`plan show`、`milestone list`、`milestone show`、`label list`。
+ * 任何 argv 头部不在此列的调用都是 bug——`label` 只为颜色字典而来，绝不是 `label set`。
  */
 export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone', 'label'] as const;
 
@@ -85,20 +80,19 @@ export const META_MILESTONES_ARGV: readonly string[] = [
 export const META_PLANS_ARGV: readonly string[] = ['plan', 'list', '--all-states', '--json', '--no-page'];
 export const META_LABELS_ARGV: readonly string[] = ['label', 'list', '--json', '--no-page'];
 
-/** A request these routes refuse: bad path, bad id, or a bad filter. */
+/** 这些路由拒绝的一次请求：路径坏、id 坏或过滤值坏。 */
 export class RouteRequestError extends Error {}
 
-
-/** Which collection a `list` route reads. */
+/** `list` 路由读的是哪个集合。 */
 export type ListKind = 'issue' | 'plan' | 'milestone';
 
-/** Validated pagination. */
+/** 校验过的分页参数。 */
 export interface PageQuery {
   page: number;
   pageSize: number;
 }
 
-/** The `run` seam, so tests need no module mock to drive a route. */
+/** `run` 接缝：测试驱动路由时因此无需 mock 模块。 */
 export type MintRunner = (
   cwd: string,
   args: readonly string[],
@@ -106,25 +100,24 @@ export type MintRunner = (
 ) => Promise<MintRunResult>;
 
 export interface MintRouteDeps {
-  /** Resolve a live session's project directory; `undefined` for an unknown one. */
+  /** 解析活跃会话的项目目录；未知会话为 `undefined`。 */
   getCwd(sessionId: string): string | undefined;
-  /** mint CLI entry override (`mintEntry` on the mount line). */
+  /** mint CLI 入口覆写（挂载行的 `mintEntry`）。 */
   entry?: string;
-  /** Defaults to {@link runMint}; tests replace it. */
+  /** 缺省 {@link runMint}；测试会替换它。 */
   run?: MintRunner;
   /** DAG 应答里 `sampled_at` 的时钟缝；默认 `Date.now`。 */
   now?: () => number;
-  /** DAG directory override; defaults to {@link DAG_DIR}. */
+  /** DAG 目录覆写；默认 {@link DAG_DIR}。 */
   dagDir?: string;
-  /** Mount-line `openDagTab`, published in the DAG envelope; defaults to true. */
+  /** 挂载行的 `openDagTab`，随 DAG 信封下发；默认 true。 */
   openDagTab?: boolean;
-  /** Per-node live metrics for one session's DAG; absent in tests/lean hosts. */
+  /** 某个会话 DAG 的逐节点实时指标；测试/精简主机上没有。 */
   readDagMetrics?(sessionId: string): Promise<Record<string, DagNodeMetrics>>;
 }
 
 /**
- * One in-flight request: the response to answer, the project to read, and the
- * abort signal every CLI run it starts shares.
+ * 一次进行中的请求：要应答的响应、要读的项目，以及它启动的每次 CLI 运行共用的中止信号。
  */
 interface RequestScope {
   res: ServerResponse;
@@ -132,7 +125,7 @@ interface RequestScope {
   signal: AbortSignal;
 }
 
-/** Read `page` / `pageSize`: missing means default, malformed means 400. */
+/** 读 `page` / `pageSize`：缺失取默认，格式非法即 400。 */
 export function parsePageQuery(params: URLSearchParams): PageQuery {
   return {
     page: pageCounter(params.get('page'), DEFAULT_PAGE, Number.MAX_SAFE_INTEGER),
@@ -147,12 +140,10 @@ function pageCounter(raw: string | null, fallback: number, max: number): number 
 }
 
 /**
- * Read one filter value.
+ * 读一个过滤值。
  *
- * A value may not begin with `-` — that is what would turn it into a flag for
- * the CLI — and may not carry control characters. Since `spawn` receives an argv
- * array there is no shell to escape, so these two rules plus the fixed subcommand
- * are the whole injection surface.
+ * 值不得以 `-` 起头——那会让它变成 CLI 的旗标——也不得带控制字符。既然 `spawn` 收的是
+ * argv 数组，就没有 shell 需要转义，所以这两条规则加上固定子命令就是全部的注入面。
  */
 export function filterValue(params: URLSearchParams, name: string): string | undefined {
   const raw = params.get(name);
@@ -165,7 +156,7 @@ export function filterValue(params: URLSearchParams, name: string): string | und
   return value;
 }
 
-/** Read the numeric `id` a detail route addresses. */
+/** 读详情路由寻址用的数字 `id`。 */
 export function parseId(params: URLSearchParams): number {
   const raw = params.get('id') ?? '';
   if (!/^\d+$/.test(raw)) throw new RouteRequestError('id must be a positive integer');
@@ -173,17 +164,16 @@ export function parseId(params: URLSearchParams): number {
 }
 
 /**
- * Build the argv for one `list` route.
+ * 为一条 `list` 路由拼 argv。
  *
- * This is the pass-through form: whatever the flags can express in one call.
- * The container routes go through {@link containerListRequest} instead, which
- * overrides it when the panel's "open or running" default needs a full-table
- * read; the issue route is the only caller of this function directly.
+ * 这是直通形态：一次调用能表达的旗标都照搬。容器路由改走
+ * {@link containerListRequest}，后者在面板「open or running」默认值需要整表读时覆盖它；
+ * issue 路由是直接调用本函数的唯一调用方。
  *
- * @param kind - which collection to read.
- * @param params - the request's query.
- * @param page - validated pagination.
- * @throws {RouteRequestError} on a malformed filter value.
+ * @param kind - 读哪个集合。
+ * @param params - 请求的 query。
+ * @param page - 校验过的分页参数。
+ * @throws {RouteRequestError} 过滤值格式非法时抛出。
  */
 export function buildListArgv(kind: ListKind, params: URLSearchParams, page: PageQuery): string[] {
   const argv = kind === 'issue' ? ['list', '--json'] : [kind, 'list', '--json'];
@@ -200,9 +190,8 @@ export function buildListArgv(kind: ListKind, params: URLSearchParams, page: Pag
     pushFilter(argv, params, 'milestone', '--milestone');
     pushFilter(argv, params, 'search', '--search');
   } else {
-    // Containers (plan | milestone): `--all-states` wins over `--status`, the
-    // same precedence the issue branch takes — the two contradict each other and
-    // the panel never sends both.
+    // 容器（plan | milestone）：`--all-states` 压过 `--status`，与 issue 分支同样的
+    // 优先级——两者互相矛盾，面板也从不一起发。
     if (params.get('allStates') === '1') argv.push('--all-states');
     else pushFilter(argv, params, 'status', '--status');
     pushFilter(argv, params, 'milestone', '--milestone');
@@ -213,41 +202,36 @@ export function buildListArgv(kind: ListKind, params: URLSearchParams, page: Pag
 }
 
 /**
- * The container states the panel treats as settled.
+ * 面板视为已终结的容器状态。
  *
- * mint's own `plan list` / `milestone list` hide only `done`, but `partial`
- * (every issue settled, never released) and `dropped` (cancelled) are the rest
- * of a container's end states. Only these three are named: a state mint grows
- * later stays visible rather than disappearing silently.
+ * mint 自己的 `plan list` / `milestone list` 只隐藏 `done`，但 `partial`（子级全部了结、
+ * 从未发布）与 `dropped`（取消）也是容器的终结态。这里只点名这三种：mint 将来新增的状态
+ * 会继续保持可见，而不是悄悄消失。
  */
 export const CONTAINER_END_STATES: readonly string[] = ['partial', 'dropped', 'done'];
 
-/** One container list request: the argv to run, and how to read its answer. */
+/** 一次容器列表请求：要跑的 argv，以及怎么读它的答案。 */
 export interface ContainerListRequest {
   argv: string[];
   /**
-   * True when {@link argv} read the whole table (`--no-page`): the route must
-   * drop the settled containers and cut the requested page itself.
+   * {@link argv} 是否读了整表（`--no-page`）：路由必须自己丢掉已终结容器并切出请求页。
    */
   filterSettled: boolean;
 }
 
 /**
- * Build the request behind `/dsh-mint/plans` or `/dsh-mint/milestones`.
+ * 拼 `/dsh-mint/plans` 或 `/dsh-mint/milestones` 背后的请求。
  *
- * The panel's default is "open or running", which mint cannot be asked for: its
- * own default hides only `done`, and `--status` accepts a single value (a
- * repeated flag is a usage error). So the default path reads the whole
- * all-states table — the same read the meta route already makes — and
- * {@link settledContainerPage} filters and pages it here.
+ * 面板默认「open or running」，而 mint 无法被这样问：它自己的默认只隐藏 `done`，而
+ * `--status` 只接受单个值（重复旗标是用法错误）。所以默认路径改读整张 all-states 表——
+ * 与 meta 路由本来就在做的同一次读——再由 {@link settledContainerPage} 在这里过滤并分页。
  *
- * An explicit `status` or `allStates` is expressible as one CLI call and passes
- * straight through.
+ * 显式给了 `status` 或 `allStates` 则能用一次 CLI 调用表达，直接放行。
  *
- * @param kind - which container list to read.
- * @param params - the request's query.
- * @param page - validated pagination.
- * @throws {RouteRequestError} on a malformed filter value.
+ * @param kind - 读哪个容器列表。
+ * @param params - 请求的 query。
+ * @param page - 校验过的分页参数。
+ * @throws {RouteRequestError} 过滤值格式非法时抛出。
  */
 export function containerListRequest(
   kind: 'plan' | 'milestone',
@@ -263,7 +247,7 @@ export function containerListRequest(
   return { argv, filterSettled: true };
 }
 
-/** The page a list route answers with, once its selection is applied. */
+/** 一条 list 路由在应用选择之后给出的那一页。 */
 export interface ListPage<T> {
   items: T[];
   page: number;
@@ -273,13 +257,12 @@ export interface ListPage<T> {
 }
 
 /**
- * Drop the settled containers and cut the requested page out of the rest.
+ * 丢掉已终结容器，并从剩下的里切出请求页。
  *
- * `--no-page` still carries mint's counters for the *unfiltered* table, so both
- * the total and the slice are recomputed here.
+ * `--no-page` 仍会带上 mint 对**未过滤**表的计数，所以总数与切片都在这里重算。
  *
- * @param items - every container the CLI returned.
- * @param page - the page the caller asked for.
+ * @param items - CLI 返回的全部容器。
+ * @param page - 调用方要的那一页。
  */
 export function settledContainerPage<T extends { status: string }>(
   items: readonly T[],
@@ -308,22 +291,21 @@ function pushFilter(
 }
 
 /**
- * Build the argv that reads one issue in full.
+ * 拼读一条 issue 全文的 argv。
  *
- * `show --json` is the only read that carries both the list fields and the body,
- * which is what lets a plan or milestone detail open an issue without a second
- * lookup and without inventing fields the list does not have.
+ * `show --json` 是唯一同时携带列表字段与 body 的读，这才让 plan 或 milestone 详情能在
+ * 不做第二次查询、也不发明列表里没有的字段的前提下打开 issue。
  */
 export function buildIssueDetailArgv(id: number): string[] {
   return ['show', String(id), '--json'];
 }
 
-/** Build the argv that reads one container's detail (`plan show` / `milestone show`). */
+/** 拼读一个容器详情的 argv（`plan show` / `milestone show`）。 */
 export function buildDetailArgv(kind: 'plan' | 'milestone', id: number): string[] {
   return [kind, 'show', String(id), '--json'];
 }
 
-/** Write a JSON response; the browser half reads only this body. */
+/** 写一个 JSON 响应；浏览器半边只读这个 body。 */
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   if (res.writableEnded || res.destroyed) return;
   const body = JSON.stringify(payload);
@@ -333,7 +315,7 @@ function sendJson(res: ServerResponse, status: number, payload: unknown): void {
   res.end(body);
 }
 
-/** Name a CLI failure for the panel, keeping mint's own stderr advisory lines. */
+/** 为面板命名一次 CLI 失败，保留 mint 自己的 stderr 建议行。 */
 function failure(result: MintRunResult): Record<string, unknown> {
   const error = result.error ?? `mint exited with code ${String(result.exitCode ?? 'unknown')}`;
   const stderr = result.stderr?.trim();
@@ -341,19 +323,17 @@ function failure(result: MintRunResult): Record<string, unknown> {
 }
 
 /**
- * Truncate a body on a UTF-8 boundary, reporting whether it was cut.
+ * 在 UTF-8 边界上截断 body，并报告是否切过。
  *
- * `null` is mint's own "no body" answer and passes through untouched:
- * the panel already renders both `null` and `''` as the empty state, so there is
- * nothing to normalize here and nothing to fabricate.
+ * `null` 是 mint 自己的「没有 body」答案，原样放行：面板把 `null` 与 `''` 都渲染成空态，
+ * 所以这里无需归一化，也无需编造。
  *
- * @param text - the record's body, or `null` when it has none.
+ * @param text - 记录 body；没有时为 `null`。
  */
 export function truncateBody(text: string | null): { body: string | null; truncated: boolean } {
   if (text === null) return { body: null, truncated: false };
   if (Buffer.byteLength(text, 'utf8') <= BODY_MAX_BYTES) return { body: text, truncated: false };
-  // Byte length is monotonic in the prefix length, so binary-search the longest
-  // prefix that fits instead of trimming one character at a time.
+  // 字节长度对前缀长度单调，所以二分找最长的可容纳前缀，而不是逐字符回退。
   let low = 0;
   let high = Math.min(text.length, BODY_MAX_BYTES);
   while (low < high) {
@@ -361,34 +341,27 @@ export function truncateBody(text: string | null): { body: string | null; trunca
     if (Buffer.byteLength(text.slice(0, mid), 'utf8') <= BODY_MAX_BYTES) low = mid;
     else high = mid - 1;
   }
-  // Never leave a lone surrogate behind: an astral character is a pair.
+  // 绝不留下落单的代理项：星光平面的字符是一对。
   if (low > 0 && /[\uD800-\uDBFF]/.test(text.charAt(low - 1))) low -= 1;
   return { body: text.slice(0, low), truncated: true };
 }
 
 /**
- * Persist the readings this process remembers that the document does not carry
- * yet.
+ * 把本进程记得、而文档还没携带的读数落盘。
  *
- * The real host keeps a finished child's session readable for a while — long
- * enough that the live read keeps answering `metrics` and the panel never loses
- * the number — so "wait until the live read fails" would mean **nothing is ever
- * persisted**, and every restart would drop every measurement. The flush
- * therefore runs *while the reading is still live*, throttled: a running node is
- * re-persisted only once its measured time has moved by at least
- * {@link SAMPLE_WRITE_MS} (the document is a few KB on `/tmp`, but the panel's
- * re-render guard means a write is still worth spacing out). A settled node has
- * nothing left to accumulate, so its last reading is written once.
+ * 真实主机会让已结束子级的会话在一段时间内仍可读——久到实时读取持续给出 `metrics`、
+ * 面板从不丢数——所以「等实时读取失败再写」等于**永远不落盘**，每次重启都会丢掉全部
+ * 测量。因此落盘要在*读数仍然实时*时就跑，并做节流：运行中的节点只有实测时间至少前进
+ * {@link SAMPLE_WRITE_MS} 才重写（文档只是 `/tmp` 上几 KB，但面板的重渲染守卫让每次写
+ * 仍值得拉开间隔）。已结算节点再无可累积，其最后一个读数写一次即可。
  *
- * The reading's own `at` is what gets stored: it is the moment the host
- * *measured* the node, not the moment this write happened to run. Nothing here
- * measures anything, so the route stays a reader, and the whole step is
- * best-effort — a failed write costs this answer nothing but the fallback the
- * *next* answer would have shown.
+ * 存的是读数自己的 `at`：那是主机*测量*该节点的时刻，不是这次写恰好跑的时刻。这里什么都
+ * 不测量，所以路由仍是读者，而整步都是尽力而为——写失败只让*下一次*答案少它本该显示的
+ * 兜底值。
  *
- * @param sessionId - the session whose document is being answered.
- * @param read - what this request just read from disk (the node list).
- * @param dir - the DAG directory override.
+ * @param sessionId - 正在应答其文档的会话。
+ * @param read - 本次请求刚从磁盘读到的内容（节点列表）。
+ * @param dir - DAG 目录覆写。
  */
 async function flushRememberedSample(sessionId: string, read: DagRead, dir: string): Promise<void> {
   if (read.state !== 'ok') return;
@@ -411,8 +384,7 @@ async function flushRememberedSample(sessionId: string, read: DagRead, dir: stri
         let doc = state.doc;
         const now = new Date().toISOString();
         for (const { nodeId, sample } of pending) {
-          // The write re-checks the same rule against the *current* document, so
-          // a racing write cannot be overwritten by a staler reading.
+          // 写入时对*当前*文档重查同一条规则，所以并发的写不会被更旧的读数覆盖。
           const stored = state.doc.samples?.[nodeId];
           const node = state.doc.nodes.find((candidate) => candidate.id === nodeId);
           if (stored !== undefined && !outgrewStored(stored, sample, node?.status ?? 'done')) continue;
@@ -423,19 +395,16 @@ async function flushRememberedSample(sessionId: string, read: DagRead, dir: stri
       dir
     );
   } catch {
-    // Best-effort: the answer below is already the panel's, and a write of a
-    // *measurement* is never worth turning a 200 into an error.
+    // 尽力而为：下面的答案本来就是要给面板的，而为一次*测量*的写把 200 变成错误绝不值得。
   }
 }
 
 /**
- * Whether a fresh reading is worth replacing the stored one with.
+ * 一份新读数是否值得替换已存的那份。
  *
- * A settled node's reading is final: the stored sample is the same measurement,
- * so it is replaced only when it is not already the same numbers. A running node
- * moves every second, so it is re-persisted only once the measured time has
- * advanced by {@link SAMPLE_WRITE_MS} — the file is small and on `/tmp`, but a
- * write per poll would still be churn for a number the panel already has live.
+ * 已结算节点的读数是终局：已存采样就是同一次测量，所以只有数字尚不相同时才替换。运行中的
+ * 节点每秒都在动，所以只有实测时间前进至少 {@link SAMPLE_WRITE_MS} 才重写——文件很小且在
+ * `/tmp`，但每次轮询都写仍是面板已有实时数字的无谓抖动。
  */
 function outgrewStored(stored: DagSample, fresh: DagSample, status: DagStatus): boolean {
   if (status !== 'running') {
@@ -447,10 +416,10 @@ function outgrewStored(stored: DagSample, fresh: DagSample, status: DagStatus): 
 }
 
 /**
- * Build the route handler.
+ * 构造路由处理器。
  *
- * @param deps - the session lookup, the optional CLI entry override, and the run seam.
- * @returns a handler for `ctx.webServer.register`.
+ * @param deps - 会话查找、可选的 CLI 入口覆写，以及 run 接缝。
+ * @returns 供 `ctx.webServer.register` 使用的 handler。
  */
 export function createMintHandler(
   deps: MintRouteDeps
@@ -459,25 +428,21 @@ export function createMintHandler(
   const now = deps.now ?? Date.now;
 
   /**
-   * Answer the plan DAG route.
+   * 应答 plan DAG 路由。
    *
-   * This route is **file-keyed, not project-keyed**: the DAG lives next to the
-   * session id, no mint CLI runs, and the browser half polls it while its tab is
-   * visible. So it is answered before the live-session lookup — a session whose
-   * project cannot be resolved still has a graph to draw, and a panel that
-   * outlives its session degrades to the empty state instead of a 400.
+   * 这条路由**按文件寻址，不按项目寻址**：DAG 就在会话 id 旁边，不跑任何 mint CLI，而
+   * 浏览器半边在其标签页可见时轮询它。所以它在活跃会话查找之前就被应答——项目解析不出来的
+   * 会话仍有图可画，活得比会话久的面板退化成空态而不是 400。
    */
   const sendDag = async (res: ServerResponse, params: URLSearchParams): Promise<void> => {
     const sessionId = params.get('session') ?? '';
-    // Validated before it can become a path segment; a bad id is a caller bug.
+    // 在它能变成路径段之前先校验；坏 id 是调用方 bug。
     if (!isValidDagSession(sessionId)) {
       throw new RouteRequestError('session must be a 1-64 char [A-Za-z0-9_-] id');
     }
     const read: DagRead = await readDag(sessionId, deps.dagDir ?? DAG_DIR);
-    // Host-measured usage is best-effort by design: the panel must get
-    // its graph even when the projections cannot be read, so a failure here is
-    // the same as no metrics — and nothing is published unless something was
-    // really measured, so "absent" never has to mean "zero".
+    // 宿主实测用量按设计是尽力而为：投影读不出来时面板也必须拿到图，所以这里失败等同于
+    // 没有指标——而且什么都没真测到时就不发布任何东西，于是「缺失」永远不必表示「零」。
     let metrics: Record<string, DagNodeMetrics> | undefined;
     if (deps.readDagMetrics !== undefined && read.state === 'ok' && read.doc.nodes.length > 0) {
       try {
@@ -487,13 +452,11 @@ export function createMintHandler(
         metrics = undefined;
       }
     }
-    // The reading the host just took is also the durable one: persist it (spaced
-    // out for a running node) so the number survives a restart, however long the
-    // host happens to keep the finished child's session readable.
+    // 宿主刚取的读数也是那份持久读数：把它落盘（运行中节点按间隔节流），让数字在重启后
+    // 仍在——无论宿主碰巧让已结束子级的会话可读多久。
     await flushRememberedSample(sessionId, read, deps.dagDir ?? DAG_DIR);
-    // `warnings` is declared rather than inferred: the answer below carries the
-    // wire type the browser half reads, where `warnings` is an optional
-    // `string[]` — a lone inferred `string[]` would widen that field.
+    // `warnings` 显式声明而不推导：下面的答案携带浏览器半边读取的线格式，其中 `warnings`
+    // 是可选的 `string[]`——单独推导出的 `string[]` 会把它拓宽。
     const warnings: Pick<MintDagPayload, 'warnings'> =
       read.state === 'unreadable' ? { warnings: [`unreadable dag: ${read.error}`] } : {};
     // 声明的类型就是面板读的那份线格式：节点视图因此逐字段受编译期约束，含可选的
@@ -501,14 +464,13 @@ export function createMintHandler(
     // 投影——多一处投影就是多一个会悄悄漏字段的地方。
     const payload: MintDagPayload = {
       ok: true,
-      // A missing file and an unreadable one both answer `dag: null`: "this
-      // session has no DAG yet" is a normal state, not a 404 (§4.2/§1.5).
+      // 文件缺失与不可读都答 `dag: null`：「本会话还没有 DAG」是正常状态，不是 404。
       dag: read.state === 'ok' ? read.doc : null,
       revision: read.state === 'ok' ? read.doc.revision : 0,
       file: read.file,
       autoOpen: deps.openDagTab ?? true,
-      // One sample clock for the whole answer: `sampled_at` is what the panel
-      // compares the per-node numbers against, so it is read once, here.
+      // 整个答案共用一个采样时钟：`sampled_at` 是面板用来比对逐节点数字的基准，所以在这里
+      // 只读一次。
       ...(metrics === undefined ? {} : { metrics, sampled_at: now() }),
       ...warnings,
     };
@@ -516,12 +478,11 @@ export function createMintHandler(
   };
 
   /**
-   * Run mint under the request's lifetime; `undefined` once the client left.
+   * 在请求生命周期内跑 mint；客户端离开后为 `undefined`。
    *
-   * The signal is the request's own ({@link RequestScope}), not this call's: a
-   * route that reads several tables in parallel (the meta route) must not
-   * register one `close` listener per child, and one disconnect should cancel
-   * every run it started.
+   * 信号是请求自己的那个（{@link RequestScope}），不是本次调用的：一条并行读多张表的路由
+   * （meta 路由）绝不能给每个子进程各注册一个 `close` 监听器，而一次断连应当取消它启动的
+   * 每一次运行。
    */
   const runForRequest = async (
     scope: RequestScope,
@@ -542,8 +503,7 @@ export function createMintHandler(
     source: string,
     isItem: (value: unknown) => value is T,
     /**
-     * Optional selection: maps the parsed page onto the one to answer with.
-     * Absent means "the CLI's own page is the answer".
+     * 可选的选择：把解析出的页映射成要应答的那一页。缺失表示「CLI 自己的页就是答案」。
      */
     select?: (parsed: ParsedItems<T>) => ListPage<T>
   ): Promise<void> => {
@@ -567,12 +527,12 @@ export function createMintHandler(
   };
 
   /**
-   * Serve one container list through the panel's settled-state default.
+   * 按面板的已终结状态默认值提供一次容器列表。
    *
-   * @param kind - which container table to read.
-   * @param params - the request's query.
-   * @param page - validated pagination.
-   * @param isItem - the guard for that table's records.
+   * @param kind - 读哪张容器表。
+   * @param params - 请求的 query。
+   * @param page - 校验过的分页参数。
+   * @param isItem - 该表记录的守卫。
    */
   const sendContainerList = async <T extends { status: string }>(
     scope: RequestScope,
@@ -592,10 +552,9 @@ export function createMintHandler(
   };
 
   /**
-   * Serve the panel's lookup tables in one response.
+   * 一次应答里给出面板的查找表。
    *
-   * The three dictionaries are independent whole-table reads, so they run in
-   * parallel; a per-table shape warning is carried, a failure answers for all.
+   * 三张字典是互相独立的整表读，所以并行跑；逐表形状告警会被带出，一次失败即代表全部。
    *
    * 这里刻意**不再**做 issue→milestone 反查：mint 0.9.0-alpha.1 已把
    * `milestone_id` / `milestone_direct` 写在每个 `list --json` 行上，
@@ -609,8 +568,7 @@ export function createMintHandler(
       runForRequest(scope, [...META_LABELS_ARGV]),
     ]);
     if (milestones === undefined || plans === undefined || labels === undefined) return;
-    // The dictionary reads are the response's spine: without them, nothing the
-    // panel renders would be trustworthy, so the first failure answers for all.
+    // 字典读是本应答的脊柱：没有它们，面板渲染的一切都不可信，所以第一个失败即代表全部。
     const failed = [milestones, plans, labels].find((result) => !result.ok);
     if (failed !== undefined) {
       sendJson(scope.res, 200, { ok: false, ...failure(failed) });
@@ -646,15 +604,14 @@ export function createMintHandler(
       return;
     }
     const url = new URL(req.url ?? '/', 'http://localhost');
-    // Mirror the host's own prefix rule: `/dsh-mint/issues` is ours,
-    // `/dsh-mint-other` is not.
+    // 模仿宿主自己的前缀规则：`/dsh-mint/issues` 是我们的，`/dsh-mint-other` 不是。
     const name = url.pathname.startsWith(`${ROUTE_PREFIX}/`)
       ? url.pathname.slice(ROUTE_PREFIX.length + 1)
       : '';
     const params = url.searchParams;
 
-    // One lifetime for the whole request: every CLI run it starts shares this
-    // signal, so a disconnect cancels all of them and adds a single listener.
+    // 整个请求共用一个生命周期：它启动的每次 CLI 运行共用这个信号，所以一次断连取消全部，
+    // 且只多挂一个监听器。
     const controller = new AbortController();
     const onClose = (): void => {
       if (!res.writableEnded) controller.abort();
@@ -742,15 +699,13 @@ export function createMintHandler(
 }
 
 /**
- * Register the panel's routes on the host's browser carrier.
+ * 在宿主的浏览器载体上注册面板路由。
  *
- * `webServer` is optional by design: a headless or ACP composition runs the
- * plugin's other faces and simply has no routes to serve.
+ * `webServer` 按设计可选：无头或 ACP 组合只跑插件的其它面，本就没有路由要提供。
  *
- * @param ctx - the plugin's root context.
- * @param entry - `mintEntry` from the mount line, forwarded to every run.
- * @param options - mount-line client knobs: the DAG tab's auto-open default and
- *   the DAG directory override.
+ * @param ctx - 插件的根 context。
+ * @param entry - 挂载行的 `mintEntry`，转发给每一次运行。
+ * @param options - 挂载行的客户端旋钮：DAG 标签页的自动打开默认值与 DAG 目录覆写。
  */
 export function installMintRoutes(
   ctx: DshContext,
@@ -762,16 +717,14 @@ export function installMintRoutes(
     if (webServer === undefined) return;
     const handler = createMintHandler({
       getCwd: (sessionId) => {
-        // The service is looked up per request so a composition that mounts the
-        // agent registry later still resolves; the cast is the usual structural
-        // narrowing at the host boundary.
+        // 服务按请求现查，这样晚于本插件挂载 agent registry 的组合也解析得到；这个 cast
+        // 是宿主边界上惯常的结构收窄。
         const agents = ctx.get?.('agents') as AgentsLike | undefined;
         return agents?.get(sessionId)?.session.header.cwd;
       },
-      // Same live lookup as `getCwd`, for the same reason: the projection
-      // registry may be mounted after this plugin starts. `projections` is
-      // forwarded even when absent — `readDagMetrics` owns the one degradation
-      // rule (`{}`), so there is no second place to keep in sync.
+      // 与 `getCwd` 同样的现查，理由相同：投影注册表可能在本插件启动后才挂载。
+      // `projections` 即使缺失也照转——降级规则（`{}`）归 `readDagMetrics` 独有，
+      // 于是没有第二处需要同步。
       readDagMetrics: (sessionId) => {
         const agents = ctx.get?.('agents') as AgentsLike | undefined;
         const projections = ctx.get?.('sessionProjections') as SessionProjectionsLike | undefined;
@@ -793,8 +746,8 @@ export function installMintRoutes(
       scoped.effect(register, 'dsh-mint: client query routes');
       return;
     }
-    // A lean context without `effect` still gets working routes; nothing owns
-    // the disposer, which only matters for hot reload.
+    // 没有 `effect` 的精简 context 也照样能用这些路由；只是没人持有 disposer，而那仅在热重载
+    // 时才有影响。
     register();
   });
 }

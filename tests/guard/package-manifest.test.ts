@@ -57,6 +57,8 @@ describe('package manifest', () => {
     expect(manifest.files).toContain('scripts/install-dsh.sh');
   });
 
+  // 插件 id 契约：挂载名必须是 `mint`（安装与 `--status` 都按这个名字找），且走 insert 语义。
+  // 直接读仓根 `cordis.patch.yml`，断言 insert 标记、包名与本包 `package.json` 的 name 一致。
   it('mounts this package under the plugin id `mint`', () => {
     const patch = readFileSync(join(REPO_ROOT, 'cordis.patch.yml'), 'utf8');
     expect(patch).toMatch(/^- insert:/m);

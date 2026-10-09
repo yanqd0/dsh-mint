@@ -17,7 +17,6 @@ describe('route paths', () => {
       const pathname = routePath(name);
       expect(pathname === ROUTE_PREFIX || pathname.startsWith(`${ROUTE_PREFIX}/`)).toBe(true);
     }
-    // A neighbouring path is not ours.
     expect('/dsh-mint-other'.startsWith(`${ROUTE_PREFIX}/`)).toBe(false);
   });
 

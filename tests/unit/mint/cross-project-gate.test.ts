@@ -237,23 +237,22 @@ describe('installCrossProjectGate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  // 授权按「会话 + 目标项目」记账：同会话同项目免问，换项目或换会话都要再问。
+  // 先 grant 一次，再分别以同键/异项目/异会话调用，断言 allow/ask/ask。
   it('passes the same write through after one grant, and asks again per project/session', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
     const write = ['-p', 'other', 'issue', 'add', 'title'];
     await grant(listeners, mintExec(write));
 
-    // same session, same project → silent
     const next = allowNext();
     expect((await pre(listeners)(mintExec(write), next)).kind).toBe('allow');
     expect(next).toHaveBeenCalled();
 
-    // same session, another project → asks again
     expect(
       (await pre(listeners)(mintExec(['-p', 'dsh-mint', ...write.slice(2)]), allowNext())).kind
     ).toBe('ask');
 
-    // another session → asks again
     expect((await pre(listeners)(mintExec(write, 'sess-2'), allowNext())).kind).toBe('ask');
   });
 
@@ -274,6 +273,8 @@ describe('installCrossProjectGate', () => {
     expect((await pre(listeners)(exec, allowNext())).kind).toBe('ask');
   });
 
+  // 目标项目不存在时必须直接拒绝而不是弹确认：确认文案给不出可行动的目标。
+  // 桩让 mint project list 只答 dsh-mint，断言 deny 且 reason 点名目标项目。
   it('refuses an unknown target project instead of asking', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
@@ -287,6 +288,8 @@ describe('installCrossProjectGate', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  // 校验不了就 fail closed：探针失败不能让跨项目写蒙混放行。
+  // 桩让 project list 失败（ok:false），断言 deny 且 reason 说明无法校验。
   it('refuses a cross-project call it cannot verify (fail-closed)', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
@@ -305,15 +308,15 @@ describe('installCrossProjectGate', () => {
     );
   });
 
+  // bash 里可识别的 mint 调用走同一个分类器：读放行、写问、本会话项目的一律不问。
+  // 三段调用逐条断言 allow / ask（grant 后转 allow）/ allow。
   it('gates a recognised bash mint invocation through the same classifier', async () => {
     const { ctx, listeners } = makeCtx();
     installCrossProjectGate(ctx);
-    // read → pass
     const readNext = allowNext();
     expect((await pre(listeners)(bashExec('mint -p other list'), readNext)).kind).toBe('allow');
     expect(readNext).toHaveBeenCalled();
 
-    // write → ask
     const write = bashExec('mint -p other issue state start 5');
     expect((await pre(listeners)(write, allowNext())).kind).toBe('ask');
     await grant(listeners, write);
@@ -321,7 +324,6 @@ describe('installCrossProjectGate', () => {
     expect((await pre(listeners)(write, next)).kind).toBe('allow');
     expect(next).toHaveBeenCalled();
 
-    // a session-project mint command is not this gate's business
     const plain = allowNext();
     expect((await pre(listeners)(bashExec('mint issue state start 5'), plain)).kind).toBe('allow');
     expect(plain).toHaveBeenCalled();

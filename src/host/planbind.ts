@@ -3,55 +3,46 @@ import { planModeState } from './plan-mode.js';
 import type { DshContext, PreToolDecisionLike, ToolExecutionLike } from '../shared/types.js';
 
 /**
- * The host's plan-mode exit tool. Both listeners that care about it (this gate
- * and the plan-mode record notice in `reminders.ts`) read the name from here, so
- * the host contract has one home.
+ * 主机的计划模式退出工具。两个关心它的监听方（本门禁与 `reminders.ts` 的计划模式
+ * 记录提醒）都从这里读名字，宿主契约因此只有一处落点。
  */
 export const EXIT_PLAN_MODE = 'exit_plan_mode';
 
 /**
- * Plan statuses that satisfy the gate.
+ * 满足门禁的计划状态。
  *
- * The gate's question is "did this project produce a decomposable mint record
- * before leaving plan mode?", so it accepts a plan that is **decomposed and not
- * terminal**:
+ * 门禁问的是「离开计划模式前，本项目有没有留下可拆解的 mint 记录？」，所以接受
+ * **已拆解且未终结**的计划：
  *
- * - `running` — mint derives it from an active child (planned/dev/test), so the
- *   plan is decomposed by construction;
- * - `open` **with at least one attached issue** — the registration shape: a
- *   freshly created plan whose children are all still `open` also derives `open`
- *   (`mint`'s `container/derive.rs`), and demanding `running` here deadlocked
- *   every new session that registered advice for another plan/milestone while
- *   leaving those issues `open`.
+ * - `running` —— mint 由活跃子级（planned/dev/test）推导而来，按构造就已拆解；
+ * - 挂了至少一个 issue 的 `open` —— 登记形态：新建计划、子级全 `open` 同样推导为
+ *   `open`（mint 的 `container/derive.rs`），此前要求必须是 `running` 时，任何把建议
+ *   登记到别的 plan/milestone 而子级留 `open` 的新会话都会被卡死。
  *
- * `partial`/`done`/`dropped` are completion states and never satisfy the gate;
- * an **empty** plan stays out too — zero attached issues is exactly the hole the
- * `issue_count` check closes.
+ * `partial`/`done`/`dropped` 是完成态，永不满足门禁；**空**计划也不行——零子级正是
+ * `issue_count` 检查要堵的洞。
  */
 const DECOMPOSED_PLAN_STATUSES: ReadonlySet<string> = new Set(['running', 'open']);
 
 /**
- * True when one `plan list --json` item is a record the gate can accept.
+ * 一个 `plan list --json` 项是否是可被门禁接受的记录。
  *
- * Exported so the verdict has one home and a direct unit test (the listener only
- * composes it with mint's answer).
+ * 导出是为了让判定只有一个落点、且有直接的单元测试（监听器只把它与 mint 的答案
+ * 组合起来）。
  */
 export function isDecomposedPlan(item: { status?: unknown; issue_count?: unknown }): boolean {
   if (typeof item.status !== 'string' || !DECOMPOSED_PLAN_STATUSES.has(item.status)) return false;
-  // A derived `running` already proves an active child exists: keep the
-  // short-circuit verdict for it, byte for byte.
+  // 推导出的 running 已证明有活跃子级：保持它的短路判定，逐字节不变。
   if (item.status === 'running') return true;
-  // `open` covers both "nothing attached yet" and "all children open"; only the
-  // former must keep the gate shut. An unreadable count fails open — like every
-  // other unreadable answer in this file, it must not trap plan-mode exit.
+  // open 同时覆盖「还没挂任何 issue」与「子级全 open」，只有前者必须继续关门。
+  // count 读不出来就放行——与本文件其他读不出来的答案一样，不得卡死计划模式退出。
   return typeof item.issue_count !== 'number' || item.issue_count > 0;
 }
 
 /**
- * One `plan list --json` row, as far as the gate reads it.
+ * 门禁读到的一行 `plan list --json`。
  *
- * `milestone_id` is optional: a mint that omits it drops every plan into the
- * same bucket, which is exactly the project-wide count.
+ * `milestone_id` 可选：省略它的 mint 会把所有计划归进同一个桶，那正是项目级计数。
  */
 export interface PlanListItem {
   id?: unknown;
@@ -60,21 +51,19 @@ export interface PlanListItem {
   milestone_id?: unknown;
 }
 
-/** Milestone bucket of a plan row; rows without a numeric milestone share one. */
+/** 计划行所属的 milestone 桶；没有数字 milestone 的行共用一个桶。 */
 function milestoneBucket(item: PlanListItem): string {
   return typeof item.milestone_id === 'number' ? String(item.milestone_id) : 'none';
 }
 
 /**
- * The first cluster of two or more **running** plans sharing a milestone.
+ * 同一个 milestone 下第一个「两个及以上 **running** 计划」的簇。
  *
- * The discipline is "one plan in flight per milestone", so the offence is a
- * collision inside one bucket: plans in *different* milestones were parallelised
- * deliberately by the user (`milestone set <id> --status running --force`), and
- * the gate must not fight a sanctioned parallel version. A missing or unreadable
- * `milestone_id` buckets as `none` rather than disarming the rule — such rows
- * still collide with each other, and failing closed on an unreadable *key* would
- * trap plan-mode exit on a mint whose list output drifted.
+ * 纪律是「一个 milestone 同时只跑一个计划」，所以违规只在同一个桶内成立：不同
+ * milestone 的计划是用户主动并行的（`milestone set <id> --status running --force`），
+ * 门禁不得与这种被批准的并行版本对抗。`milestone_id` 缺失或读不出来时归进 `none`
+ * 桶，而不是解除规则——这样的行彼此仍然碰撞，而为一个读不出来的**键**失败关闭，
+ * 会让 mint 的 list 输出漂移时卡死计划模式退出。
  */
 export function multiRunningCluster(items: readonly PlanListItem[]): readonly PlanListItem[] {
   const buckets = new Map<string, PlanListItem[]>();
@@ -92,23 +81,21 @@ export function multiRunningCluster(items: readonly PlanListItem[]): readonly Pl
   return [];
 }
 
-/** The cluster's plan ids, for the denial message (`#?` when a row carries none). */
+/** 簇内各计划的 id，用于拒绝文案（行没有 id 时写 `#?`）。 */
 function clusterIds(cluster: readonly PlanListItem[]): string {
   return cluster.map((item) => (typeof item.id === 'number' ? `#${item.id}` : '#?')).join(', ');
 }
 
 /**
- * The plan read behind the gate.
+ * 门禁背后的计划读取。
  *
- * `--no-page` is required: mint pages `plan list` at five rows with the newest
- * id first, so a valid record older than the newest five read as "no plan at
- * all" and trapped the session in plan mode.
+ * `--no-page` 必需：mint 的 `plan list` 默认按 id 倒序每页五行，比最新五行更早的
+ * 有效记录会被读成「根本没有计划」，从而把会话卡在计划模式里。
  *
- * `--status running` would shrink the answer further but costs the gate's two
- * distinct messages: an empty answer must keep meaning "no plan exists"
- * ({@link DENY_REASON}) while a non-empty answer without a decomposed plan means
- * "plans exist, none decomposed" ({@link UNDECOMPOSED_DENY_REASON}). The default
- * read already hides only `done`, and the overview needs no more.
+ * `--status running` 能让答案更小，却会吃掉门禁的两条不同文案：空答案必须继续表示
+ * 「不存在计划」（{@link DENY_REASON}），而非空但没有可拆解计划表示「有计划、都不算
+ * 拆解」（{@link UNDECOMPOSED_DENY_REASON}）。默认读本来也只隐藏 `done`，概览不需要
+ * 更多。
  */
 const PLAN_LIST_ARGV: readonly string[] = ['plan', 'list', '--json', '--no-page'];
 
@@ -117,12 +104,10 @@ const DENY_REASON =
   'mint({args:["plan","create","<title>","--milestone","<id>"]}), then attach at least one issue, before exiting plan mode.';
 
 /**
- * Denial used when plans exist but none is decomposed: every plan is empty
- * or already terminal.
+ * 有计划但都不算拆解（全为空或已终结）时的拒绝文案。
  *
- * The gate asks for the **record**, not the schedule: `plan plan` is the
- * start-of-work action, so the message names it as a separate step
- * instead of a prerequisite for exiting plan mode.
+ * 门禁要的是**记录**而非排期：`plan plan` 是开工动作，所以文案把它写成独立一步，
+ * 而不是退出计划模式的前置条件。
  */
 const UNDECOMPOSED_DENY_REASON =
   'The mint plans for this project have no issue attached — a plan only counts once it is decomposed: ' +
@@ -130,14 +115,12 @@ const UNDECOMPOSED_DENY_REASON =
   'lock the schedule with mint({args:["plan","plan","<id>"]}) when the work starts.';
 
 /**
- * Denial used when one milestone already carries two running plans.
+ * 同一 milestone 已有两个 running 计划时的拒绝文案。
  *
- * The message has to be action-capable, because this gate is the only place the
- * rule is enforced (mint itself guards milestones, not plans): it names the
- * colliding plans and all three convergent moves — fold this session's work into
- * the running plan, park the other plan's `planned` issues, or detach the open
- * issue that revived an already finished plan (`running` is also derived from a
- * `{done|dropped} + open` child set, see `state-machine.md`).
+ * 文案必须可行动，因为这条规则只在门禁这里执行（mint 自己只管 milestone、不管计划）：
+ * 它点名碰撞的计划，并给出三条收敛路线——把本会话的工作并进 running 计划、把另一个
+ * 计划的 `planned` issue 停回、或摘掉那个让已完成计划复活的 open issue（`running`
+ * 也可由 `{done|dropped} + open` 的子级集合推导，见 `state-machine.md`）。
  */
 function multiRunningReason(cluster: readonly PlanListItem[]): string {
   return (
@@ -151,13 +134,12 @@ function multiRunningReason(cluster: readonly PlanListItem[]): string {
 }
 
 /**
- * Denial used when the session is not in plan mode at all.
+ * 会话根本不在计划模式时的拒绝文案。
  *
- * The host keeps `exit_plan_mode` registered while plan mode is inactive and
- * throws `exit_plan_mode is only available in plan mode` from `execute` — after
- * the gate already paid for a mint read. The host's own predicate is the
- * authority here, so an inactive session gets this actionable answer instead:
- * there is nothing to exit, and the workflow continues without plan mode.
+ * 计划模式未激活时主机仍注册着 `exit_plan_mode`，其 `execute` 会抛
+ * `exit_plan_mode is only available in plan mode`——而门禁已经先付了一次 mint 读取。
+ * 主机自己的判定才是权威，所以非激活会话直接拿到这条可行动回答：没有什么可退出的，
+ * 流程照常继续。
  */
 const NOT_IN_PLAN_MODE_DENY_REASON =
   'This session is not in plan mode — there is nothing to exit, and no mint plan has to be registered for it. ' +
@@ -165,15 +147,14 @@ const NOT_IN_PLAN_MODE_DENY_REASON =
   'then issue state start per issue. To plan first, ask the user to switch the session into plan mode.';
 
 /**
- * `tools/pre-execute` listener: block `exit_plan_mode` while the project has no
- * decomposed mint plan ({@link isDecomposedPlan}), and while one milestone
- * already carries more than one running plan ({@link multiRunningCluster}),
- * keeping the host plan mechanism bound to a mint record.
+ * `tools/pre-execute` 监听器：本项目没有可拆解的 mint 计划
+ * （{@link isDecomposedPlan}）时，或同一 milestone 已有多个 running 计划
+ * （{@link multiRunningCluster}）时拦截 `exit_plan_mode`，把主机的计划机制绑在
+ * mint 记录上。
  *
- * The tool name is checked BEFORE any service access, and the mint run sits
- * inside the try — a mint outage must never break an unrelated tool call
- * (fail-open). The session's project directory comes from the tool
- * execution; the plugin spawns mint directly, outside the session sandbox.
+ * 工具名在访问任何服务**之前**先判，mint 调用留在 try 内——mint 挂掉绝不能弄坏无关
+ * 的工具调用（fail-open）。会话的项目目录取自工具执行，插件直接 spawn mint，不过会话
+ * 沙箱。
  */
 export async function planBindListener(
   exec: ToolExecutionLike,
@@ -184,11 +165,9 @@ export async function planBindListener(
   if (exec.name !== EXIT_PLAN_MODE) {
     return next();
   }
-  // The exit tool stays registered while plan mode is inactive. Refuse the
-  // call here — with the actionable reason — instead of spawning mint for a
-  // decision the host is about to reject anyway. `undefined` (no reachable
-  // source, or nothing observed for this session) falls through to the mint gate,
-  // i.e. the behaviour before this check.
+  // 计划模式未激活时退出工具仍注册着。与其为一次主机马上就会拒绝的判定去 spawn
+  // mint，不如在这里带着可行动理由直接拒。`undefined`（来源不可达，或本会话没观察到）
+  // 落到 mint 门禁，即本次检查之前的行为。
   const mode = planModeState(ctx, exec);
   if (mode !== undefined && mode.active === false) {
     return { kind: 'deny', reason: NOT_IN_PLAN_MODE_DENY_REASON };
@@ -206,17 +185,15 @@ export async function planBindListener(
       items?: PlanListItem[];
     };
     const items = plans.items ?? [];
-    // A milestone carries at most one running plan. Prove the offence from
-    // the rows the gate already sees, before any fail-open path can swallow it —
-    // an unreadable `status` on some other row cannot undo a collision.
+    // 每个 milestone 至多一个 running 计划。先用门禁已看到的行为证明违规，别让任何
+    // fail-open 路径把它吞掉——某一行 `status` 读不出来，不能撤销一桩已经成立的碰撞。
     const cluster = multiRunningCluster(items);
     if (cluster.length >= 2) {
       return { kind: 'deny', reason: multiRunningReason(cluster) };
     }
-    // Unknown shape (e.g. a mint whose `plan list --json` carries no derived
-    // status yet) fails open: an unreadable answer must not trap plan-mode exit.
-    // One unreadable row is enough to distrust the *count*, so this is
-    // `every readable` instead of `at least one readable`.
+    // 形状未知（例如某个 mint 的 `plan list --json` 还没有推导出的 status）时放行：
+    // 读不出来的答案不得卡死计划模式退出。只要一行读不出来就足以不信**计数**，所以
+    // 这里是「每一行都可读」而不是「至少一行可读」。
     if (items.some((plan) => typeof plan.status !== 'string')) {
       return next();
     }
@@ -224,12 +201,12 @@ export async function planBindListener(
       return { kind: 'deny', reason: items.length === 0 ? DENY_REASON : UNDECOMPOSED_DENY_REASON };
     }
   } catch {
-    // degrade to allow — do not let a mint failure trap plan-mode exit
+    // 降级为放行——不能让 mint 失败卡死计划模式退出
   }
   return next();
 }
 
-/** Register the plan-binding check on `tools/pre-execute`. */
+/** 在 `tools/pre-execute` 上注册计划绑定检查。 */
 export function installPlanBinding(ctx: DshContext, entry?: string): () => void {
   return ctx.on(
     'tools/pre-execute',

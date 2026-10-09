@@ -43,55 +43,33 @@ import type {
   ToolResultLike,
 } from '../shared/types.js';
 
-/**
- * The nudge for a session with **no DAG document at all**.
- *
- * It names the two steps that make the panel exist (`init`, then one node) and
- * why an empty graph is the same as no graph — the skill owns the discipline
- * (`references/plan-dag.md`); this line only delivers it at the moment the
- * session is provably in plan mode without one. The node half leads, because
- * that is the half sessions actually forget.
- */
+/** 无文档时的提醒：节点那半句在前，因为「init 完就停」才是会话真正会忘的一步。 */
 export const DAG_PLAN_REMINDER =
   '[mint] 本会话在计划模式但还没有 DAG：先 mint_plan_dag({action:"init",title:"<本计划>"})，' +
   '再给本轮要答的问题 add 节点（空图时 plan-dag 面板不会打开，调研也就没有留痕）。';
 
-/**
- * The nudge for a session whose DAG exists but still has **zero nodes**.
- *
- * `init` alone leaves no trace the panel can draw (see {@link DAG_PLAN_REMINDER}),
- * so this text does not suggest it again — it names the one step that is left.
- */
+/** 有文档但 0 节点：不再提 `init`，只点剩下那一步。 */
 export const DAG_EMPTY_REMINDER =
   '[mint] DAG 还是空的（0 节点 = plan-dag 面板不会打开）：先把本轮要答的问题 ' +
   'mint_plan_dag({action:"add",nodes:[…]}) 落成节点，至少一个面板才会出现。';
 
 /**
- * How many sessions are remembered; matches the other bounded session maps
- * (`session-ledger.ts` `MAX_SESSIONS`, `context.ts` `MAX_REGISTERED_SESSIONS`).
+ * 记住的会话数上限；与其它会话级 map 同值（`session-ledger.ts` / `context.ts` 都是 100）。
  *
- * Bounded because this module outlives every session the process serves. The
- * bound is the same 100, and so is the consequence: the oldest id is evicted
- * first, and a session that is *still* in plan mode with the same gap can be
- * reminded a second time. That is the accepted trade in every other session
- * fact here — a repeat nudge is cheaper than an unbounded map.
+ * 有界是泄漏守卫：本模块活得比进程服务的任何会话都久。代价与别处一致——最旧的先被
+ * 挤出，仍卡在同一缺口的会话可能被再提醒一次；重复一次提醒比无界 map 便宜。
  */
 export const MAX_REMINDED_SESSIONS = 100;
 
 /**
- * The reminder state each session was last nudged about, oldest session first.
+ * 各会话已被提醒过的缺口，最旧的在前：`'missing'`（无文档）或 `'empty'`（文档 0 节点）。
  *
- * Keyed by session, one entry per session, holding which of the two gaps that
- * session has already been told about: `'missing'` (no DAG document) or
- * `'empty'` (a document with zero nodes). The value is what makes the two-stage nudge work:
- * `init` moves a session from `'missing'` to `'empty'`, which is a *different*
- * gap, so that session gets the second nudge ("add a node first") exactly once
- * while a session stuck in one state stays quiet after its single reminder. A
- * graph with a node is never recorded — the reminder has nothing left to say.
+ * 值就是两级提醒的机关：`init` 把会话从 `'missing'` 挪到 `'empty'`——那是**另一个**
+ * 缺口，所以它会再收到一次「先 add 节点」，而卡在同一状态的会话只被提醒一次。有节点的
+ * 图不记：提醒已无话可说。
  */
 const notified = new Map<string, DagReminderState>();
 
-/** The gaps this reminder knows how to name. */
 type DagReminderState = 'missing' | 'empty';
 
 /** Forget every remembered session (tests: state must not leak between cases). */
@@ -99,14 +77,6 @@ export function resetDagPlanNotified(): void {
   notified.clear();
 }
 
-/**
- * Remember the gap one session was just reminded about, evicting the oldest past
- * the bound.
- *
- * The map is a bound first and a memory second: one entry per session keeps the
- * process from growing with every session it serves, whatever the model did with
- * the reminder.
- */
 function remember(sessionId: string, state: DagReminderState): void {
   notified.delete(sessionId);
   if (notified.size >= MAX_REMINDED_SESSIONS) {
@@ -116,10 +86,6 @@ function remember(sessionId: string, state: DagReminderState): void {
   notified.set(sessionId, state);
 }
 
-/**
- * One session's DAG, as the reminder needs it: does a document exist, and does
- * it have a node the panel could draw?
- */
 async function readDagState(
   sessionId: string,
   dagDir?: string
@@ -179,13 +145,6 @@ export async function dagPlanReminderListener(
   }
 }
 
-/**
- * Register the empty-DAG reminder on `tools/post-execute`.
- *
- * @param ctx - the plugin's root context, so every session's tool calls are seen.
- * @param dagDir - DAG directory override; absent means `DAG_DIR` (tests point it
- *   at a temporary directory, like the DAG route's own harness).
- */
 export function installDagPlanReminder(ctx: DshContext, dagDir?: string): () => void {
   return ctx.on(
     'tools/post-execute',

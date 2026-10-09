@@ -17,27 +17,23 @@ import type {
 } from '../shared/types.js';
 
 /**
- * The `mint` host tool.
+ * `mint` 宿主工具。
  *
- * Why a host tool instead of shelling out: the plugin's own child processes are
- * not confined by the session file sandbox, so mint runs with **zero
- * approvals** and zero interruptions. The model gets one stable surface for the
- * whole mint CLI without bash quoting, without sandbox denials, and with the
- * session's project directory filled in automatically.
+ * 为什么做宿主工具而不是 shell 出去：插件自己的子进程不受会话文件沙箱约束，所以 mint
+ * 以**零授权**、零打断运行。模型得到覆盖整个 mint CLI 的一个稳定面，不必 bash 引号、
+ * 不会撞沙箱拒绝，还自动带上会话的项目目录。
  *
- * The tool is a **thin pass-through**: it neither injects nor rewrites flags, so
- * the model sees mint's native output (TSV by default, 5 rows per page for
- * `list`). Adding format logic here would have to be re-done for every mint
- * output change (e.g. a future TOON mode); passing stdout through is
- * future-proof. `--help` reaches the model through the same tool, so the
- * description stays short instead of embedding a cheat sheet.
+ * 工具是**薄直通**：既不注入也不改写旗标，所以模型看到 mint 的原生输出（默认 TSV，`list`
+ * 每页 5 行）。在这里加格式逻辑意味着每次 mint 输出变化（例如将来的 TOON 模式）都要重做
+ * 一遍；直通 stdout 则面向未来。`--help` 经同一个工具到达模型，所以描述可以保持简短，
+ * 不必内嵌小抄。
  */
 
 export const TOOL_NAME = 'mint';
 
 const MAX_OUTPUT_CHARS = 12_000;
 
-/** Root subcommands the tool will execute, in help-friendly order. */
+/** 工具会执行的根子命令，按便于帮助的顺序排列。 */
 export const ALLOWED_SUBCOMMANDS: readonly string[] = [
   'issue',
   'list',
@@ -47,16 +43,14 @@ export const ALLOWED_SUBCOMMANDS: readonly string[] = [
   'project',
   'plan',
   'milestone',
-  // Read-only health check: the injected overview points the model at it
-  // when doctor reports warnings, so the pointer has to be executable.
+  // 只读健康检查：doctor 报警时注入的概览会把模型指向它，所以这个指针必须可执行。
   'doctor',
   'help',
 ];
 
 /**
- * Root subcommands kept away from the model. Each is either irreversible or
- * cross-machine data movement that a human should drive explicitly through
- * bash (where the normal approval flow applies).
+ * 不让模型碰的根子命令。每一条要么不可逆，要么是跨机器数据搬运，应当由人经 bash 显式驱动
+ * （那里走常规审批流）。
  */
 export const DENIED_SUBCOMMANDS: Readonly<Record<string, string>> = {
   delete: 'delete 是不可逆操作，请经用户确认后用 bash 执行',
@@ -67,37 +61,31 @@ export const DENIED_SUBCOMMANDS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Root-level flags that mint handles without a subcommand. Both are pure
- * output with zero side effects, so the tool passes them through:
- * `--help-llm` loads the whole CLI reference in one call instead of one
- * `--help` round trip per subcommand, and `-V` reports the running version.
+ * mint 没有子命令也处理的根级参数。两者都是纯输出、零副作用，所以工具放行：
+ * `--help-llm` 一次调用载入整份 CLI 参考，省掉每个子命令一次 `--help` 往返；`-V` 报告运行
+ * 中的版本。
  */
 export const ALLOWED_ROOT_FLAGS: readonly string[] = ['-V', '--version', '--help-llm'];
 
 /**
- * Flags that would escape the session's project context or database.
+ * 会逃出会话项目语境或数据库的旗标。
  *
- * `--project` is **not** here any more: a cross-project target is a
- * first-class use case, and the confirmation gate in `cross-project.ts` owns the
- * write side. `--db` stays denied — a single-file database is a different
- * trust decision and the plan explicitly leaves it out.
+ * `--project` 已**不在**此列：跨项目目标是头等用例，写侧由 `cross-project.ts` 的确认门禁
+ * 掌管。`--db` 继续拒绝——单文件数据库是另一桩信任决定，计划里明确把它排除在外。
  */
 export const DENIED_FLAGS: readonly string[] = ['--db'];
 
 /**
- * Model-facing tool description.
+ * 面向模型的工具描述。
  *
- * Documents the **mechanism** (args semantics, output shape, what is available)
- * and nothing else: the tool-first policy lives in `MINT_TOOL_GUIDANCE` and the
- * workflow in `skill/SKILL.md`. Every byte here ships on every request, so
- * the examples are the whole cheat sheet.
+ * 只讲**机制**（args 语义、输出形状、什么可用），别的都不讲：工具优先口径在
+ * `MINT_TOOL_GUIDANCE`，流程在 `skill/SKILL.md`。这里的每个字节都随每个请求发出，所以示例
+ * 就是全部小抄。
  *
- * The default-project rule is stated here on purpose. `-p <项目>` used to
- * be a co-equal example, and a session that saw only this description read it as
- * "name the project explicitly, like `git -C`" — sessions in *mint-managed*
- * projects then prefixed their **own** project with `-p <self>`. The rule
- * "default = session cwd, so own-project calls take no `-p`" is what every
- * request must see, and it costs less than the example it replaced.
+ * 默认项目规则写在这里是有意的。`-p <项目>` 曾是并列示例，而只看到本描述的会话把它读成
+ * 「像 `git -C` 那样显式点名项目」——身处 *mint 管理*项目里的会话于是给自己的项目加上了
+ * `-p <自己>`。「默认取会话 cwd，所以本项目调用不带 `-p`」这条规则才是每个请求都必须看到的，
+ * 而且比它取代的那个示例更省字节。
  */
 export const MINT_TOOL_DESCRIPTION = [
   '运行 mint（issue/plan/milestone 三层）；args 即 CLI 参数数组，插件进程内执行（零授权）。',
@@ -115,18 +103,17 @@ export interface MintToolOutcome {
   exitCode: number;
   stdout?: string;
   stderr?: string;
-  /** The mint process was killed by the wall-clock limit. */
+  /** mint 进程被墙钟上限杀掉。 */
   timedOut?: boolean;
   /**
-   * Model-facing correction for the argv itself (not for mint's answer), e.g.
-   * a redundant `-p <本项目>`. Rendered on its own line; declared in the
-   * output schema because `additionalProperties: false` makes an undeclared key
-   * fatal (`INVALID_TOOL_OUTPUT`).
+   * 针对 argv 本身（而非 mint 的答案）的面向模型纠正，例如冗余的 `-p <本项目>`。单独一行
+   * 渲染；必须在输出 schema 里声明，因为 `additionalProperties: false` 会让未声明的键致命
+   * （`INVALID_TOOL_OUTPUT`）。
    */
   hint?: string;
 }
 
-/** Corrective line for a `-p <本项目>` call, which needs no `-p`. */
+/** `-p <本项目>` 调用的纠正行——它不需要 `-p`。 */
 export function redundantProjectHint(project: string): string {
   return (
     `[mint] 提示：-p ${project} 就是本会话的项目，属冗余；` +
@@ -135,25 +122,22 @@ export function redundantProjectHint(project: string): string {
 }
 
 /**
- * clap wording for a subcommand/flag the running build does not know. Version
- * skew still happens with a local/older entry (or a CLI that dropped a flag), so
- * it comes back as `unexpected argument` — a version problem that reads like a
- * typo unless it is called out.
+ * clap 对运行中的构建不认识的子命令/旗标的措辞。本地/较旧入口（或删过旗标的 CLI）仍会
+ * 出现版本偏斜，此时它表现为 `unexpected argument`——一个版本问题，除非被点出来，否则读起来
+ * 就像错别字。
  */
 const SKEW_ERROR_PATTERN = /unrecognized subcommand|unexpected argument|invalid subcommand/i;
 
-/** Actionable follow-up appended to a version-skew failure. */
+/** 追加到版本偏斜失败上的可行动后续。 */
 export const MINT_SKEW_HINT =
   '提示：该子命令/参数不被当前 mint 识别，可能是版本偏斜（实跑的 mint 落后于该命令）。' +
   '先用 mint({args:["-V"]}) 确认版本；再用挂载行 mintEntry 或环境变量 MINT_ENTRY 指向更新的 mint' +
   '（如本地构建的 target/debug/mint）。';
 
 /**
- * Actionable follow-up for a killed mint process. `mint-faa` downloads the
- * binary lazily on first use, and that download prints nothing on the lazy path,
- * so a bare `exit timeout` reads like a broken mint. The first run of a process
- * now gets a 180 s budget and concurrent first runs are serialized; a retry is
- * the cheapest way out, and the two overrides cover a genuinely slow link.
+ * 被杀掉的 mint 进程的可行动后续。`mint-faa` 首次使用时懒下载二进制，而懒路径上什么都不
+ * 打印，所以光秃秃的 `exit timeout` 读起来像 mint 坏了。进程首次运行现在有 180 s 预算，并发
+ * 首跑已串行化；重试是最便宜的出路，两个覆写旋钮则应对确实很慢的链路。
  */
 export const MINT_TIMEOUT_HINT =
   '提示：mint 进程被超时中断。全新安装后的首次调用需要先下载 mint 二进制（mint-faa 按需安装，无进度输出）——' +
@@ -162,15 +146,13 @@ export const MINT_TIMEOUT_HINT =
   '或先跑 node <插件>/dist/check-mint-entry.js --mode dependency 预热。';
 
 /**
- * Reject argv the tool refuses to run. Returns a model-readable reason, or
- * `undefined` when the argv is acceptable.
+ * 拒绝工具不肯跑的 argv。返回模型可读的理由；argv 可接受时返回 `undefined`。
  *
- * `spawn` receives an array and never a shell, so there is no injection or
- * quoting surface here — this check is about *scope*, not about escaping.
+ * `spawn` 收的是数组、从不是 shell，所以这里没有注入与引号面——这道检查管的是**范围**，
+ * 不是转义。
  *
- * Global flags are resolved by {@link parseInvocation} first: `-p`/`--project`
- * is a legal leading flag (its shape, position and value are validated there),
- * so the root subcommand is `rest[0]`, not `argv[0]`.
+ * 全局旗标先由 {@link parseInvocation} 解析：`-p`/`--project` 是合法的前导旗标（形状、位置
+ * 与取值都在那里校验），所以根子命令是 `rest[0]`，不是 `argv[0]`。
  */
 export function validateMintArgs(argv: unknown): string | undefined {
   if (!Array.isArray(argv) || argv.length === 0) {
@@ -185,8 +167,8 @@ export function validateMintArgs(argv: unknown): string | undefined {
     }
   }
   const tokens = argv as string[];
-  // Flags first: a denied global flag may sit in argv[0], where it would
-  // otherwise be misreported as an unknown subcommand. `--db=<path>` counts too.
+  // 旗标先判：被拒的全局旗标可能就坐在 argv[0]，否则会被误报成未知子命令。
+  // `--db=<path>` 也算。
   const deniedFlag = tokens.find((token) =>
     DENIED_FLAGS.some((flag) => token === flag || token.startsWith(`${flag}=`))
   );
@@ -225,18 +207,14 @@ function truncate(text: string): string {
 }
 
 /**
- * Run one mint invocation for the tool.
+ * 为工具跑一次 mint 调用。
  *
- * A nonzero mint exit (usage error, invalid state transition) is a *domain*
- * result the model should read and recover from, so it comes back as
- * `ok: false` rather than a thrown tool error; only a broken tool contract
- * throws.
+ * mint 非零退出（用法错误、非法状态转移）是模型应当读取并从中恢复的*领域*结果，所以以
+ * `ok: false` 返回而不是抛成工具错误；只有工具契约坏了才抛。
  *
- * A cross-project target is resolved against mint's project list **before**
- * spawning: `mint -p <typo>` would otherwise create a phantom project
- * database whose `abs_dir` is this session's workspace. The confirmation gate
- * (`cross-project.ts`) asks the user first; this check is the tool-side
- * backstop for the calls that reach execution.
+ * 跨项目目标在 spawn **之前**先对 mint 的项目清单校验：`mint -p <错别字>` 否则会凭空创建
+ * 一个 `abs_dir` 指向本会话工作区的项目数据库。确认门禁（`cross-project.ts`）先问用户；
+ * 这道检查是到达执行的那些调用的工具侧兜底。
  */
 export async function executeMintTool(
   cwd: string,
@@ -259,9 +237,8 @@ export async function executeMintTool(
       return { ok: false, exitCode: 1, stderr: missingProjectMessage(target, candidates) };
     }
   }
-  // `-p <本项目>` is the default path under an explicit name. The call is left
-  // untouched (thin pass-through), but the answer carries the correction so the
-  // model stops writing it — and the cross-project gate does not ask.
+  // `-p <本项目>` 是显式点名下的默认路径。调用本身不动（薄直通），但答案带上纠正，好让
+  // 模型别再写它——而且跨项目门禁不会发问。
   const ownHint =
     target !== undefined && isOwnProject(cwd, entry, target)
       ? redundantProjectHint(target)
@@ -271,18 +248,16 @@ export async function executeMintTool(
     options.entry = entry;
   }
   const result = await runMint(cwd, argv as string[], options);
-  // A call that can change `project list` must not leave a stale answer behind:
-  // the gate, this re-check and the own-project memo all read through those
-  // memos.
+  // 能改变 `project list` 的调用不得留下过期答案：门禁、这次复查与 own-project 备忘都经
+  // 那些备忘读取。
   if (result.ok && mutatesProjectList(invocation)) {
     resetProjectCache();
     resetOwnProjectCache();
   }
   if (result.ok) {
-    // mint writes advisories to stderr even on success — `mint: hint: …` lines
-    // (dedup merge suggestion, unmerged-machine warning) — so they are passed
-    // through. The paging footer is not one of them: since mint 0.8 it goes to
-    // stdout (`# Page x/y`), which the verbatim stdout path already carries.
+    // mint 即使成功也会往 stderr 写建议——`mint: hint: …` 行（去重合并建议、未合并机器
+    // 告警）——所以照传。分页脚注不属于它们：自 mint 0.8 起它走 stdout（`# Page x/y`），
+    // 已由逐字 stdout 路径携带。
     const outcome: MintToolOutcome = {
       ok: true,
       exitCode: 0,
@@ -303,9 +278,8 @@ export async function executeMintTool(
 }
 
 /**
- * Render a tool outcome into model-facing text: stdout verbatim, then any
- * advisory stderr (mint's `mint: hint: …` lines, e.g. dedup or
- * unmerged-machine warnings) on its own line.
+ * 把一个工具结果渲染成面向模型的文本：stdout 逐字，随后是建议性的 stderr（mint 的
+ * `mint: hint: …` 行，如去重或未合并机器告警），各占一行。
  */
 export function renderMintOutcome(outcome: MintToolOutcome): string {
   if (outcome.ok) {
@@ -322,15 +296,13 @@ export function renderMintOutcome(outcome: MintToolOutcome): string {
 }
 
 /**
- * Register the `mint` tool on `ctx.tools`.
+ * 在 `ctx.tools` 上注册 `mint` 工具。
  *
- * Registered on the plugin's root context, i.e. the global layer, so every
- * agent inherits it — including in-process subagents, whose approval policy is
- * pinned to `never` and which therefore cannot use the bash path at all
- * (`notes/dsh/0.1.0/06,10,14`).
+ * 注册在插件的根 context 上，即全局层，所以每个 agent 都继承它——包括进程内子代理，它们的
+ * 审批策略被钉成 `never`，因此完全用不了 bash 路径（`notes/dsh/0.1.0/06,10,14`）。
  *
- * The execute handler resolves the project directory from the tool execution
- * (`exec.agent.session.header.cwd`) and spawns mint there directly.
+ * execute 处理器从工具执行里解析项目目录（`exec.agent.session.header.cwd`）并在那里直接
+ * spawn mint。
  */
 export function installMintTool(ctx: DshContext, entry?: string): (() => void) | undefined {
   const tools = ctx.tools;
@@ -362,11 +334,9 @@ export function installMintTool(ctx: DshContext, entry?: string): (() => void) |
           exitCode: { type: 'integer' },
           stdout: { type: 'string' },
           stderr: { type: 'string' },
-          // The host validates this schema against every successful return value
-          // and `additionalProperties: false` makes an undeclared key fatal
-          // (`INVALID_TOOL_OUTPUT`, render never runs). `timedOut` is part of the
-          // timeout answer, so it must be declared here; `hint` is the
-          // redundant-`-p` correction.
+          // 宿主会用这个 schema 校验每次成功返回值，而 `additionalProperties: false` 让
+          // 未声明的键致命（`INVALID_TOOL_OUTPUT`，render 根本不会跑）。`timedOut` 是超时
+          // 答案的一部分，必须在这里声明；`hint` 是冗余 `-p` 的纠正。
           timedOut: { type: 'boolean' },
           hint: { type: 'string' },
         },

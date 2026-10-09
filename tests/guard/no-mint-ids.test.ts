@@ -248,6 +248,8 @@ describe('tracked content', () => {
     ).toEqual([]);
   });
 
+  // 核心合同：上库正文里任何未列入白名单的 mint ID 引用都必须归零。
+  // 扫 `git ls-files` 的受控集，命中按「文件 + 数字」查白名单，剩下的拼成失败信息断言为空串。
   it('leaves no unwhitelisted mint id reference', () => {
     const unallowed = scanned.hits.filter((hit) => !isAllowed(hit));
     expect(
@@ -256,6 +258,8 @@ describe('tracked content', () => {
     ).toBe('');
   });
 
+  // 白名单不能腐烂：条目必须仍然命中真实文本且带理由，失效就该删掉。
+  // 拿本次扫描结果反查每条白名单，未命中的条目收集起来断言为空，并逐条要求理由非空。
   it('keeps every whitelist entry live and reasoned', () => {
     const stale = ALLOWED.filter(
       (site) =>
@@ -270,6 +274,8 @@ describe('tracked content', () => {
     }
   });
 
+  // 防真空通过：三条判据的正样本必须真被抓住，正则写坏时先红在这里。
+  // 用 `HASH` 拼出三种形状的合成行，交给 `scanText` 后断言命中判据类别。
   it('catches every shape it claims to catch', () => {
     for (const { kind, line } of CAUGHT) {
       const kinds = scanText('synthetic.ts', line).map((hit) => hit.kind);

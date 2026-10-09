@@ -54,6 +54,8 @@ function projectionsReporting(state: unknown): {
 }
 
 describe('planBindListener', () => {
+  // 计划模式退出口是硬门禁：没有已拆解的 mint plan 就必须拒绝，文案还要给出可执行的建 plan 动作。
+  // 桩 runMint 的 plan list 返回空表，断言 deny、reason 指向 plan create，且没有放行 next()。
   it('denies exit_plan_mode when no active mint plan', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '{"items":[]}' });
     const exec = makeExec('exit_plan_mode', '/proj');
@@ -107,6 +109,8 @@ describe('planBindListener', () => {
     expect(runMintMock).toHaveBeenCalledWith('/proj', ['plan', 'list', '--json', '--no-page']);
   });
 
+  // 同一 milestone 至多一个 running plan：并行的两个版本必须被这道门禁拦下并点名 id。
+  // 桩让 plan list 回同 milestone 的两个 running 行，断言 deny 且 reason 点名 #27 与 #31。
   it('denies two running plans in the same milestone', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
@@ -230,6 +234,8 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
+  // 空 plan 不算拆解过：open 且一个 issue 都没挂时不能靠退出计划模式把门禁绕过去。
+  // 桩 plan list 回一个 issue_count=0 的 open 行，断言 deny 且文案要求先 attach。
   it('denies an open, issue-less plan instead of passing the gate', async () => {
     runMintMock.mockResolvedValueOnce({
       ok: true,
@@ -288,6 +294,8 @@ describe('planBindListener', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
+  // 非计划模式的 exit_plan_mode 直接拒：宿主本来就会拒，这里不该再为它跑一次 mint。
+  // 投影桩答 active=false，断言 deny、reason 说明不在计划模式，且 runMint 与 next() 都未被调用。
   it('denies a session outside plan mode, and reads no mint for it', async () => {
     const projections = projectionsReporting({ active: false });
     const exec = makeExec('exit_plan_mode', '/proj', 'sess-1');
@@ -389,6 +397,8 @@ describe('planBindListener', () => {
     expect(decision).toEqual({ kind: 'allow' });
   });
 
+  // 查 plan 自己炸掉时不能连坐：mint 抛错必须放行，否则用户会被卡在计划模式里出不来。
+  // 桩让 runMint 抛异常，断言 next() 被调用且决策为 allow。
   it('falls through to next() when the mint run throws (fail-open)', async () => {
     runMintMock.mockRejectedValueOnce(new Error('spawn exploded'));
     const exec = makeExec('exit_plan_mode', '/proj');
@@ -440,6 +450,8 @@ describe('isDecomposedPlan', () => {
     expect(isDecomposedPlan({ status: 'open' })).toBe(true);
   });
 
+  // 只有 running、或已挂 issue 的 open 才算拆解过；完成态与读不懂的 status 一律不算。
+  // 循环喂 partial/done/dropped/空串/大写/非字符串/缺 status 的样本，逐项断言 false。
   it('rejects completion states and unreadable statuses', () => {
     for (const status of ['partial', 'done', 'dropped', '', 'RUNNING']) {
       expect(isDecomposedPlan({ status, issue_count: 3 }), status).toBe(false);

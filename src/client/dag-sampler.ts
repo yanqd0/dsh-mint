@@ -8,11 +8,8 @@ import type { DagNodeMetrics, DagNodeView, MintDagPayload } from '../shared/reco
 import { liveElapsedMs, nodeMetricsMap } from './dag-model.js';
 
 /**
- * What one answer's identity consists of.
- *
- * The revision says whether the file moved; the sample says whether the numbers
- * did. Both are needed to tell "the same reading twice" from "the same document,
- * freshly measured".
+ * 一次作答的身份：revision 说文件动没动，sample 说数字动没动——两者齐备，才能把「同一个
+ * 读数读了两次」与「同一份文档、刚重新量过」区分开。
  */
 export interface DagSample {
   revision: number;
@@ -20,18 +17,15 @@ export interface DagSample {
   metrics: Record<string, DagNodeMetrics> | undefined;
 }
 
-/** The guard's memory of one answered payload. */
 export function sampleOf(payload: MintDagPayload): DagSample {
   return { revision: payload.revision, sampledAt: payload.sampled_at, metrics: payload.metrics };
 }
 
 /**
- * Whether two answers are the same reading of the document.
+ * 两次作答是否读的是同一份文档、同一组数字。
  *
- * Only when both the revision and the sample are unchanged is re-setting the
- * state pure redraw work: the same graph and the same numbers, at the cost of a
- * render. The maps are small and flat, so comparing them field by field is both
- * cheaper and more precise than a serialized form.
+ * 只有 revision 与样本都不变，重设 state 才是纯粹的重画：同一张图、同一组数字，代价却是
+ * 一次渲染。两个 map 又小又扁，逐字段比对比序列化一遍更便宜也更精确。
  */
 export function sameSample(previous: DagSample | undefined, next: DagSample): boolean {
   if (previous === undefined) return false;
@@ -40,7 +34,6 @@ export function sameSample(previous: DagSample | undefined, next: DagSample): bo
   return sameMetrics(previous.metrics, next.metrics);
 }
 
-/** Field-by-field equality of two samples, keyed by node id. */
 function sameMetrics(
   before: Record<string, DagNodeMetrics> | undefined,
   after: Record<string, DagNodeMetrics> | undefined
@@ -56,14 +49,11 @@ function sameMetrics(
 }
 
 /**
- * The per-node measurements a payload may be drawn from, already filtered.
+ * 一份 payload 可以据以作画的分节点实测，已过滤完毕。
  *
- * `nodeMetricsMap` drops what the document no longer carries and what a partial
- * sample got wrong; the branch on `metrics` is what keeps the call inside
- * `exactOptionalPropertyTypes`, where an explicit `undefined` is not the same as
- * an absent field.
- *
- * @param payload - the loaded answer, or `undefined` while it is not there yet.
+ * 过滤在 `nodeMetricsMap` 里：它丢掉文档已不再携带的、以及半截样本弄错的。这里对
+ * `metrics` 的分支则把调用留在 `exactOptionalPropertyTypes` 之内——显式的 `undefined`
+ * 与缺席的字段并不等同。
  */
 export function sampleMetrics(payload: MintDagPayload | undefined): Record<string, DagNodeMetrics> {
   if (payload?.metrics === undefined) return {};
@@ -71,23 +61,15 @@ export function sampleMetrics(payload: MintDagPayload | undefined): Record<strin
 }
 
 /**
- * The elapsed time a node's line should draw right now.
+ * 节点这一行此刻该画的耗时。
  *
- * A running node is still moving: the host sampled its time once, and every
- * second since is the browser's own — which is exactly what `liveElapsedMs`
- * anchors on the sample's clock. A settled node's time is the sample itself: it
- * must not drift with `now`, because nothing is still accumulating.
+ * running 的节点还在动：宿主只采过一次时间，此后每一秒都是浏览器自己数的——`liveElapsedMs`
+ * 正是把这件事锚在样本的时钟上。已结算节点的耗时就是那次样本本身，不得随 `now` 漂移，因为
+ * 已经没有东西在累加。
  *
- * A *stored* sample (`at` present) is the one case where a running node stops
- * counting: the reading describes a child the host measured earlier — its
- * session is gone — so aging it on the browser clock would claim time this node
- * never ran. It is still shown, as the host's own number (`?` would hide a real
- * measurement), and the card dates it.
- *
- * @param node - the node whose line is drawn.
- * @param metrics - the host's last sample for that node, if any.
- * @param sampledAtMs - when that sample was taken, on the host's clock.
- * @param nowMs - the browser's current time.
+ * **落库**样本（带 `at`）是 running 节点唯一停止计数的情形：这条读数描述的是宿主早些时候
+ * 量过的子代理——它的会话已经没了——再按浏览器时钟老化就等于声称这段时长它从未跑过。它照旧
+ * 显示，就用宿主给的数（`?` 会藏起一个真实的测量值），日期由卡片标注。
  */
 export function measuredTimeMs(
   node: DagNodeView,
@@ -100,7 +82,7 @@ export function measuredTimeMs(
   return liveElapsedMs(metrics?.elapsed_ms, sampledAtMs, nowMs);
 }
 
-/** A stored sample's stamp as the local clock reads it; the copy supplies the label. */
+/** 落库样本的时间戳按本地钟读；标签由 copy 提供。 */
 export function measuredAtLabel(at: number): string {
   return new Date(at).toLocaleTimeString();
 }

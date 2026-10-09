@@ -145,6 +145,8 @@ describe('isWriteInvocation', () => {
     ['help'],
   ];
 
+  // 只读命令不触发跨项目确认：把读误判成写会凭空多一次确认。
+  // it.each 表列全部只读形态（含 `-V`/`--help`/`doctor`），逐条断言 classify=false。
   it.each(reads)('treats %j as a read', (...argv) => {
     expect(classify(argv)).toBe(false);
   });
@@ -178,6 +180,8 @@ describe('isWriteInvocation', () => {
     ['issue', 'add', '--body', '--help'],
   ];
 
+  // 写命令（含未知/裸子命令、子命令后的 --help 值）都要确认，漏判就是未授权的跨项目写。
+  // it.each 表覆盖各命令面与 help 陷阱，逐条断言 classify=true。
   it.each(writes)('treats %j as a write', (...argv) => {
     expect(classify(argv)).toBe(true);
   });
@@ -217,6 +221,8 @@ describe('parseBashMintCalls', () => {
     expect(calls[0]?.project).toBeUndefined();
   });
 
+  // 解析器宁可读不出也不猜：带引号/重定向/替换/前缀噪音的调用一律返回空。
+  // 一组不可解释命令（含空串与 undefined）逐条断言空数组。
   it('ignores commands it refuses to interpret (fail-open boundary)', () => {
     for (const command of [
       'mint "list"',
@@ -274,6 +280,8 @@ describe('project existence probe', () => {
     });
   });
 
+  // 探针读不出项目列表时必须答 undefined（调用方据此 fail closed），不能猜成空列表。
+  // 桩 runMint 依次答失败、TSV、对象、缺字段、空串，逐条断言 undefined。
   it('returns undefined on a failed run or unusable payload', async () => {
     runMintMock.mockResolvedValue({ ok: false, exitCode: 1, error: 'boom' });
     expect(await listProjects('/proj')).toBeUndefined();

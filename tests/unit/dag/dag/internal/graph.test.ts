@@ -17,6 +17,8 @@ describe('graph helpers', () => {
     expect(unknownDependencies([node({ id: 'a', depends_on: [] })], [])).toEqual([]);
   });
 
+  // 无环判定：真环要给出闭环序列，普通 DAG 必须返回 undefined 而不是空数组。
+  // 用 `node`/`doc` 夹具造三节点链加一条回边，断言环首尾都是 `a` 且长度为 4。
   it('finds one cycle and reports none for a DAG', () => {
     expect(findCycle([node({ id: 'a' }), node({ id: 'b', depends_on: ['a'] })], [])).toBeUndefined();
     const cycle = findCycle(
@@ -28,6 +30,8 @@ describe('graph helpers', () => {
     expect(cycle).toHaveLength(4);
   });
 
+  // 分层不能死循环：环与悬空引用都只能少算依赖，绝不能递归爆栈。
+  // 同一用例先测正常三层，再补一条额外边与一对互依节点，断言节点集合不变。
   it('layers a DAG top-down and tolerates a cycle or a dangling reference', () => {
     const nodes = [
       node({ id: 'a' }),

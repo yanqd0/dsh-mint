@@ -52,7 +52,6 @@ export const NODE_ID_SHAPE = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** A subagent session id, as backfilled by the host's lifecycle pairing. */
 export const AGENT_ID_MAX = 128;
 
-/** Longest accepted title from an `init` call. */
 export const DOC_TITLE_MAX = 200;
 
 export const DAG_PHASES: readonly DagPhase[] = ['research', 'exec'];
@@ -64,7 +63,6 @@ export function isValidDagSession(id: string): boolean {
   return SESSION_ID.test(id);
 }
 
-/** One node of the document: the wire record, as the host stores it. */
 export type DagNode = DagNodeView;
 
 /**
@@ -107,7 +105,6 @@ export interface DagAddNode {
   issue?: number;
 }
 
-/** The worktree states a stored document may carry. */
 export const DAG_WORKTREE_STATES: readonly DagWorktreeState[] = [
   'active',
   'merged',
@@ -115,7 +112,6 @@ export const DAG_WORKTREE_STATES: readonly DagWorktreeState[] = [
   'removed',
 ];
 
-/** One validated `mint_plan_dag` call. */
 export type DagAction =
   | { action: 'init'; title: string }
   | { action: 'add'; nodes: DagAddNode[]; edges: [string, string][] }
@@ -142,10 +138,8 @@ export type DagAction =
  */
 export type DagWrite = Extract<DagAction, { action: 'init' | 'add' | 'set' }>;
 
-/** A document mutation's outcome: the new document, or why nothing changed. */
 export type DagResult = { doc: DagDoc } | { error: string };
 
-/** The node counts the tool's summaries and the panel's header both show. */
 export interface DagCounts {
   nodes: number;
   edges: number;

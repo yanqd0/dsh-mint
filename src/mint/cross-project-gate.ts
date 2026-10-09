@@ -25,48 +25,38 @@ import type {
 } from '../shared/types.js';
 
 /**
- * The cross-project write gate.
+ * 跨项目写门禁。
  *
- * Reads of another project's ledger are ordinary work, so they pass. A **write**
- * to another project moves someone else's state machine, so the first one per
- * session and target project asks the user — with the target project and the
- * action spelled out — and later writes to that same project in that same
- * session go through. The ask is the host's native `tools/pre-execute` decision
- * (`kind: 'ask'`), so a session without an approval channel (a subagent, whose
- * policy is pinned to `never`) fails closed: cross-project reads work, writes do
- * not.
+ * 读别的项目台账是寻常工作，放行。对别的项目**写**会推动别人的状态机，所以每会话对每个目标
+ * 项目的第一次写会问用户——点名目标项目与动作——此后该会话对同一项目的写直接通过。这次询问
+ * 走宿主原生的 `tools/pre-execute` 决定（`kind: 'ask'`），所以没有审批通道的会话（子代理，
+ * 策略钉成 `never`）失败关闭：跨项目读能用，写不能。
  *
- * Relationship to `approval-gate.ts` — deliberately **two gates, not one**:
+ * 与 `approval-gate.ts` 的关系——刻意是**两道门禁，不是一道**：
  *
- * 1. Different semantics: that one governs the *sandbox write permission* a bash
- *    command needs; this one governs *whose ledger* gets written.
- * 2. Reusing its once-per-session grant would make every later cross-project
- *    write unconfirmed, which is exactly what this gate forbids.
- * 3. Disjoint channels: it only inspects bash sandbox escalations, while the
- *    `mint` tool never escalates.
+ * 1. 语义不同：那道管 bash 命令需要的*沙箱写权限*；这道管*写谁的台账*。
+ * 2. 复用它的每会话一次授权会让此后每次跨项目写都无需确认，而这正是本门禁禁止的。
+ * 3. 通道不相交：它只检查 bash 沙箱提权，而 `mint` 工具从不提权。
  *
- * Neither bypasses the other: a bash `mint -p <other> …` write is classified by
- * the same code and asks for itself, regardless of any sandbox grant; the grant
- * memory here is fed only by approvals whose reason this module built, so
- * `autoApprove` (the sandbox knob) cannot silence it.
+ * 两者互不绕过：bash 的 `mint -p <other> …` 写由同一份代码分类并自己发问，与任何沙箱授权
+ * 无关；这里的授权记忆只由本模块构造的理由所在审批喂养，所以 `autoApprove`（沙箱旋钮）无法
+ * 让它静默。
  */
 
-/** Bound on remembered grants, matching the approval gate's bounded map. */
+/** 记住的授权数上限，与审批门禁的有界表一致。 */
 const MAX_GRANTS = 100;
 
-/** Session ids and project names never contain NUL, so it separates the key. */
+/** 会话 id 与项目名都不含 NUL，所以用它分隔键。 */
 const KEY_SEPARATOR = '\u0000';
 
 /**
- * Session identity of a tool execution or approval request. The runtime may hand
- * out a fresh `Agent` object per dispatch, so only the session id is stable —
- * without one, no grant is remembered and the next write asks again.
+ * 一次工具执行或审批请求的会话身份。运行时会为每次分发交出新的 `Agent` 对象，所以只有会话
+ * id 稳定——没有它就不记任何授权，下一次写再问。
  *
- * Re-exported from `session-id.ts`: the rule is shared with the injection
- * channel's dedup and the mint-write ledger, so it lives in one place.
+ * 从 `session-id.ts` 再导出：这条规则与注入通道的去重、mint 写台账共用，所以只住一处。
  */
 
-/** Every mint invocation a tool execution carries, from the channels we read. */
+/** 一次工具执行携带的全部 mint 调用，来自我们读取的那些通道。 */
 export function invocationsOf(exec: ToolExecutionLike): readonly Invocation[] {
   const args = exec?.arguments;
   if (exec?.name === TOOL_NAME) {
@@ -81,7 +71,7 @@ export function invocationsOf(exec: ToolExecutionLike): readonly Invocation[] {
   return [];
 }
 
-/** Verify the target exists, then allow, ask or deny one invocation. */
+/** 校验目标存在，然后放行、发问或拒绝一次调用。 */
 async function decide(
   exec: ToolExecutionLike,
   invocation: Invocation,
@@ -99,10 +89,8 @@ async function decide(
     return { kind: 'deny', reason: missingProjectMessage(project, candidates) };
   }
   if (!isWriteInvocation(invocation)) return undefined;
-  // `-p <本项目>` is the session's own ledger under an explicit name: it writes
-  // exactly where the default path writes, so it is not a cross-project write
-  // and must not ask. An unknown own name keeps the ask — the caller
-  // fails closed. The `mint` tool separately answers with a correction hint.
+  // `-p <本项目>` 是显式点名下的本会话自己的台账：它写的正是默认路径写的地方，所以不是跨项目
+  // 写、不得发问。本项目名未知时保持发问——调用方失败关闭。`mint` 工具另外会给出纠正提示。
   if (isOwnProject(cwd, entry, project)) return undefined;
   const sessionId = sessionIdOf(exec?.agent);
   if (sessionId !== undefined && granted.has(`${sessionId}${KEY_SEPARATOR}${project}`)) {
@@ -113,13 +101,10 @@ async function decide(
 }
 
 /**
- * Register the gate: `tools/pre-execute` decides, `approval/request` records the
- * once-per-(session, project) grant.
+ * 注册门禁：`tools/pre-execute` 决定，`approval/request` 记录每（会话, 项目）一次授权。
  *
- * The tool name is checked before any service or process is touched, and only a
- * *recognised* cross-project call can be denied for an internal failure — a
- * failure to judge one is refused rather than waved through, while every other
- * tool call still delegates untouched.
+ * 工具名在碰任何服务或进程之前先判，且只有*被识别为*跨项目的调用才可能因内部失败被拒——判不了
+ * 一个就拒绝它而不是放它过去，而其它所有工具调用仍原样委派。
  */
 export function installCrossProjectGate(ctx: DshContext, entry?: string): () => void {
   const granted = new Set<string>();
@@ -174,7 +159,7 @@ export function installCrossProjectGate(ctx: DshContext, entry?: string): () => 
           }
         }
       } catch {
-        // The decision stands; a missed grant only means asking again.
+        // 决定照旧生效；漏记一次授权只是下次再问一遍。
       }
       return outcome;
     },

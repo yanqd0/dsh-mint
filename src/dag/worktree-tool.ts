@@ -47,7 +47,6 @@ import type {
   ToolExecutionLike,
 } from '../shared/types.js';
 
-/** The tool's registered name; the model calls it as `worktree`. */
 export const TOOL_NAME = 'worktree';
 
 /** Every refusal and answer carries this prefix, so a worktree line is not a DAG line. */
@@ -59,7 +58,6 @@ const PREFIX = '[worktree] ';
  */
 export const WORKTREE_ACTIONS = ['create', 'list', 'merge', 'remove', 'prune'] as const;
 
-/** One operation, as {@link parseWorktreeAction} validated it. */
 export type WorktreeAction = (typeof WORKTREE_ACTIONS)[number];
 
 /**
@@ -127,13 +125,11 @@ const WORKTREE_TOOL_OUTPUT = {
   additionalProperties: false,
 };
 
-/** The one-answer summary rendered back into the conversation. */
 export interface WorktreeToolOutcome {
   ok: boolean;
   summary: string;
 }
 
-/** A validated `worktree` call. */
 export interface WorktreeCall {
   action: WorktreeAction;
   node?: string;
@@ -170,17 +166,14 @@ export interface WorktreeToolInput {
   agents?: AgentsLike;
 }
 
-/** A refusal, worded once so every failure path reads the same way. */
 function refusal(reason: string): WorktreeToolOutcome {
   return { ok: false, summary: `${PREFIX}拒绝：${reason}` };
 }
 
-/** An answer; the caller supplies the already-formatted body. */
 function answer(text: string): WorktreeToolOutcome {
   return { ok: true, summary: `${PREFIX}${text}` };
 }
 
-/** One list row: what the model needs to decide the next call, nothing more. */
 function listLine(entry: {
   session: string;
   node: string;
@@ -204,7 +197,6 @@ const PRUNE_REASONS: Record<Exclude<PruneVerdict, 'removed'>, string> = {
   failed: '删除失败',
 };
 
-/** One prune row: what happened to one tree, in one line. */
 function pruneLine(entry: PruneResult): string {
   const where = `${entry.session}/${entry.node} · ${entry.branch}`;
   return entry.verdict === 'removed'
@@ -266,11 +258,6 @@ export function parseWorktreeAction(raw: unknown): WorktreeCall | { error: strin
  *
  * Kept free of host types so the whole surface is unit-testable: the installer
  * resolves the session and the repository, this decides what happens.
- *
- * @param input - the owning (root) session id, the repository the trees belong
- *   to (the root session's working directory), the optional DAG directory
- *   (tests point it at a temp directory), and a git runner override for tests.
- * @param rawArgs - the tool call's arguments, however malformed.
  */
 export async function executeWorktreeTool(
   input: WorktreeToolInput,
@@ -401,10 +388,6 @@ export async function executeWorktreeTool(
  * tool — including in-process subagents, which cannot use the bash path at all.
  * `create`/`merge`/`remove` are the main agent's calls by convention (they act on
  * the shared repository), which the description states.
- *
- * @param ctx - the plugin's root context.
- * @param dagDir - DAG directory override; absent means `DAG_DIR`.
- * @returns the disposer, or `undefined` on a context without a tool registry.
  */
 export function installWorktreeTool(ctx: DshContext, dagDir?: string): (() => void) | undefined {
   const tools = ctx.tools;

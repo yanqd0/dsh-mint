@@ -1,9 +1,8 @@
 /**
- * The plan and milestone list.
+ * plan 与 milestone 的列表。
  *
- * One component serves both kinds: mint's containers differ in what their rows
- * say, not in how a list behaves, so the caller supplies the row projection and
- * this file owns the chrome, the pagination, and the states.
+ * 一个组件同时服务两种 kind：mint 的容器差别在行里说什么，而不在列表怎么表现，所以调用
+ * 方给出行投影，本文件只管框架、分页与各种状态。
  */
 import type { ReactElement } from 'react';
 
@@ -16,10 +15,9 @@ import { BODY, BUTTON, FILTER_LABEL, NOTE, TOOLBAR } from './styles.js';
 
 export interface ContainerListProps<T> {
   copy: CopyTranslate;
-  /** Project one CLI record onto a row. */
   row: (item: T) => ContainerRow;
   state: LoadState<MintListPayload<T>>;
-  /** Whether the hide-settled default is off. */
+  /** 是否关掉「隐藏已结算」这一默认。 */
   allStates: boolean;
   onAllStates: (next: boolean) => void;
   onRefresh: () => void;
@@ -27,11 +25,6 @@ export interface ContainerListProps<T> {
   onSelect: (item: T) => void;
 }
 
-/**
- * Render the list.
- *
- * @param props - copy, the row projection, loaded state, filters, and the callbacks.
- */
 export function ContainerList<T>({
   copy,
   row,

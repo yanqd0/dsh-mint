@@ -63,6 +63,8 @@ describe('tokenTotal', () => {
     expect(tokenTotal({ totals: totals() })).toBe(10);
   });
 
+  // 契约细节：四个桶都合法地等于 0 是有效读数（0 不是「缺字段」），必须回 0 而不是 undefined。
+  // 用 `totals()` 把四个桶全设 0 构造状态，断言 `tokenTotal` 恰好返回 0。
   it('returns 0 when all four buckets are legitimately zero', () => {
     expect(
       tokenTotal({
@@ -120,6 +122,8 @@ describe('activeElapsedMs', () => {
     expect(activeElapsedMs(timing, 'pending', SAMPLED_MS)).toBe(500);
   });
 
+  // 时间钳制：采样钟早于本 turn 开始时不能算出负数，退回已结算的 `settledMs`。
+  // 造 `since = 采样钟 + 250` 的 running 计时，断言结果等于 `settledMs`。
   it('clamps a sample clock that precedes the turn start instead of going negative', () => {
     const timing = { settledMs: 100, active: { since: SAMPLED_MS + 250, through: 0 } };
     expect(activeElapsedMs(timing, 'running', SAMPLED_MS)).toBe(100);
@@ -202,6 +206,8 @@ describe('nodeMetrics', () => {
     ).toEqual({});
   });
 
+  // 降级契约：宿主状态查询抛错时只能当作没读数，绝不把异常抛给调用方。
+  // 用一个 `stateOf` 直接抛错的投影服务，断言 `nodeMetrics` 返回空对象。
   it('returns nothing when the registry throws', () => {
     const projections: SessionProjectionsLike = {
       stateOf: () => {
@@ -230,6 +236,8 @@ describe('mergeMetrics', () => {
 
   const nodes = [view('a'), view('b'), view('c')];
 
+  // 优先级契约：活读数压过落盘样本，且输出的活读数不带 `at`（它不是某次持久化的戳）。
+  // 同一个 id 同时给 `live` 与 `stored`，断言合并结果取 live 且键只有 tokens/elapsed_ms。
   it('prefers the live measurement, which carries no `at` of its own', () => {
     const merged = mergeMetrics({
       live: { a: { tokens: 1, elapsed_ms: 2, at: 99 } },
@@ -430,6 +438,8 @@ describe('reading DAG metrics', () => {
     expect(await read({ projections, agents })).toEqual({});
   });
 
+  // 形状不变量：节点级指标里不能出现值为 undefined 的字段（可选字段要么有值要么没有键）。
+  // 一条读数合法、一条两个字段都非法，断言结果只剩前者且键集合只有 `tokens`。
   it('keeps every node key free of undefined-valued fields', async () => {
     writeDag([
       { id: 'a', agent: 'child-a' },
@@ -546,6 +556,8 @@ describe('the measurement cache', () => {
     expect(lastMeasurement(SESSION, 'b')).toEqual({ elapsed_ms: 3, at: 8 });
   });
 
+  // 缓存容量边界：每会话只留最近 200 条，第 201 条落进来必须把最旧的挤掉。
+  // 连续写入 201 个节点，断言 `n0` 已消失而 `n1`、`n200` 仍在。
   it('evicts the oldest entry once a session holds the 200 most recent', () => {
     for (let index = 0; index <= 200; index += 1) {
       rememberMeasurement(SESSION, `n${String(index)}`, { tokens: index });
@@ -575,6 +587,8 @@ describe('the measurement cache', () => {
     expect(lastMeasurement('session-2', 'a')).toBeUndefined();
   });
 
+  // 回归钉：`lastMeasurement` 必须返回副本，调用方改它不能污染缓存里的活读数。
+  // 取回读数后直接改写 `at` 与 `tokens`，再读一次断言仍是原值。
   it('answers a copy, so a caller cannot stamp the remembered live reading', () => {
     rememberMeasurement(SESSION, 'a', { tokens: 1 }, 5);
     const found = lastMeasurement(SESSION, 'a');

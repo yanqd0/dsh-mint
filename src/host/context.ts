@@ -15,30 +15,25 @@ import { takeRecordGapNotice } from './session-ledger.js';
 import type { AgentLike, DshContext } from '../shared/types.js';
 
 const CONTEXT_ORDER = 60;
-/** Tool guidance band is 100–199 (`notes/dsh/0.1.0/17-system-prompt-assembly.md`). */
+/** 工具指引带是 100–199（`notes/dsh/0.1.0/17-system-prompt-assembly.md`）。 */
 const TOOL_GUIDANCE_ORDER = 110;
-/** Fallback order when `systemPrompt.section` is unavailable and we use context(). */
+/** 没有 `systemPrompt.section` 而退回 `context()` 时用的序号。 */
 const TOOL_GUIDANCE_CONTEXT_ORDER = 61;
 /**
- * How many active issues the overview carries. Five matches mint's default
- * page size, and the header states the real total — the overview must never
- * look like the whole backlog.
+ * 概览携带多少条活跃 issue。五条与 mint 默认页大小一致，而表头写出真实总数——概览
+ * 绝不能看起来像整个待办池。
  */
 const TOP_ISSUES = 5;
 
 /**
- * Static guidance pointing the model at the `mint` host tool.
+ * 指向 `mint` 宿主工具的静态指引。
  *
- * This replaces the B-v2 escalation script that used to be injected here: that
- * text taught the model to preside over `sandbox_permissions: danger-full-access`
- * for bash-run mint commands, which was the single strongest push toward the
- * bash path. The tool executes mint inside the plugin process instead — no bash,
- * no sandbox, no approval — so the guidance says exactly that.
+ * 它取代了原先注入在此处的 B-v2 提权脚本：那段文字教模型为 bash 跑 mint 而主持
+ * `sandbox_permissions: danger-full-access`，是把模型推向 bash 路径的最强推力。本工具
+ * 改在插件进程内执行 mint——不经 bash、不进沙箱、无需授权——所以指引就这么说。
  *
- * This is the **single source** of the tool-first policy: the tool
- * description documents the mechanism, `skill/SKILL.md` documents the workflow,
- * and neither restates this. Kept to one sentence on purpose — it is repeated on
- * every request.
+ * 这里是工具优先口径的**单一真源**：工具描述只讲机制，`skill/SKILL.md` 只讲流程，
+ * 两者都不复述本句。刻意压到一句话——它每个请求都要重复。
  */
 export const MINT_TOOL_GUIDANCE =
   'mint 操作一律走宿主 mint 工具（插件进程内执行：不经 bash、无需授权）；' +
@@ -52,9 +47,8 @@ interface OverviewIssue {
   priority: number;
   labels: string[];
   /**
-   * Project the item belongs to. Optional because an older/subset `list --json`
-   * may omit it, but it is the **only** way this plugin learns its own project
-   * name without reading mint's database.
+   * 条目所属项目。可选，因为较旧/子集的 `list --json` 可能省略它；但这是本插件不读
+   * mint 数据库而得知自己项目名的**唯一**途径。
    */
   project?: string;
 }
@@ -62,12 +56,12 @@ interface OverviewIssue {
 interface OverviewMilestone {
   id: number;
   title: string;
-  /** `null` for a milestone mint has no version for. */
+  /** mint 没有版本的 milestone 为 `null`。 */
   version: string | null;
   status: string;
 }
 
-/** Validate one `list --json` item against the fields the overview reads. */
+/** 按概览读取的字段校验一条 `list --json` 项。 */
 function isOverviewIssue(value: unknown): value is OverviewIssue {
   if (!isRecord(value)) return false;
   return (
@@ -85,9 +79,8 @@ function isOverviewIssue(value: unknown): value is OverviewIssue {
 /**
  * Validate one `milestone list --json` item against the fields the overview reads.
  *
- * `version` is optional in mint (the column is nullable), so `null` is a real
- * answer and must not drop the milestone from the overview: a version-less
- * running milestone is exactly the one the attachment advice has to name.
+ * `version` 在 mint 里可选（该列为 nullable），所以 `null` 是真实答案，不能因此把
+ * milestone 从概览里丢掉：无版本的 running milestone 正是挂载建议必须点名的那一个。
  */
 function isOverviewMilestone(value: unknown): value is OverviewMilestone {
   if (!isRecord(value)) return false;
@@ -103,50 +96,46 @@ export interface MintOverview {
   issues: OverviewIssue[];
   milestones: OverviewMilestone[];
   /**
-   * Project the session's cwd resolves to, read off the issue rows.
+   * 会话 cwd 解析到的项目，从 issue 行上读出。
    *
-   * Absent when the project has no issues (nothing to read it from) — a real
-   * "unknown", not "no project": the consumers (the injection line and the
-   * own-project memo) are both optional.
+   * 项目没有 issue 时缺失（没有行可读）——那是真实的「未知」，不是「没有项目」：两个
+   * 消费方（注入行与 own-project 备忘）都是可选的。
    */
   project?: string;
-  /** Version the resolved entry reported through `-V`; absent when the probe failed. */
+  /** 解析出的入口经 `-V` 报告的版本；探测失败时缺失。 */
   cliVersion?: string;
-  /** Short label for the entry that answered `-V` (build skew: debug vs release). */
+  /** 应答 `-V` 的入口短标签（构建偏斜：debug 还是 release）。 */
   cliEntry?: string;
   /**
-   * Notes about CLI answers that did not match the expected JSON shape.
+   * CLI 答案与预期 JSON 形状不符时的说明。
    *
-   * The dependency is a subprocess CLI, so a `mint-faa` bump can rename a field
-   * without any import failing. Without these, the shrunken item list would
-   * render as a plausible-but-empty overview; the warning makes the skew
-   * visible instead of silent.
+   * 依赖是子进程 CLI，所以 `mint-faa` 升级可以悄悄改掉一个字段名而不触发任何 import
+   * 失败。没有这些说明，缩水的条目列表会渲染成一份看似合理却为空的概览；有告警才能把
+   * 这种偏斜显出来而不是静默过去。
    */
   warnings?: string[];
   /**
-   * `mint doctor`'s verdict, only when the resolved CLI can answer it.
+   * `mint doctor` 的判定，仅当解析出的 CLI 能回答它时存在。
    *
-   * Absent is the normal case for an old CLI and for a probe failure; the
-   * injected line is only worth its bytes when there is a warning to report.
+   * 缺失是旧 CLI 与探测失败的常态；只有确有告警可报时，注入行才值它那几个字节。
    */
   doctor?: DoctorReport;
 }
 
-/** The slice of `doctor --json` the overview renders. */
+/** 概览渲染的 `doctor --json` 切片。 */
 export interface DoctorReport {
-  /** Number of findings; `0` means a healthy ledger and no injected line. */
+  /** 发现数；`0` 表示台账健康、不注入任何行。 */
   warnings: number;
   /**
-   * Per-check counts, keyed by mint's stable check name.
+   * 各检查项的计数，键是 mint 的稳定检查名。
    *
-   * mint serializes these through a sorted map, so the JSON key order is
-   * alphabetical rather than the check order its own summary line uses; the
-   * rendered detail therefore orders by {@link DOCTOR_CHECKS} itself.
+   * mint 经有序 map 序列化这些，所以 JSON 键序是字母序而非它自己摘要行的检查顺序；
+   * 因此渲染出的明细按 {@link DOCTOR_CHECKS} 自身的顺序排列。
    */
   counts: Record<string, number>;
 }
 
-/** mint's own check order (`doctor` summary line); unknown checks trail it. */
+/** mint 自己的检查顺序（`doctor` 摘要行）；未知检查排在它之后。 */
 const DOCTOR_CHECKS: readonly string[] = [
   'multiple-running',
   'stale-plan',
@@ -155,19 +144,19 @@ const DOCTOR_CHECKS: readonly string[] = [
   'stalled-dev',
 ];
 
-/** `stale-plan:1, stalled-dev:2` for the checks that actually fired. */
+/** 真正触发的检查渲染成 `stale-plan:1, stalled-dev:2`。 */
 function doctorDetail(counts: Record<string, number>): string {
   const fired = (check: string): number => counts[check] ?? 0;
   const known = DOCTOR_CHECKS.filter((check) => fired(check) > 0);
-  // A check this plugin has never heard of still reaches the model: the line is
-  // a pointer, and dropping a new check would hide the reason doctor fired.
+  // 本插件没听说过的检查也要到达模型：这行是个指针，丢掉一个新检查就等于藏起 doctor
+  // 报警的原因。
   const extra = Object.keys(counts)
     .filter((check) => !DOCTOR_CHECKS.includes(check) && fired(check) > 0)
     .sort();
   return [...known, ...extra].map((check) => `${check}:${fired(check)}`).join(', ');
 }
 
-/** Validate a `doctor --json` payload against the fields the overview reads. */
+/** 按概览读取的字段校验 `doctor --json` 载荷。 */
 function isDoctorReport(value: unknown): value is DoctorReport {
   if (!isRecord(value)) return false;
   if (typeof value.warnings !== 'number') return false;
@@ -175,12 +164,11 @@ function isDoctorReport(value: unknown): value is DoctorReport {
 }
 
 /**
- * True when a CLI version is new enough to answer `doctor`.
+ * CLI 版本是否新到能回答 `doctor`。
  *
- * The gate exists to avoid one guaranteed-failure spawn per session on older
- * mint: `doctor` arrived in the 0.9 line, and the prerelease suffix is
- * irrelevant (`0.9.0-alpha.1` already has it). An unparsable version answers
- * `false`, so the injection degrades to its pre-`doctor` shape.
+ * 这道闸是为了别在旧 mint 上每个会话白付一次注定失败的 spawn：`doctor` 是 0.9 线引入
+ * 的，预发布后缀无关紧要（`0.9.0-alpha.1` 已经有它）。版本解析不出来时答 `false`，
+ * 注入于是退化成 `doctor` 之前的样子。
  */
 export function supportsDoctor(version: string): boolean {
   const [core = ''] = version.split('-', 1);
@@ -191,9 +179,8 @@ export function supportsDoctor(version: string): boolean {
 }
 
 /**
- * Ask the entry for its version. Advisory only: the overview is worth
- * rendering even when `-V` is unavailable, so every failure degrades to
- * `undefined` instead of failing {@link fetchOverview}.
+ * 向入口询问版本。只是附加信息：`-V` 不可用时概览仍值得渲染，所以一切失败都降级成
+ * `undefined`，而不是让 {@link fetchOverview} 失败。
  */
 async function probeCliVersion(
   run: (args: string[]) => Promise<MintRunResult>,
@@ -215,14 +202,12 @@ async function probeCliVersion(
 }
 
 /**
- * Ask mint for its own health check.
+ * 向 mint 询问它自己的健康检查。
  *
- * Runs only behind {@link supportsDoctor}: an older CLI would answer
- * `unrecognized subcommand`, and paying one guaranteed-failure spawn per
- * session is exactly what the version gate avoids. Every other failure (timeout,
- * killed process, unreadable JSON) is advisory and degrades to "no doctor
- * line"; only a well-formed JSON payload with the wrong shape is worth a visible
- * note, matching the other reads' skew contract.
+ * 只在 {@link supportsDoctor} 之后运行：旧 CLI 会答 `unrecognized subcommand`，而每个
+ * 会话白付一次注定失败的 spawn 正是版本闸要避免的。其余失败（超时、被杀、JSON 读不出来）
+ * 都是附加信息，降级为「没有 doctor 行」；只有形状不对的**格式良好** JSON 才值得一条可见
+ * 说明，与其他读取的偏斜契约一致。
  */
 async function probeDoctor(
   run: (args: string[]) => Promise<MintRunResult>,
@@ -236,18 +221,16 @@ async function probeDoctor(
     if (parsed.value === undefined) {
       return parsed.warning === undefined ? {} : { warning: parsed.warning };
     }
-    // Keep only the two fields the line renders: the payload also carries the
-    // per-finding detail, which the per-request overview has no use for.
+    // 只留这一行渲染的两个字段：载荷还带着逐条发现的明细，每请求的概览用不上。
     return { report: { warnings: parsed.value.warnings, counts: parsed.value.counts } };
   } catch {
     return {};
   }
 }
 
-/** Fetch the active-issue overview + milestone state via the mint CLI. */
+/** 经 mint CLI 拉取活跃 issue 概览 + milestone 状态。 */
 export async function fetchOverview(cwd: string, entry?: string): Promise<MintOverview> {
-  // Keep the no-override call shape at two arguments: the default path stays
-  // exactly what it was before `mintEntry` existed.
+  // 无覆写时保持两参数调用形状：默认路径与 `mintEntry` 出现之前逐字节一致。
   const run = (args: string[]): Promise<MintRunResult> =>
     entry === undefined ? runMint(cwd, args) : runMint(cwd, args, { entry });
   const [issuesRes, msRes, cli] = await Promise.all([
@@ -260,8 +243,8 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   const issues = parseItems('list --json', issuesRes.text, isOverviewIssue);
   const milestones = parseItems('milestone list --json', msRes.text, isOverviewMilestone);
   const overview: MintOverview = { issues: issues.items, milestones: milestones.items };
-  // The project name rides on the rows themselves (`"project":"dsh-mint"`); the
-  // first row that names one is authoritative — all rows come from one ledger.
+  // 项目名就挂在行本身（`"project":"dsh-mint"`）；第一个点出它的行即权威——所有行都
+  // 来自同一个台账。
   const project = issues.items.find((item) => item.project !== undefined)?.project;
   if (project !== undefined) overview.project = project;
   const warnings = [issues.warning, milestones.warning].filter(
@@ -270,8 +253,7 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   if (cli !== undefined) {
     overview.cliVersion = cli.version;
     if (cli.entry !== undefined) overview.cliEntry = cli.entry;
-    // The doctor read is sequential on purpose: it is gated on the version that
-    // the `-V` probe just answered, so it cannot join the parallel batch above.
+    // doctor 读取刻意串行：它以 `-V` 探测刚给出的版本为前提，所以进不了上面的并行批。
     const doctor = await probeDoctor(run, cli.version);
     if (doctor.report !== undefined) overview.doctor = doctor.report;
     if (doctor.warning !== undefined) warnings.push(doctor.warning);
@@ -280,14 +262,14 @@ export async function fetchOverview(cwd: string, entry?: string): Promise<MintOv
   return overview;
 }
 
-/** Semver-ish rank: `[major, minor, patch, stable]`; a release outranks its prereleases. */
+/** 类 semver 排序键：`[major, minor, patch, stable]`；正式版排在它的预发布之前。 */
 function versionRank(version: string): number[] {
   const [core = '', pre = ''] = version.split('-', 2);
   const [major = 0, minor = 0, patch = 0] = core.split('.').map((p) => Number.parseInt(p, 10) || 0);
   return [major, minor, patch, pre ? 0 : 1];
 }
 
-/** True when `a` outranks `b` under {@link versionRank}. */
+/** `a` 在 {@link versionRank} 下是否高于 `b`。 */
 function isNewer(a: string, b: string): boolean {
   const [ra, rb] = [versionRank(a), versionRank(b)];
   for (let i = 0; i < ra.length; i += 1) {
@@ -297,44 +279,39 @@ function isNewer(a: string, b: string): boolean {
   return false;
 }
 
-/** Highest version among the project's milestones (seeds the next-version suggestion). */
+/** 项目 milestone 里的最高版本（给「下一个版本」建议播种）。 */
 export function latestVersion(milestones: readonly OverviewMilestone[]): string {
   let best = '';
   for (const milestone of milestones) {
-    // A milestone without a version has nothing to compare; it also does not
-    // drag `best` down — the semver hint keeps working off the rest.
+    // 没有版本的 milestone 无从比较；它也不会把 `best` 拉低——semver 提示靠其余版本
+    // 继续工作。
     if (milestone.version === null) continue;
     if (isNewer(milestone.version, best)) best = milestone.version;
   }
   return best;
 }
 
-/** Render the overview into compact model-facing text. */
+/** 把概览渲染成紧凑的面向模型文本。 */
 export function renderOverview(overview: MintOverview): string {
   const lines: string[] = [];
-  // Identity line: the resolved project, then the CLI version. Both are optional
-  // and independent — a failed `-V` probe still leaves the project name worth
-  // stating, and a project with no issues still has its CLI version.
-  // The project name is what lets a session check "am I already in my project?"
-  // instead of defensively prefixing `-p <self>`.
+  // 身份行：先是解析出的项目，再是 CLI 版本。两者都可选且互相独立——`-V` 探测失败仍
+  // 值得说出项目名，没有 issue 的项目也仍有 CLI 版本。
+  // 项目名是会话用来判断「我是不是已经在本项目里」的依据，免得防御性地加 `-p <自己>`。
   const identity: string[] = [];
   if (overview.project !== undefined) identity.push(overview.project);
   if (overview.cliVersion !== undefined) {
-    // One short line, first: a command that the running build does not know
-    // ("unrecognized subcommand") is otherwise indistinguishable from a typo,
-    // and `-V` alone cannot tell a debug build from a release one.
+    // 先给一行短信息：运行中的构建不认识的命令（“unrecognized subcommand”）否则与错别字
+    // 无从区分，而光看 `-V` 也分不出 debug 构建和 release 构建。
     const via = overview.cliEntry !== undefined ? ` via ${overview.cliEntry}` : '';
     identity.push(`mint ${overview.cliVersion}${via}`);
   }
   if (identity.length > 0) lines.push(`[Mint] ${identity.join(' · ')}`);
-  // Surface a CLI shape mismatch instead of letting it read as "no issues".
+  // 把 CLI 形状不符显出来，而不是让它读成「没有 issue」。
   for (const warning of overview.warnings ?? []) {
     lines.push(`[Mint] WARNING: ${warning}`);
   }
-  // One line for the ledger's own health check, and only when there is
-  // something to report: an always-on line is per-request cost with no
-  // signal, and a zero-warning answer is the common case. The counts keep
-  // mint's own check order (see {@link DoctorReport}).
+  // 台账自身健康检查只占一行，且只在有可报内容时出现：常驻行是每请求的成本而无信号，
+  // 而零告警是常态。计数保持 mint 自己的检查顺序（见 {@link DoctorReport}）。
   const doctor = overview.doctor;
   if (doctor !== undefined && doctor.warnings > 0) {
     const detail = doctorDetail(doctor.counts);
@@ -344,9 +321,8 @@ export function renderOverview(overview: MintOverview): string {
         'mint({args:["doctor","--json"]})'
     );
   }
-  // Top-N by (priority, id) — explicit so the "top" claim does not depend on
-  // mint's default ordering. Labels are deliberately left out: they are a tool
-  // call away, and they cost the most bytes per line.
+  // 按 (priority, id) 取前 N——显式排序，让「前 N」这个说法不依赖 mint 的默认顺序。
+  // 刻意不写 labels：一次工具调用就能拿到，而它们每行最费字节。
   const issues = [...overview.issues]
     .sort((a, b) => a.priority - b.priority || a.id - b.id)
     .slice(0, TOP_ISSUES);
@@ -363,8 +339,8 @@ export function renderOverview(overview: MintOverview): string {
   const running = overview.milestones.filter((m) => m.status === 'running');
   const [current] = running;
   if (running.length === 1 && current) {
-    // Exactly one current milestone: state the default attachment target explicitly
-    // (the skill carries the reasoning; this line is what every request can see).
+    // 恰好一个当前 milestone：显式点明默认挂载目标（推理归 skill，这一行是每个请求都能
+    // 看到的东西）。
     const label = current.version || current.title;
     lines.push(
       `[Mint] milestone ${label} (id ${current.id}) running — new plans/standalone issues ` +
@@ -372,11 +348,9 @@ export function renderOverview(overview: MintOverview): string {
         `plan create --milestone ${current.id}`
     );
   } else if (running.length >= 2) {
-    // Two running milestones are no longer "fix this by hand": since mint 0.9.0
-    // the CLI refuses any write that would add one, and `--force` is the only
-    // escape hatch. The injected line must not tell the model to reopen a
-    // milestone when the CLI's own answer is "ask the user about parallel
-    // versions"; the migration route stays as the non-parallel option.
+    // 两个 running milestone 已不再是「手工修一下」：自 mint 0.9.0 起 CLI 会拒绝任何会
+    // 再加一个的写操作，`--force` 是唯一的逃生口。注入行不得叫模型重开 milestone，因为
+    // CLI 自己的回答是「去问用户是否要并行版本」；迁移路线留作非并行选项。
     const names = running.map((m) => m.version || m.title).join(', ');
     lines.push(
       `[Mint] WARNING: ${running.length} running milestones (${names}) — the CLI now refuses ` +
@@ -386,7 +360,7 @@ export function renderOverview(overview: MintOverview): string {
     );
   } else if (overview.milestones.length > 0) {
     const latest = latestVersion(overview.milestones);
-    // No version anywhere: drop the parenthetical instead of printing "(latest )".
+    // 任何地方都没有版本时就丢掉这个括号，别打印出 "(latest )"。
     const latestNote = latest === '' ? '' : ` (latest ${latest})`;
     lines.push(
       `[Mint] no running milestone${latestNote} — infer the next version by semver ` +
@@ -398,34 +372,27 @@ export function renderOverview(overview: MintOverview): string {
 }
 
 /**
- * One-shot overview line for a session that left plan mode with nothing recorded.
+ * 会话离开计划模式却什么都没登记时的一次性概览行。
  *
- * The mint-write-ledger notice rides on the `exit_plan_mode` tool result, so a session that
- * left plan mode any other way (`/plan off`, the GUI toggle) had no signal at
- * all — yet that is a host-provided exit, not a reason to skip the record. This
- * line is the injection-side carrier for exactly that path; it must stay short
- * (it is a condition line, not the workflow) and it points at the skill instead
- * of restating it.
+ * mint 写台账提醒挂在 `exit_plan_mode` 的工具结果上，所以以别的方式离开计划模式的会话
+ * （`/plan off`、GUI 开关）原本一点信号都没有——而那是主机提供的退出方式，不是跳过记录的
+ * 理由。这行正是那条路径在注入侧的载体；它必须短（是条件行，不是流程），并且指向 skill
+ * 而不是复述它。
  */
 export const RECORD_GAP_LINE =
   '[Mint] 本会话已离开计划模式且尚无 mint 写操作——离开计划模式不等于已登记；' +
   '要改码先按 mint skill 补登记（plan create/attach + 拆 issue），首个 issue 先 state start。';
 
 /**
- * Register mint prompt contributions on an agent-scoped context: the active
- * overview plus the static tool-first guidance.
+ * 在 agent 作用域的 ctx 上注册 mint 的提示词贡献：活跃概览 + 静态的工具优先指引。
  *
- * The overview is dynamic (it reflects the live mint database), so it stays a
- * per-assembly `context()` provider that loads once per session and degrades
- * silently to an empty string on failure. The guidance is static and belongs to
- * the tool-guidance band, so it is registered as a `section()` — a stable
- * prefix, which is far friendlier to KV-cache reuse than a runtime-context
- * snapshot repeated on every request. Hosts without `section` fall back to
- * `context()` with the same text.
+ * 概览是动态的（反映实时 mint 数据库），所以留作每次装配都跑的 `context()` provider，
+ * 每会话只加载一次，失败时静默降级为空串。指引是静态的且属于工具指引带，所以注册成
+ * `section()`——稳定前缀对 KV 缓存复用远比每请求重复的 runtime-context 快照友好。没有
+ * `section` 的主机退回 `context()`，文本相同。
  *
- * `cwd` is the session's workspace (project) directory, which mint uses for
- * project lookup. `sessionId` (when the host gives one) is what the record-gap
- * line is keyed by; without it that line never renders.
+ * `cwd` 是会话语境（项目）目录，mint 用它做项目查找。`sessionId`（主机给了的话）是
+ * record-gap 行的键；没有它那行永不渲染。
  *
  * `depthProbe` 是宿主委派深度的探针（缺省用 `agentCtx` 自己读）。它被抽成参数是因为
  * 概览装在 **agent 的 ctx** 上，而 `subagents` 服务装在**根 ctx** 上：装配处
@@ -449,9 +416,8 @@ export function registerMintContext(
   let started = false;
 
   const load = async (): Promise<void> => {
-    // Resolve first, separately: an unresolvable entry is a plugin-side outage
-    // the session can act on, not an empty project — staying silent here
-    // made `Cannot find module` look like "no issues".
+    // 先单独解析入口：入口解析不了是会话能应对的插件侧故障，不是空项目——在这里保持
+    // 沉默曾让 `Cannot find module` 看起来像「没有 issue」。
     let resolved: string;
     try {
       resolved = entry === undefined ? resolveMintEntry() : resolveMintEntry({ entry });
@@ -462,9 +428,8 @@ export function registerMintContext(
     try {
       const overview = await fetchOverview(cwd, resolved);
       cached = renderOverview(overview);
-      // Remember which project this directory *is*, so `-p <self>` can be
-      // recognised as own-project work rather than a cross-project write.
-      // Keyed by the mount-line `entry`, the same key the gate probes with.
+      // 记住这个目录*是*哪个项目，好让 `-p <自己>` 被认成本项目工作而不是跨项目写。
+      // 键用挂载行的 `entry`，与门禁探测用的是同一个键。
       if (overview.project !== undefined) {
         noteOwnProject(cwd, entry, overview.project);
       }
@@ -485,10 +450,9 @@ export function registerMintContext(
       // 不要再叠一条降级说明。降级行每次都现读——宿主设置改完下一次请求就准。
       if (cached === '') return cached;
       const depthLine = renderOverviewDepthLine(delegationShape(probeDepth()));
-      // The cached body loads once; the record-gap line is a per-assembly condition
-      // on top of it (and consumes its one shot here, matching the exit notice's
-      // "tell it once" semantics). 降级行在 body 之后、record-gap 行之前：它是宿主
-      // 事实，比「本会话尚未登记」更基础，也不吃 record-gap 的一次性额度。
+      // 缓存的 body 只加载一次；record-gap 行是叠在它之上的每次装配条件（并在此消费它
+      // 的一次性额度，与退出提醒「只说一次」的语义一致）。降级行在 body 之后、record-gap
+      // 行之前：它是宿主事实，比「本会话尚未登记」更基础，也不吃 record-gap 的一次性额度。
       const gap = takeRecordGapNotice(sessionId);
       const parts = [cached];
       if (depthLine !== '') parts.push(depthLine);
@@ -517,32 +481,28 @@ export function registerMintContext(
 }
 
 /**
- * How many session ids the channel remembers; matches the other bounded
- * session maps (approval grants, cross-project grants).
+ * 通道记住多少个会话 id；与其它有界会话表（审批授权、跨项目授权）一致。
  */
 const MAX_REGISTERED_SESSIONS = 100;
 
 /**
- * Register the overview/guidance channel.
+ * 注册概览/指引通道。
  *
- * The host's lifecycle event is **`agent/created`** (payload
- * `{ agent, source, signal? }`, `dsh-agent` `Registry.announce`). The name this
- * plugin used through 0.2.0 — `agent/session-start` — is published by no harness
- * package of 0.2.0-rc.2, so the listener never ran and neither the overview nor
- * the tool-first guidance ever reached a session. The old name stays wired for
- * hosts that do publish it; both events are handled by the same function.
+ * 宿主的生命周期事件是 **`agent/created`**（载荷 `{ agent, source, signal? }`，
+ * `dsh-agent` 的 `Registry.announce`）。本插件在 0.2.0 期间用的名字
+ * `agent/session-start` 在 0.2.0-rc.2 的任何 harness 包里都没被发布，于是监听器从未运行，
+ * 概览与工具优先指引也从未到达任何会话。旧名字仍为确实发布它的主机保留；两个事件由同一个
+ * 函数处理。
  *
- * Three guards, each with a reason:
+ * 三道守卫，各带理由：
  *
- * - **Dedup by session id.** Both events can fire for one session; registering
- *   twice would inject the overview and the guidance twice. The id is only
- *   consumed once the agent has a `systemPrompt` to register on, so an event
- *   that arrives too early does not burn the session.
- * - **Skip subagents.** The overview costs three mint spawns per session plus a
- *   per-request section, and a subagent already inherits the `mint` tool: its
- *   session header carries `delegationDepth > 0` (`origin: 'subagent'`).
- * - **Never throw.** `agent/created` is a *serial* event — a throwing listener
- *   rejects agent creation itself. A missing overview is the acceptable failure.
+ * - **按会话 id 去重。** 两个事件可能为同一个会话各触发一次；注册两次就会重复注入概览与
+ *   指引。id 只在 agent 已有可注册的 `systemPrompt` 时才被消费，所以来得太早的事件不会
+ *   烧掉这个会话。
+ * - **跳过子代理。** 概览每会话要三次 mint spawn 外加一个每请求 section，而子代理已经继承
+ *   `mint` 工具：它的会话头带 `delegationDepth > 0`（`origin: 'subagent'`）。
+ * - **绝不抛错。** `agent/created` 是*串行*事件——抛错的监听器会否决 agent 创建本身。
+ *   缺少概览是可接受的失败。
  */
 export function installOverviewChannel(ctx: DshContext, entry?: string): () => void {
   const registered = new Set<string>();
@@ -553,8 +513,7 @@ export function installOverviewChannel(ctx: DshContext, entry?: string): () => v
       const cwd = agent?.session?.header?.cwd;
       if (agent === undefined || !agent.ctx || cwd === undefined) return;
       if ((agent.session.header.delegationDepth ?? 0) > 0) return;
-      // Registering without the service would silently do nothing and (worse)
-      // mark the session as done, so wait for the host to hand it over.
+      // 没有服务就注册会静默什么都不做，更糟的是把会话标成已处理，所以等宿主交出来。
       if (agent.ctx.systemPrompt === undefined) return;
       const sessionId = sessionIdOf(agent);
       if (sessionId !== undefined) {
@@ -567,7 +526,7 @@ export function installOverviewChannel(ctx: DshContext, entry?: string): () => v
       }
       registerMintContext(agent.ctx, cwd, entry, sessionId, () => readSubagentDepth(ctx));
     } catch {
-      // Contained on purpose: see the `agent/created` note above.
+      // 刻意兜住：理由见上面 `agent/created` 那段。
     }
   };
 

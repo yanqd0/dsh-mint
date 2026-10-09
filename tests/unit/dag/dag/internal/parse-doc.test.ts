@@ -19,6 +19,8 @@ describe('parseDagDoc', () => {
     expect(parsed).toEqual({ doc: subject });
   });
 
+  // 读取门禁：坏文档必须点名是哪个字段坏了，绝不猜默认值把损坏数据读成合法状态。
+  // 一张 21 条的坏文档表逐条交给 `parseDagDoc`，断言错误文案含对应字段名或判据关键词。
   it('names what is wrong instead of guessing defaults', () => {
     const cases: [unknown, string][] = [
       [null, 'object'],
@@ -89,6 +91,8 @@ describe('sampleOf', () => {
     ).toBeUndefined();
   });
 
+  // 采样钟边界：`at` 必须是非负安全整数，负数、小数、NaN 与超界一律拒绝。
+  // 固定一份合法读数，逐种非法 `at` 断言返回 undefined，失败信息带上该值。
   it('refuses a clock that is not a non-negative safe integer', () => {
     for (const at of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 1, Number.POSITIVE_INFINITY]) {
       expect(sampleOf({ tokens: 1 }, at), String(at)).toBeUndefined();
@@ -119,6 +123,8 @@ describe('parseDagDoc samples', () => {
     expect('samples' in parsed.doc).toBe(false);
   });
 
+  // 整体拒绝的门禁：`samples` 不是对象时不能只丢它，必须让整份文档不可读。
+  // 依次喂数字、字符串、数组、布尔与 null，断言每种都返回含 `samples` 的错误。
   it('refuses the whole document when samples is not an object', () => {
     for (const samples of [7, 'x', [], true, null]) {
       const parsed = parseDagDoc(withSamples(samples));
@@ -128,6 +134,8 @@ describe('parseDagDoc samples', () => {
     }
   });
 
+  // 逐条信任的降级口径：一个坏字段只连坐自己那条，好的兄弟条目必须原样留下。
+  // 一份含 9 个条目的夹具（各种坏 at/tokens 与非对象），断言只剩 `good` 一条。
   it('drops only the entries it cannot trust, keeping every good sibling', () => {
     const parsed = parseDagDoc(
       withSamples({
@@ -148,6 +156,8 @@ describe('parseDagDoc samples', () => {
     });
   });
 
+  // 空映射的可读性契约：条目全被丢掉也要保留 `samples` 键，否则空图会被读成坏文档。
+  // 分别解析「唯一条目非法」与「空对象」两份原始文档，断言结果都带空的 `samples`。
   it('keeps the key when every entry was dropped, so an empty map stays readable', () => {
     expect(parseDagDoc(withSamples({ a: { tokens: -1, at: 1 } }))).toEqual({
       doc: doc({ samples: {} }),

@@ -75,6 +75,8 @@ describe('dsh-mint plugin', () => {
     expect(events).toContain('subagent/end');
   });
 
+  // 开关门禁：`autoInstallSkill` 只影响加载时那次 skill 同步，关掉就不再调用。
+  // 同一个 ctx 连调两次 `apply`（先 true 后 false），断言 mock 的调用次数停在 1。
   it('syncs the bundled skill on load unless autoInstallSkill is false', () => {
     const ctx: DshContext = {
       on: () => () => {},
@@ -86,6 +88,8 @@ describe('dsh-mint plugin', () => {
     expect(installSkillMock).toHaveBeenCalledTimes(1);
   });
 
+  // 审批门禁的三个缝必须挂上，否则提权审批与工具前后钩子整条链断开。
+  // 记账用的 ctx 收下所有注册事件名，断言 `approval/request` 与两个工具钩子都在。
   it('registers the approval gate seams (B-v2)', () => {
     const events: string[] = [];
     const ctx: DshContext = {
@@ -129,6 +133,8 @@ describe('dsh-mint plugin', () => {
     expect(registered.map((r) => r.name)).toEqual(['mint:overview', 'mint:tool-guidance']);
   });
 
+  // 防御路径：宿主没给 agent 载荷时跳过登记，既不抛错也不去跑 mint。
+  // 直接调用 `agent/created` 的监听器并传空载荷，断言不抛且 `runMint` 未被调用。
   it('skips registration without an agent payload', () => {
     const listeners: Record<string, EventListener> = {};
     const ctx: DshContext = {
@@ -145,6 +151,8 @@ describe('dsh-mint plugin', () => {
     expect(runMintMock).not.toHaveBeenCalled();
   });
 
+  // 工具面契约：根 ctx 上恰好是三个工具（`worktree` 已从 `mint_plan_dag` 拆出独立）。
+  // 记账用的 `tools.register` 收下名字，整体比对工具名序列。
   it('registers the plan DAG tool and the standalone worktree tool next to mint', () => {
     const names: string[] = [];
     const ctx: DshContext = {

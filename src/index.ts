@@ -23,52 +23,41 @@ import { installMintRoutes } from './host/routes.js';
 import { installSessionLedger } from './host/session-ledger.js';
 import type { DshContext } from './shared/types.js';
 
-/** dsh-mint — DSH plugin integrating the mint issue tracker into DSH sessions. */
 export const name = 'dsh-mint';
 
 /**
- * Services this plugin consumes on its own (root) context. `tools` must be
- * declared here or cordis refuses the access (`cannot get property ... without
- * inject`). `systemPrompt` is consumed on `agent.ctx` (host-provided), not here.
+ * 本插件在自身（root）ctx 上消费的服务。`tools` 不在此声明，cordis 会拒绝访问
+ * （`cannot get property ... without inject`）；`systemPrompt` 在 `agent.ctx`（宿主提供）上消费，不在此处。
  */
 export const inject = ['tools'];
 
 /**
- * The host (`cordis` `resolveConfig`) hands a mount line's missing config
- * to `~standard.validate` as a plain `undefined` and does no normalization, so
- * without this default the whole mount line dies (`invalid config: - Required
- * (at )`). `.default({})` makes every field fall back to its own default; the
- * inferred type stays a plain object (`apply` never sees `undefined`).
+ * 宿主（cordis `resolveConfig`）把挂载行缺失的配置原样交给 `~standard.validate`、不做归一化，
+ * 故少了这里的默认值整条挂载行会因 `invalid config: - Required (at )` 失效。`.default({})`
+ * 让每个字段各回自己的默认值，推断类型仍是普通对象（`apply` 不会见到 `undefined`）。
  */
 export const Config = z.object({
   /** 预留给挂载行配置：暂无消费方，等对应特性落地才起作用。 */
   debug: z.boolean().default(false),
   /**
-   * Auto-allow mint sandbox escalations without any user prompt (B-v2).
-   * Default false: the first mint escalation per session goes through the
-   * composed approval answerers; enabling this is an explicit trust of mint.
+   * 自动放行 mint 的沙箱提权、不再弹窗（B-v2）。默认 false：每会话首次提权仍走组合起来的
+   * 审批应答者；打开它等于显式信任 mint。
    */
   autoApprove: z.boolean().default(false),
   /**
-   * Sync the bundled mint skill into the DSH skill directory on plugin load.
-   * Default true — this is the guaranteed install path under
-   * `pnpm add -g`, whose build-script blocking may skip the postinstall.
+   * 插件加载时把随包 mint skill 同步进 DSH skill 目录。默认 true：`pnpm add -g` 下构建脚本
+   * 可能被拦、postinstall 不跑，这条同步是保证装上的安装路径。
    */
   autoInstallSkill: z.boolean().default(true),
   /**
-   * Mint CLI entry the tool runs: a `run-mint.js` path, a native mint binary,
-   * a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel
-   * (force the `mint-faa` chain even when `MINT_ENTRY` is set).
-   * Default: the `mint-faa` dependency (range `>=0.8.0 <1.0.0`, so any pre-1.0
-   * release is picked up without a plugin update). Point it at a locally built
-   * mint to dogfood an unreleased version.
+   * `mint` 工具执行的 mint 入口：`run-mint.js` 路径、原生 mint 二进制、`~` 前缀路径、`PATH` 里的
+   * 裸命令，或 `dependency` 哨兵（即使设了 `MINT_ENTRY` 也强制走 `mint-faa` 链）。默认用 `mint-faa`
+   * 依赖（范围 `>=0.8.0 <1.0.0`，任意 pre-1.0 版本免插件更新即可生效）；指向本地构建的 mint 可 dogfood。
    */
   mintEntry: z.string().optional(),
   /**
-   * Auto-open the plan DAG tab. The browser half probes
-   * `GET /dsh-mint/dag` every 5s and opens the tab whenever this session has a
-   * DAG and the tab is not already open (the page type is unique per session, so
-   * a repeat never stacks one); false = leave the tab to the add control.
+   * 自动打开 plan DAG tab：浏览器半边每 5s 探一次 `GET /dsh-mint/dag`，本会话有 DAG 且该 tab
+   * 未开就打开（页类型每会话唯一，重复探测不会叠 tab）；false = 交给 add 控件。
    */
   openDagTab: z.boolean().default(true),
 }).default({});
@@ -76,25 +65,10 @@ export const Config = z.object({
 export type Config = z.infer<typeof Config>;
 
 /**
- * Host-face entry.
- *
- * - mint overview context on every agent session start
- * - commit reminder (`tools/post-execute`) + failure signal (`tools/result`)
- * - todo-sync reminder — after an `issue state` / `plan plan` / `plan close`
- *   call, the host todo panel is told to catch up with the mint ledger
- * - plan binding (exit_plan_mode ↔ mint plan)
- * - `mint` tool — the whole mint CLI in-process, zero approval
- * - approval gate — once-per-session mint escalation approval, then
- *   auto-allowed mint escalations (B-v2)
- * - cross-project gate — `-p/--project` is allowed, and a write to
- *   another project asks once per session and target project
- * - skill auto-install — content-syncs the bundled skill on load
- * - client-face routes — read-only `ctx.webServer` JSON endpoints the
- *   right-sidebar panel fetches (`src/routes.ts`)
- * - plan DAG — `mint_plan_dag` (`src/dag-tool.ts`), the
- *   subagent ↔ node lifecycle pairing (`src/dag-lifecycle.ts`) and the
- *   read-only `/dsh-mint/dag` route the `plan-dag` tab polls
- * - `mintEntry` — run a locally built mint instead of the published dependency
+ * 宿主面入口：装配全部 `install*`——mint 概览注入、提交提醒与失败信号、todo 同步提醒、
+ * 计划绑定（`exit_plan_mode` ↔ mint plan）、`mint` 工具（CLI 进程内、零授权）、审批门禁
+ * （每会话一次，`autoApprove` 可自动放行）、跨项目写门禁、skill 自动安装、面板只读路由
+ * （`src/host/routes.ts`）、plan DAG（`mint_plan_dag`、子代理生命周期配对、tab 轮询的只读路由）。
  */
 export function apply(ctx: DshContext, config: Config): void {
   if (config.autoInstallSkill !== false) {
@@ -119,10 +93,8 @@ export function apply(ctx: DshContext, config: Config): void {
   installSessionLedger(ctx, mintEntry);
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
-  // Plan mode without a DAG is invisible (an empty graph never opens
-  // the panel), so the research discipline gets a soft nudge per gap — the
-  // missing document, then an `init` that is still node-less. It reads the same
-  // plan-mode answer as the exit gate above (`src/plan-mode.ts`).
+  // 没有 DAG 的计划模式在面板上不可见（空图不会开面板），研究纪律因此在两种缺口上各给一次软提醒：
+  // 文档缺失，以及 `init` 之后仍无节点。它读的是与上面的退出门禁同一份计划模式答案（`src/host/plan-mode.ts`）。
   installDagPlanReminder(ctx);
   installMintTool(ctx, mintEntry);
   // The DAG tool and its subagent pairing are registered on the root

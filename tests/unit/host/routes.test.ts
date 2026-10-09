@@ -188,7 +188,6 @@ describe('route argv builders', () => {
       const pathname = `${ROUTE_PREFIX}/${name}`;
       expect(pathname === ROUTE_PREFIX || pathname.startsWith(`${ROUTE_PREFIX}/`)).toBe(true);
     }
-    // A neighbouring path is not ours.
     expect('/dsh-mint-other'.startsWith(`${ROUTE_PREFIX}/`)).toBe(false);
   });
 
@@ -284,6 +283,8 @@ describe('route argv builders', () => {
     }
   });
 
+  // 面板只读：所有 list/detail 构造器与 meta 字典 argv 都不得拼出写命令。
+  // 逐条 argv 断言首个子命令落在 READ_ONLY_SUBCOMMANDS，且整串不含任何写动词。
   it('never builds a mutating command', () => {
     const params = new URLSearchParams({ status: 'open', search: 'x' });
     const argvs = [
@@ -312,6 +313,8 @@ describe('route argv builders', () => {
     expect(buildDetailArgv('milestone', 2)).toEqual(['milestone', 'show', '2', '--json']);
   });
 
+  // 查询值不得变成命令行开关：以 `--` 开头、超长、含控制字符的输入一律拒收。
+  // 直接喂 URLSearchParams 三种坏值断言抛 RouteRequestError，空值则返回 undefined。
   it('refuses values that could become flags', () => {
     expect(() => filterValue(new URLSearchParams({ search: '--all-states' }), 'search')).toThrow(
       RouteRequestError
@@ -341,6 +344,8 @@ describe('route argv builders', () => {
     expect(() => parsePageQuery(new URLSearchParams({ page: 'two' }))).toThrow(RouteRequestError);
   });
 
+  // issue body 按字节截断：超限只留 BODY_MAX_BYTES，多字节字符绝不能被切半。
+  // 真实 truncateBody 吃四种输入：短串、null、超限 ASCII、整串汉字。
   it('truncates a body on a byte boundary', () => {
     expect(truncateBody('短')).toEqual({ body: '短', truncated: false });
     // mint's own "no body" answer passes through untouched.
@@ -451,6 +456,8 @@ describe('container list policy', () => {
 });
 
 describe('mint routes', () => {
+  // 项目目录只取会话上下文：面板自带的 cwd 查询参数不得改变 mint 的运行目录。
+  // harness 把会话 cwd 固定为 /proj，请求里再塞 cwd=/etc，断言 run 收到的 cwd。
   it('reads the session project, never a browser-supplied path', async () => {
     const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify({ items: [ISSUE_ITEM] }) });
     const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1&cwd=/etc`);
@@ -622,6 +629,8 @@ describe('mint routes', () => {
     expect(res.json()).toMatchObject({ ok: false });
   });
 
+  // CLI 失败是正常载荷而非 HTTP 错误：面板要读 ok/error/stderr，不能被 5xx 打断。
+  // run 桩返回非字符串（harness 视为失败），断言 200 与降级后的 JSON 载荷。
   it('reports a CLI failure as a normal payload, not an HTTP error', async () => {
     const { handler } = harness({ cwd: '/proj', result: 1 });
     const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1`);
@@ -665,6 +674,8 @@ describe('mint routes', () => {
     expect(run.runs).toHaveLength(6);
   });
 
+  // meta 的三张字典是一致性整体：任一张读失败就整包拒答，不发布半个字典。
+  // byArgv 只让 plan 那次读失败，断言 200 与 ok:false 的降级载荷。
   it('refuses the whole response when a dictionary read fails', async () => {
     const run = harness({
       cwd: '/proj',
@@ -702,6 +713,8 @@ describe('mint routes', () => {
     expect(res.body).toBe('');
   });
 
+  // 路由守卫总表：未知会话 400、未知路径 404、坏 id 400、非 GET 405 且 Allow: GET。
+  // 同一个 handler 连发四个请求，逐个断言状态码、错误体与 Allow 响应头。
   it('refuses an unknown session, an unknown route, a bad id, and a non-GET', async () => {
     const unknownSession = harness({ cwd: undefined, result: '{}' });
     const refused = await invoke(unknownSession.handler, `${ROUTE_PREFIX}/issues?session=gone`);
@@ -956,6 +969,8 @@ describe('the plan DAG route', () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  // DAG 路由按文件寻址：没有活会话也照答，且绝不触发一次 mint CLI 运行。
+  // harness 让 getCwd 返回 undefined 并收集 runs，断言 200、dag:null 与空 runs。
   it('is file-keyed: it answers without a live session and spawns no CLI', async () => {
     const { handler, runs } = harness({ cwd: undefined, dagDir: dir });
     const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`);
@@ -1128,6 +1143,8 @@ describe('the plan DAG route', () => {
     });
   });
 
+  // 坏 DAG 文件是降级而非报错：仍答 200、dag:null，并把原因写进 warnings。
+  // 往 tmpdir 的 dag 路径写半截 JSON，断言 warnings 里有 unreadable dag 片段。
   it('names an unreadable file and keeps answering 200', async () => {
     mkdirSync(dir, { recursive: true });
     writeFileSync(dagFilePath('s1', dir), '{ nope', 'utf8');
@@ -1153,6 +1170,8 @@ describe('the plan DAG route', () => {
     expect(res.json()).toMatchObject({ ok: true, dag: null });
   });
 
+  // session 会被拼进文件路径：穿越片段、含斜杠、超长与空值一律 400 拒收。
+  // 循环喂四种坏 id（含 '' 与 65 长串），再断言缺参也按空 id 同样拒绝。
   it('refuses a session id that could not be a path segment', async () => {
     const { handler } = harness({ cwd: '/proj', dagDir: dir });
     for (const session of ['', '../../etc/passwd', 'a/b', 'x'.repeat(65)]) {

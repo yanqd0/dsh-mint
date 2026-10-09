@@ -161,6 +161,8 @@ describe('parseMintVersion', () => {
     expect(parseMintVersion('mint 0.8.0-alpha.1\n')).toBe('0.8.0-alpha.1');
   });
 
+  // 解析不出模式时答 undefined：调用方据此走「CLI 未就绪」的降级，而不是编一个版本。
+  // 覆盖 undefined、空串与 `mint unknown` 三种不可解析输出。
   it('returns undefined for empty or unversioned output', () => {
     expect(parseMintVersion(undefined)).toBeUndefined();
     expect(parseMintVersion('')).toBeUndefined();
@@ -264,6 +266,8 @@ describe('runMint', () => {
     expect(second).toMatchObject({ timeout: MINT_TIMEOUT_MS });
   });
 
+  // 第一次跑失败必须保住冷启动预算：mint-faa 可能还没下完二进制，退回常规超时会连环失败。
+  // 桩两次 spawn（先失败后成功），断言第二次仍带 MINT_COLD_TIMEOUT_MS。
   it('keeps the cold budget when the first run failed', async () => {
     fakeChild({ exitCode: 2, stderr: 'download failed' });
     await runMint('/proj', ['list']);
@@ -333,6 +337,8 @@ describe('runMint', () => {
     expect(options).toMatchObject({ timeout: 1234 });
   });
 
+  // 非零退出是「mint 说不行」而不是宿主异常：必须以错误结果返回，不能 reject。
+  // 桩子进程退出码 2 + stderr，断言 resolve 出的 ok/error/exitCode。
   it('resolves nonzero exit as an error, not a rejection', async () => {
     fakeChild({ exitCode: 2, stderr: 'boom' });
     const result = await runMint('/proj', ['list', '--json']);
@@ -404,6 +410,8 @@ describe('runMint', () => {
     expect(child.kill).toHaveBeenCalledWith('SIGTERM');
   });
 
+  // abort 之后迟到的 close 必须忽略：否则同一个子进程二次结算，结果被覆盖。
+  // 手动子进程先 abort，等结果落定后再 emit close(0)，断言仍是 aborted。
   it('ignores a late close event after aborting', async () => {
     const controller = new AbortController();
     const child = manualChild();

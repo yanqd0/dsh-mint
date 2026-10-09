@@ -280,6 +280,8 @@ describe('subagent/end persists a sample', () => {
     expect(read.doc.samples?.['a']?.tokens).toBe(124);
   });
 
+  // 读数缓存契约：子代理走后仍要能被后到的读者落盘，`lastMeasurement` 必须留得住。
+  // 跑完一次 `end`，直接从模块级缓存读 `lastMeasurement(SESSION, 'a')` 断言 tokens。
   it('remembers the reading, so a later reader can persist it without the child', async () => {
     await seedNode(SESSION, PAIRED_NODE);
     const events = harness();
@@ -319,6 +321,8 @@ describe('subagent/end persists a sample', () => {
     expect(read.doc.revision).toBe(2);
   });
 
+  // 精简组合的降级：拿不到 `sessionProjections` 服务时跳过采样，监听器绝不因此抛出。
+  // 用 `withoutProjections()` 摘掉服务，断言不抛、没有 samples，但结算照旧发生。
   it('skips the sample without a projection registry, and never throws', async () => {
     await seedNode(SESSION, PAIRED_NODE);
     const events = harness();
@@ -356,6 +360,8 @@ describe('subagent/end persists a sample', () => {
     expect(read.doc.nodes[0]).toMatchObject({ agent: 'someone-else', status: 'running' });
   });
 
+  // 不许凭空建图：子代理的归属会话没有文档时，收尾不得替它新建一份。
+  // 让注册表把父会话答成 `lonely`（从未写过文档），断言它的状态仍是 missing。
   it('never creates a document for a child it knows nothing about', async () => {
     const events = harness();
     measurable(events);
@@ -630,6 +636,8 @@ describe('withSample', () => {
     expect(next?.samples?.['a']).toEqual({ tokens: 400, at: 5 });
   });
 
+  // 采样幂等边界：同一个 `at` 已存过时必须 skip，绝不能重复写或改写节点 tokens。
+  // 造一份已带 `{a: {tokens, at}}` 的文档，断言 `withSample` 返回 undefined。
   it('同一 at 已存过就 skip，也不写 tokens', () => {
     const stored: DagDoc = { ...doc(999), samples: { a: { tokens: 400, at: 5 } } };
     expect(withSample(stored, 'a', { tokens: 400, at: 5 }, 'T2', 400)).toBeUndefined();

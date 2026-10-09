@@ -38,6 +38,8 @@ describe('apiPath', () => {
 });
 
 describe('queryString', () => {
+  // 查询串是面板向路由传参的唯一通道：空值必须消失，中文与空格按 URL 编码。
+  // 一组混杂输入（有值 / undefined / 空串）加中文，最后验空对象答空串。
   it('drops empty and undefined values and escapes the rest', () => {
     expect(queryString({ a: '1', b: undefined, c: '' })).toBe('?a=1');
     expect(queryString({ search: '面板 x' })).toBe('?search=%E9%9D%A2%E6%9D%BF+x');
@@ -72,6 +74,8 @@ describe('createApi', () => {
     expect(calls[0]?.url).toBe('/dsh-mint/milestones?session=s1&page=2&pageSize=10&allStates=1');
   });
 
+  // 路由的失败信封必须原样到达面板：多包或改写一层，面板的 ok/error 分支就认不出。
+  // 桩 fetch 答 400 与 `{ok:false,error}`，断言返回对象逐字相等。
   it('passes a failure envelope through untouched', async () => {
     const api = createApi({
       sessionId: 's1',

@@ -19,6 +19,8 @@ describe('applyDagWrite', () => {
     });
   });
 
+  // 无文档时的门禁：`add`/`set` 必须先 `init`，错误文案要给出可直接照做的下一步。
+  // 传 `undefined` 当作文档，断言 add 返回完整文案、set 也含「暂无 DAG」。
   it('refuses add/set when the session has no document yet', () => {
     expect(applyDagWrite({ action: 'add', nodes: [], edges: [] }, undefined, SESSION, NOW)).toEqual({
       error: '本会话暂无 DAG；先用 action="init" 建立，再 add/set',
@@ -58,6 +60,8 @@ describe('applyDagWrite', () => {
     expect(current.nodes).toHaveLength(1);
   });
 
+  // 写入前的三道校验：重复 id、未知依赖（含边指向）与成环（含自环、纯边闭环）都必须拒绝。
+  // 同一用例依次喂三种坏输入，断言错误文案分别点名「已存在」、排序后的未知依赖与「成环」。
   it('rejects an add whose ids already exist or whose graph is broken', () => {
     const current = doc({ nodes: [node({ id: 'a' })] });
     expect(
@@ -123,6 +127,8 @@ describe('applyDagWrite', () => {
     expect(errorOf(edgeCycle)).toContain('成环');
   });
 
+  // 规模上限：节点数到顶后再 add 必须拒绝，且同时报出上限与当前值。
+  // 用 `DAG_NODE_MAX` 条夹具节点铺满文档，再塞一个 extra，断言完整错误文案。
   it('bounds the document at the node ceiling', () => {
     const nodes = Array.from({ length: DAG_NODE_MAX }, (_, index) => node({ id: `n${String(index)}` }));
     const full = doc({ nodes });

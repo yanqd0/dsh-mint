@@ -182,6 +182,8 @@ describe('layoutDag', () => {
     expect(layout.boxes.map((b) => b.id)).toEqual(['c', 'b', 'a']);
   });
 
+  // 空文档也要给出最小画幅：零尺寸画布在面板上是一片点不动的空白。
+  // 传空 nodes/edges，断言 boxes/edges 为空而宽高是最小框。
   it('gives an empty document a minimal frame instead of a zero-size one', () => {
     const layout = layoutDag(view([]));
     expect(layout.boxes).toEqual([]);
@@ -303,12 +305,16 @@ describe('nodeMetricsMap', () => {
     expect(map['a']).not.toBe(samples.a);
   });
 
+  // 0 是量到的读数而不是缺失：tokens/elapsed_ms 为 0 必须原样保留。
+  // 用一张全零指标表断言 map 里仍是 {0,0}。
   it('keeps a zero measurement, which is a fact and not an absence', () => {
     expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 0, elapsed_ms: 0 } } })).toEqual({
       a: { tokens: 0, elapsed_ms: 0 },
     });
   });
 
+  // 文档里没有的节点不得带指标进面板：否则会画出一份幽灵读数。
+  // 指标表只给 ghost，断言 map 为空。
   it('drops a measurement for a node the document does not carry', () => {
     expect(nodeMetricsMap({ dag: doc, metrics: { ghost: { tokens: 1 } } })).toEqual({});
   });

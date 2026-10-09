@@ -22,7 +22,6 @@ import {
   isDagVerdict,
 } from './validate.js';
 
-/** One `add` node entry, validated against the shape rules (not the graph). */
 function checkAddNode(raw: unknown): DagAddNode | { error: string } {
   if (!isRecord(raw)) return { error: 'nodes 的每一项必须是对象' };
   const id = checkNodeId(raw.id);
@@ -60,11 +59,6 @@ function checkAddNode(raw: unknown): DagAddNode | { error: string } {
   };
 }
 
-/**
- * Validate raw tool arguments into a typed action.
- *
- * @param raw - the tool call's arguments, however malformed.
- */
 export function parseDagAction(raw: unknown): DagAction | { error: string } {
   if (!isRecord(raw)) return { error: '参数必须是对象' };
   const { action } = raw;

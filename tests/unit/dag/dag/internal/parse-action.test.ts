@@ -4,6 +4,8 @@ import { DAG_LABEL_MAX, DAG_NOTE_MAX, parseDagAction } from '../../../../../src/
 import { addNode, errorOf } from './helpers.js';
 
 describe('parseDagAction', () => {
+  // 入参门禁：工具参数来自模型，非对象或没有已知 action 时一律拒绝并点名 action。
+  // 依次喂 `undefined`、字符串、空对象与未知 action，断言错误文案分别含「对象」与「action」。
   it('refuses arguments that are not an object or carry no known action', () => {
     expect(errorOf(parseDagAction(undefined))).toContain('对象');
     expect(errorOf(parseDagAction('init'))).toContain('对象');
@@ -31,6 +33,8 @@ describe('parseDagAction', () => {
     expect(errorOf(parseDagAction({ action: 'add', nodes: 'a' }))).toContain('nodes');
   });
 
+  // 字段契约总表（add）：每个节点字段的拒绝形状，以及去重 depends_on、缺省 phase 两条规范化。
+  // 先给合法输入断言规范化结果，再逐字段喂空值/超长/控制字符/类型错/重复 id 断言报错字段。
   it('checks every node field add carries', () => {
     const good = parseDagAction({
       action: 'add',
@@ -83,6 +87,8 @@ describe('parseDagAction', () => {
     );
   });
 
+  // 字段契约总表（set）：status/verdict 的搭配、note 上限、tokens 非负整数、agent 长度都要挡住。
+  // 先断言两条合法 set 的原样解析，再逐字段喂非法样本，断言错误文案点名对应字段。
   it('checks every field set carries', () => {
     expect(parseDagAction({ action: 'set', id: 'a', status: 'running' })).toEqual({
       action: 'set',

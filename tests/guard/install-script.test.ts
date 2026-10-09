@@ -73,6 +73,8 @@ function run(l: Layout, args: string[]): { status: number; argv: string; stderr:
  * the historical default — the dev symlink — has to survive the delegation.
  */
 describe('scripts/install-dsh.sh', () => {
+  // 缺省形态的历史契约：不给模式必须等同 `--link`（开发期符号链接），`--force` 原样带上。
+  // 造一份含 stub CLI 的包布局，让 stub 把收到的 argv 写进标记文件再读回断言。
   it('delegates the dev symlink form when no mode is given', () => {
     const l = layout();
     expect(run(l, [])).toMatchObject({ status: 0, argv: '--link' });
@@ -87,6 +89,8 @@ describe('scripts/install-dsh.sh', () => {
     expect(run(l, ['--uninstall', '--force']).argv).toBe('--uninstall --force');
   });
 
+  // 降级路径：产物缺席时必须拒绝并给出能照做的替代（`pnpm build` 与手工指令），不许瞎猜。
+  // 造一份只有 wrapper、没有 `dist/install-skill.js` 的布局，跑 `--status` 断言退出码与 stderr 文案。
   it('refuses to guess without a build, and names the manual fallback', () => {
     const l = layout(false);
 

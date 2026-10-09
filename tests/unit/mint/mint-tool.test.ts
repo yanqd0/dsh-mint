@@ -58,6 +58,8 @@ describe('validateMintArgs', () => {
     ).toBeUndefined();
   });
 
+  // 危险子命令（delete/import/sync/export/tui）在工具层就要拒掉：CLI 面不提供，下游兜不住。
+  // 逐条断言 validateMintArgs 给出可读的中文理由。
   it('rejects dangerous root subcommands with a readable reason', () => {
     for (const root of ['delete', 'import', 'sync', 'export', 'tui']) {
       expect(validateMintArgs([root])).toContain('不允许的子命令');
@@ -112,6 +114,8 @@ describe('validateMintArgs', () => {
     expect(validateMintArgs(['-p', 'other', 'delete', '42'])).toContain('不允许的子命令');
   });
 
+  // argv 是外部输入：空数组、非数组与畸形项都要在跑 mint 之前被拒。
+  // 列出这些输入，逐条断言返回可读理由而不是抛。
   it('rejects empty or malformed argv', () => {
     expect(validateMintArgs([])).toContain('不能为空');
     expect(validateMintArgs('list')).toContain('不能为空');
@@ -193,6 +197,8 @@ describe('executeMintTool', () => {
     expect(runMintMock).toHaveBeenCalledTimes(1);
   });
 
+  // 读不到项目列表必须 fail closed：探针失败不等于「目标存在」，不能就此放行。
+  // 桩 project list 失败，断言 ok:false、stderr 说明无法校验，且 mint 只被调用一次。
   it('fails closed when the project list cannot be read', async () => {
     runMintMock.mockResolvedValueOnce({ ok: false, exitCode: 1, error: 'boom' });
     const outcome = await executeMintTool('/proj', ['-p', 'other', 'list']);
@@ -369,6 +375,8 @@ describe('installMintTool', () => {
     expect(ownProjectOf('/proj', undefined)).toBeUndefined();
   });
 
+  // 会话自己的项目不该带 `-p`：带了要在结果里给出纠正提示（默认项目即会话 cwd）。
+  // 预置 own-project 备忘，断言 hint 点名 `-p dsh-mint` 且渲染在 stdout 之后。
   it('attaches a correction hint when -p names the session’s own project', async () => {
     runMintMock.mockResolvedValueOnce({ ok: true, text: '[{"name":"dsh-mint"}]' });
     runMintMock.mockResolvedValueOnce({ ok: true, text: 'started' });

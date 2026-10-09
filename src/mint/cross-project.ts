@@ -4,32 +4,28 @@ import { isRecord } from './mint-json.js';
 import { hasControlCharacter, isControlChar } from '../shared/text.js';
 
 /**
- * Cross-project mint calls: `--project` parsing, read/write classification and
- * the existence probe.
+ * 跨项目 mint 调用：`--project` 解析、读/写分类与存在性探测。
  *
- * `mint -p <name>` does not "fail" for an unknown name — it **creates** the
- * project (`projects/<name>/<machine_id>.db`) and registers a row whose
- * `abs_dir` is the *session cwd* (`src/cli/run.rs`, `src/db/mod.rs`,
- * `src/project.rs` upstream). A typo therefore lands as a phantom project
- * pointing at this repository, so the tool resolves the target against the real
- * project list **before** spawning anything.
+ * `mint -p <name>` 对未知名字不是「失败」——它**创建**该项目
+ * （`projects/<name>/<machine_id>.db`），并登记一行 `abs_dir` 指向*会话 cwd*（上游
+ * `src/cli/run.rs`、`src/db/mod.rs`、`src/project.rs`）。所以一个错别字会落成指向本仓库的
+ * 幽灵项目，工具因此在 spawn 任何东西**之前**先对真实项目清单校验目标。
  *
- * Everything here is a thin, testable layer over mint's own flags: no format
- * logic (mint's TSV/JSON goes through verbatim) and no data access other than
- * `project list --json`, which is a directory scan with no database side effect
- * (`needs_conn = false` for `project list`).
+ * 这里的一切都是 mint 自己旗标之上的薄、可测层：没有格式逻辑（mint 的 TSV/JSON 逐字通过），
+ * 也没有除 `project list --json` 之外的数据访问，而后者是目录扫描、无数据库副作用
+ * （`project list` 的 `needs_conn = false`）。
  */
 
-/** Audited-prefix of the approval reason this module asks with. */
+/** 本模块发问的审批理由的受审前缀。 */
 export const CROSS_PROJECT_REASON_PREFIX = 'cross-project write → project ';
 
-/** How many candidate project names an actionable error may carry. */
+/** 一条可行动错误最多携带多少个候选项目名。 */
 const MAX_CANDIDATES = 20;
 
-/** Model-supplied argv rendering bound in the approval prompt. */
+/** 审批提示里模型提供的 argv 渲染上限。 */
 const MAX_ACTION_CHARS = 160;
 
-/** Value-less global flags mint accepts before the subcommand. */
+/** mint 在子命令之前接受的无值全局旗标。 */
 const VALUE_LESS_GLOBAL_FLAGS: readonly string[] = [
   '--help-llm',
   '-V',
@@ -38,62 +34,60 @@ const VALUE_LESS_GLOBAL_FLAGS: readonly string[] = [
   '--help',
 ];
 
-/** Sub-name position of `issue`/`plan`/`milestone` that only reads. */
+/** `issue`/`plan`/`milestone` 里只读的子名。 */
 const READ_LEAVES: ReadonlySet<string> = new Set(['list', 'show', 'get']);
 
-/** Roots whose leaves are split into read/write by `READ_LEAVES`. */
+/** 子名按 `READ_LEAVES` 分读/写的根。 */
 const CONTAINER_ROOTS: ReadonlySet<string> = new Set(['issue', 'plan', 'milestone']);
 
-/** `mint label` leaves. */
+/** `mint label` 的子名。 */
 const LABEL_READ_LEAVES: ReadonlySet<string> = new Set(['list']);
 
-/** `mint project <leaf>` that never touches an existing project ledger. */
+/** `mint project <leaf>` 里从不碰既有项目台账的。 */
 const PROJECT_LEDGER_EXEMPT: ReadonlySet<string> = new Set(['create']);
 
 /**
- * Shell shapes this layer refuses to interpret (quotes, expansions, redirects,
- * globbing). `~` is deliberately absent: `cd ~/repo && mint …` is the idiom this
- * channel exists for, and nothing here expands paths.
+ * 本层拒绝解释的 shell 形状（引号、展开、重定向、通配）。`~` 刻意不在其中：
+ * `cd ~/repo && mint …` 正是这条通道存在的理由，而这里什么都不展开路径。
  */
 const UNSAFE_SHELL = /["'`\\$(){}<>*?!#]/;
 
-/** One `NAME=value` shell assignment prefix. */
+/** 一段 `NAME=value` 形式的 shell 赋值前缀。 */
 const SHELL_ASSIGNMENT = /^[A-Za-z_][A-Za-z0-9_]*=/;
 
-/** A command word that is mint itself (`mint`, `/home/u/bin/mint`, …). */
+/** 就是 mint 自己的命令词（`mint`、`/home/u/bin/mint`…）。 */
 const MINT_COMMAND_WORD = /(^|[/\\])mint$/;
 
-/** The mint CLI's project environment variable. */
+/** mint CLI 的项目环境变量。 */
 const PROJECT_ENV = 'MINT_PROJECT';
 
-/** The mint CLI's single-file override; disables project selection. */
+/** mint CLI 的单文件覆写；会禁用项目选择。 */
 const DB_ENV = 'MINT_DB_PATH';
 
 export interface Invocation {
-  /** The argv as handed to the tool, unchanged. */
+  /** 交给工具的 argv，未改动。 */
   readonly argv: readonly string[];
-  /** argv minus the leading global flags: `[<subcommand>, …]`. */
+  /** argv 去掉前导全局旗标：`[<subcommand>, …]`。 */
   readonly rest: readonly string[];
   /**
-   * Explicit target project (a `-p`/`--project` value, else `MINT_PROJECT`).
-   * Absent means "the session's own project" (the default).
+   * 显式目标项目（`-p`/`--project` 的值，否则 `MINT_PROJECT`）。缺失表示「会话自己的项目」
+   * （默认）。
    */
   readonly project?: string;
-  /** Where {@link Invocation.project} came from. */
+  /** {@link Invocation.project} 的来源。 */
   readonly projectSource?: 'flag' | 'env';
-  /** A value-less global flag standing alone (`mint -V`). */
+  /** 单独出现的无值全局旗标（`mint -V`）。 */
   readonly rootFlag?: string;
-  /** Unacceptable argv with a model-readable reason; refuses the call as-is. */
+  /** 不可接受的 argv 及其模型可读理由；按原样拒绝该调用。 */
   readonly problem?: string;
 }
 
-/** {@link Invocation} as built incrementally by {@link parseInvocation}. */
+/** {@link Invocation} 在 {@link parseInvocation} 里被逐段构建时的形态。 */
 type MutableInvocation = { -readonly [K in keyof Invocation]: Invocation[K] };
 
 /**
- * Mirror of mint's `validate_project_name` (trimmed emptiness, `.`/`..`, path
- * separators, control characters). mint validates the trimmed value but builds
- * the path from the raw one, so the raw value is what gets looked up.
+ * mint 的 `validate_project_name` 的镜像（去空白后为空、`.`/`..`、路径分隔符、控制字符）。
+ * mint 校验的是去空白后的值，却用原值拼路径，所以要查的是原值。
  */
 export function projectNameProblem(name: string): string | undefined {
   const trimmed = name.trim();
@@ -110,14 +104,11 @@ export function projectNameProblem(name: string): string | undefined {
 }
 
 /**
- * Split argv into leading global flags and the subcommand invocation, pulling
- * out the target project on the way.
+ * 把 argv 拆成前导全局旗标与子命令调用，顺路取出目标项目。
  *
- * `-p`/`--project` is **not** a clap global flag upstream, so it only counts
- * before the subcommand: `mint list --project x` is a usage error. A flag found
- * after the subcommand (or a duplicate) is reported as a problem instead of
- * being passed on — the CLI would exit 2 anyway, and a clear reason beats a
- * pointless approval prompt.
+ * `-p`/`--project` 上游**不是** clap 全局旗标，所以它只在子命令之前才算数：
+ * `mint list --project x` 是用法错误。子命令之后出现的旗标（或重复）被报成 problem 而不是
+ * 放行——CLI 反正会以 2 退出，而一条清楚的理由胜过一次无谓的审批提示。
  */
 export function parseInvocation(
   argv: readonly string[],
@@ -168,7 +159,7 @@ export function parseInvocation(
       continue;
     }
     if (token === '--db') {
-      // Denied by the tool before this runs; consumed so scanning stays aligned.
+      // 工具在这之前就拒了；这里消费掉它，好让扫描保持对齐。
       leading.push(token);
       index += 1;
       const value = tokens[index];
@@ -224,7 +215,7 @@ export function parseInvocation(
   return result;
 }
 
-/** True for a token that names the project flag in any accepted spelling. */
+/** 一个 token 是否以任何被接受的拼法点出 project 旗标。 */
 function isProjectFlagToken(token: string): boolean {
   return (
     token === '-p' ||
@@ -235,22 +226,17 @@ function isProjectFlagToken(token: string): boolean {
 }
 
 /**
- * True when the invocation can **write** to the target ledger. Reads are an
- * explicit allowlist (mint's own read leaves); anything unrecognised counts as
- * a write, so a new mint subcommand cannot slip past the gate.
+ * 该调用是否能**写**目标台账。读是一份显式白名单（mint 自己的只读子名）；任何不认识的都算
+ * 写，于是新增的 mint 子命令无法溜过门禁。
  *
- * The whole {@link Invocation} is taken rather than its `rest`, because an empty
- * `rest` is not a write: `parseInvocation` moves every value-less global flag
- * (`-V`, `--version`, `--help*`) into `leading`, so `rest` is empty exactly when
- * the caller asked for the CLI's version/help — or for nothing at all, which is
- * a usage error (exit 2) that touches no ledger. Classifying either as a write
- * asked the user to confirm a pure read, and a subagent (approvals pinned to
- * `never`) could not run it at all.
+ * 取整个 {@link Invocation} 而非它的 `rest`，因为空的 `rest` 不是写：`parseInvocation` 把
+ * 每个无值全局旗标（`-V`、`--version`、`--help*`）都挪进了 `leading`，所以 `rest` 为空恰好
+ * 说明调用方要的是 CLI 的版本/帮助——或者什么都没要，那是用法错误（退出 2）、不碰台账。把
+ * 两者任一归类成写，就是让用户去确认真空上的纯读，而子代理（审批钉成 `never`）根本跑不了。
  *
- * A help token **inside** `rest` never downgrades the call: the leading scan has
- * already taken the root-level ones, so anything left is an argument of the
- * subcommand and may be a value — `issue add -- --help` creates an issue titled
- * `--help`. Such a call stays a write.
+ * `rest` **内部**的 help token 从不降级该调用：前导扫描已经取走根级那些，剩下的都是子命令的
+ * 参数、可能是某个取值——`issue add -- --help` 会创建一条标题为 `--help` 的 issue。这样的调用
+ * 仍是写。
  */
 export function isWriteInvocation(invocation: Invocation): boolean {
   const { rest } = invocation;
@@ -258,8 +244,7 @@ export function isWriteInvocation(invocation: Invocation): boolean {
   const leaf = rest[1];
   if (root === undefined) return false;
   if (root === 'list' || root === 'show' || root === 'search') return false;
-  // `doctor` is a read-only health check: it touches no ledger, so a
-  // cross-project `-p <other> doctor` is not something to confirm.
+  // `doctor` 是只读健康检查：不碰任何台账，所以跨项目的 `-p <other> doctor` 不需要确认。
   if (root === 'doctor') return false;
   if (root === 'help') return false;
   if (CONTAINER_ROOTS.has(root)) {
@@ -274,12 +259,9 @@ export function isWriteInvocation(invocation: Invocation): boolean {
 }
 
 /**
- * Extract the mint invocations of a **simple** shell command (the bash
- * channel). Only commands whose tokens this layer can read are returned:
- * quotes, substitutions, redirects and globbing make a command uninterpretable
- * here, and shell shapes it cannot read keep the pre-existing behaviour (the
- * sandbox escalation approval is still the human decision). Inline
- * `MINT_PROJECT=…` assignments are honoured because the CLI honours them.
+ * 抽出一条**简单** shell 命令（bash 通道）里的 mint 调用。只返回本层读得懂的 token 的命令：
+ * 引号、替换、重定向与通配会让命令在这里无法解释，而它读不懂的 shell 形状保持既有行为
+ * （沙箱提权审批仍由人决定）。内联的 `MINT_PROJECT=…` 赋值被采信，因为 CLI 采信它。
  */
 export function parseBashMintCalls(command: unknown): readonly Invocation[] {
   if (typeof command !== 'string' || UNSAFE_SHELL.test(command)) return [];
@@ -308,9 +290,8 @@ export function parseBashMintCalls(command: unknown): readonly Invocation[] {
 }
 
 /**
- * The model-facing action summary of an invocation: everything after the
- * global flags, control characters stripped and length-bounded, so a
- * model-supplied argv cannot reshape the approval prompt.
+ * 一条调用的面向模型动作摘要：全局旗标之后的全部内容，剥掉控制字符并限长，好让模型提供的
+ * argv 无法重塑审批提示。
  */
 export function renderAction(rest: readonly string[]): string {
   const cleaned = rest
@@ -319,7 +300,7 @@ export function renderAction(rest: readonly string[]): string {
   return cleaned.length <= MAX_ACTION_CHARS ? cleaned : `${cleaned.slice(0, MAX_ACTION_CHARS)}…`;
 }
 
-/** Audit reason + localized prompt copy for one cross-project write. */
+/** 一次跨项目写的受审理由 + 本地化提示文案。 */
 export function buildApprovalText(
   project: string,
   rest: readonly string[]
@@ -335,10 +316,8 @@ export function buildApprovalText(
 }
 
 /**
- * Recover the target project from an approval reason this module built. The
- * name sits immediately after the prefix and cannot span a `"`; anything
- * unexpected yields `undefined`, which means "no session grant" — the next
- * write asks again.
+ * 从本模块构造的审批理由里还原目标项目。名字紧跟在前缀之后、不可能跨过 `"`；任何非预期形状都
+ * 返回 `undefined`，那表示「本会话没有授权」——下一次写会再问。
  */
 export function projectFromReason(reason: unknown): string | undefined {
   if (typeof reason !== 'string' || !reason.startsWith(CROSS_PROJECT_REASON_PREFIX))
@@ -350,7 +329,7 @@ export function projectFromReason(reason: unknown): string | undefined {
   return head.slice(1, end);
 }
 
-/** Actionable error for a target that is not a project on this machine. */
+/** 目标不是本机项目的可行动错误。 */
 export function missingProjectMessage(project: string, candidates: readonly string[]): string {
   const shown = candidates.slice(0, MAX_CANDIDATES).join(', ');
   return (
@@ -362,7 +341,7 @@ export function missingProjectMessage(project: string, candidates: readonly stri
   );
 }
 
-/** Actionable error when the project list itself could not be read. */
+/** 项目清单本身读不出来时的可行动错误。 */
 export function projectProbeFailureMessage(project: string): string {
   return (
     `无法校验目标项目 "${project}"：mint 的 project list 执行失败。` +
@@ -371,20 +350,15 @@ export function projectProbeFailureMessage(project: string): string {
 }
 
 /**
- * Names of the projects mint knows (`project list --json`).
+ * mint 知道的那些项目名（`project list --json`）。
  *
- * Returns `undefined` on any failure — callers fail closed. The command scans
- * the data directory without opening a database (`needs_conn = false`), so this
- * probe has no side effect on the target project.
+ * 任何失败都返回 `undefined`——调用方失败关闭。该命令只扫数据目录、不开数据库
+ * （`needs_conn = false`），所以这个探测对目标项目没有副作用。
  *
- * One cross-project tool call probes **twice** by design — the gate decides
- * before execution and the tool re-checks before spawning — so a successful
- * answer is remembered for {@link PROJECT_LIST_TTL_MS} and both callers share
- * one child process. Only successful reads are memoized: a failure still
- * means "fail closed", and a name that is not in the memoized answer is still
- * refused. The window is short by design: the probe is inherently a
- * time-of-check/time-of-use answer, so the cache does not widen the gap beyond
- * one refresh.
+ * 一次跨项目工具调用按设计探测**两次**——门禁在执行前决定、工具在 spawn 前复查——所以成功
+ * 答案会按 {@link PROJECT_LIST_TTL_MS} 记住，两个调用方共用一个子进程。只备忘成功的读：失败
+ * 仍意味着「失败关闭」，而不在备忘答案里的名字仍被拒。这个窗口刻意很短：探测本质上是
+ * time-of-check/time-of-use 的答案，所以缓存不会把间隙拉宽到超过一次刷新。
  */
 export async function listProjects(
   cwd: string,
@@ -413,29 +387,28 @@ export async function listProjects(
   return names as string[];
 }
 
-/** How long one successful project-list read answers both callers. */
+/** 一次成功的项目清单读给两个调用方用多久。 */
 export const PROJECT_LIST_TTL_MS = 5_000;
 
-/** The probe's answer, remembered per (cwd, entry) for {@link PROJECT_LIST_TTL_MS}. */
+/** 探测的答案，按 (cwd, entry) 记住 {@link PROJECT_LIST_TTL_MS}。 */
 const projectListCache = new Map<string, { at: number; names: readonly string[] }>();
 
 /**
- * Forget the memoized project list.
+ * 忘掉已备忘的项目清单。
  *
- * Two callers: the tests (state must not leak between cases) and the tool, after
- * a call that can change the answer — `project create` / `project set` would
- * otherwise be invisible for up to the TTL.
+ * 两个调用方：测试（状态不得跨用例泄漏）与工具——在一次可能改变答案的调用之后（否则
+ * `project create` / `project set` 会在长达 TTL 的时间里不可见）。
  */
 export function resetProjectCache(): void {
   projectListCache.clear();
 }
 
-/** Cache key: both the cwd and the entry decide what the probe sees. */
+/** 缓存键：cwd 与 entry 共同决定探测看到什么。 */
 export function projectCacheKey(cwd: string, entry: string | undefined): string {
   return `${entry ?? ''}\u0000${cwd}`;
 }
 
-/** True when the invocation can change what `project list` answers. */
+/** 该调用是否能改变 `project list` 的答案。 */
 export function mutatesProjectList(invocation: Invocation): boolean {
   const [root, leaf] = invocation.rest;
   return root === 'project' && (leaf === 'create' || leaf === 'set');

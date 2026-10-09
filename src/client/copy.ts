@@ -1,26 +1,22 @@
 /**
- * The panel's copy, in one place, in both locales.
+ * 面板的全部文案，集中一处、双语并列。
  *
- * `ZH` is the key-set source of truth (the repo's Chinese-first convention) and
- * `EN` is checked complete against it at compile time, so no key can exist in
- * one locale only and no key can drift into a different placeholder set.
- * Components only ever call `t()`: `{name}` filling is the locale service's job,
- * and its per-key fallback chain carries a language this dictionary does not
- * cover (say `ja` → `en`) instead of showing a raw key.
+ * `ZH` 是 key 集的真源（本仓中文优先），`EN` 在编译期被检查为对它的穷尽实现，故不会出现
+ * 只存在于一侧的 key，也不会出现占位符集合漂移。组件只调 `t()`：`{name}` 填充是 locale
+ * 服务的活，它按 key 逐级回退，可以把本字典没有的语言（比如 `ja` → `en`）接住，而不是
+ * 渲染出原始 key。
  *
- * Two kinds of string read the same in both locales ({@link KEPT_IN_ENGLISH}):
- * the `mint` brand, and the concept names the panel keeps in English. What mint
- * *writes* — status and kind values, `P0`–`P3`, versions, timestamps — stays
- * verbatim in both locales and never travels through this dictionary.
+ * 有两类字符串在两侧读起来一样（见 {@link KEPT_IN_ENGLISH}）：`mint` 这个品牌，以及面板
+ * 保留英文的概念名。mint *写出来*的东西——状态与 kind 取值、`P0`–`P3`、版本号、时间戳
+ * ——两侧都原样显示，从不经过本字典。
  */
 
-/** This plugin's locale namespace. */
 export const NS = 'mint';
 
-/** The translate function a locale namespace binds. */
+/** locale 命名空间绑定的翻译函数。 */
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
 
-/** Simplified Chinese: the key set every other locale is checked against. */
+/** 简体中文：其它 locale 的 key 集都以它为准。 */
 export const ZH = {
   'type.label': 'mint',
   'guide.title': 'mint 面板',
@@ -98,17 +94,15 @@ export const ZH = {
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
   'dag.tokens': '{tokens} tokens',
-  // The host's own measurement; `dag.tokens` above is the fallback for a node
-  // whose child the host could not measure, and the marker keeps them apart.
+  // 宿主自己实测出来的值；上面的 `dag.tokens` 是宿主测不到子代理时的退路，标记用来
+  // 把两者区分开。
   'dag.liveTokens': '{tokens} tokens（实测）',
   'dag.seconds': '秒',
-  // `at` is a local clock time, formatted by the caller: what is translated is
-  // the label, never the timestamp.
+  // `at` 是本地钟点、由调用方格式化：这里翻译的是标签，永远不是时间戳。
   'dag.measuredAt': '实测于 {at}',
   'dag.note': '结果原文',
-  // A node's isolated working tree: the branch it works on, and the state
-  // of that workspace. The four states are mint's own vocabulary, so they read
-  // the same in both locales (see `KEPT_IN_ENGLISH`).
+  // 节点独立的工作树：它所在的分支，以及该工作区的状态。四种状态是 mint 自己的词汇，
+  // 故两侧读起来一样（见 `KEPT_IN_ENGLISH`）。
   'dag.worktree.branch': '分支 {branch}',
   'dag.worktree.state.active': 'active',
   'dag.worktree.state.merged': 'merged',
@@ -117,10 +111,10 @@ export const ZH = {
   'dag.node.id': '{id}',
 } as const satisfies Record<string, string>;
 
-/** Every key the panel may ask for. A typo is a compile error, not a raw key. */
+/** 面板可以请求的全部 key：拼错是编译错误，而不是渲染成一个原始 key。 */
 export type CopyKey = keyof typeof ZH;
 
-/** English: exhaustive over {@link CopyKey}, so a missing key cannot ship. */
+/** 英语：对 {@link CopyKey} 穷尽，故漏掉一个 key 就发不出去。 */
 export const EN = {
   'type.label': 'mint',
   'guide.title': 'mint panel',
@@ -211,18 +205,15 @@ export const EN = {
 } as const satisfies Record<CopyKey, string>;
 
 /**
- * Keys whose two locales are intentionally identical.
+ * 两种 locale 有意取同一文本的 key。
  *
- * `mint` is a brand, and `Issue` / `Plan` / `Milestone` are mint's key concepts:
- * the panel names them in English whatever the active locale (the concept words
- * also stay English *inside* the Chinese sentences, e.g. `所属 plan`). The DAG
- * tab adds two more groups: the tab's own name (it *is* the plan's name), and the
- * enumerated values a node carries — `pending` / `running` / `done`, `pass` /
- * `fail`, `research` / `exec` are mint's vocabulary, and a tooltip that renamed
- * them would disagree with the tool the reader just called. The worktree states
- * (`active` / `merged` / `conflict` / `removed`) join the same group for
- * the same reason. The list is asserted in both directions by `copy.test.ts`, so
- * "kept in English" is a checked decision rather than a habit.
+ * `mint` 是品牌，`Issue` / `Plan` / `Milestone` 是 mint 的核心概念：无论当前是哪种
+ * locale，面板都用英文称呼它们（这些概念词在中文句子里也照样是英文，例如 `所属 plan`）。
+ * DAG tab 又添了两组：tab 自己的名字（它就是 plan 的名字），以及节点携带的枚举值——
+ * `pending` / `running` / `done`、`pass` / `fail`、`research` / `exec` 都是 mint 的
+ * 词汇，改名的 tooltip 会与读者刚调用过的工具对不上；worktree 状态
+ * （`active` / `merged` / `conflict` / `removed`）出于同样理由入列。`copy.test.ts` 双向
+ * 断言这份名单，所以「保留英文」是被检查过的决定，而不是随手。
  */
 export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'type.label',
@@ -244,24 +235,21 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'dag.worktree.state.merged',
   'dag.worktree.state.conflict',
   'dag.worktree.state.removed',
-  // A token count is a unit, not a sentence: `12 tokens` reads the same in both.
+  // 令牌数是一个单位而非句子：`12 tokens` 两侧读起来一样。
   'dag.tokens',
-  // A node id is an opaque identifier; nothing about it is language-specific.
+  // 节点 id 是不透明标识符，没有任何语言相关的部分。
   'dag.node.id',
 ];
 
-/** The panel's translate seat: keys are checked against {@link CopyKey}. */
+/** 面板的翻译座位：key 按 {@link CopyKey} 检查。 */
 export type CopyTranslate = (key: CopyKey, params?: Record<string, string | number>) => string;
 
 /**
- * Narrow a namespace-bound translator to the panel's key domain.
+ * 把命名空间绑定的翻译器收窄到面板的 key 域。
  *
- * The seat reads the active locale at call time (the bound function is stable),
- * so a language switch needs no re-registration. Interpolation is the locale
- * service's, and a key no locale carries renders as the key itself: a missing
- * translation is visible rather than silently falling back to Chinese.
- *
- * @param bound - `locale.bind(NS)`, read at call time.
+ * 这个座位在调用时才读当前 locale（绑定的函数是稳定的），所以切换语言无需重新注册。
+ * 插值交给 locale 服务；任何 locale 都没有的 key 渲染成 key 本身——缺翻译要看得见，
+ * 而不是悄悄回退到中文。
  */
 export function createTranslator(bound: Translate): CopyTranslate {
   return (key, params) => bound(key, params);

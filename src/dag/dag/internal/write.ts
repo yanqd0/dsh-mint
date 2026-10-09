@@ -8,7 +8,6 @@ import { DAG_NODE_MAX, DAG_VERSION } from './model.js';
 import type { DagDoc, DagNode, DagResult, DagWrite } from './model.js';
 import { findCycle, unknownDependencies } from './graph.js';
 
-/** A fresh document for one session; `init` rewrites the file with this. */
 export function emptyDag(session: string, title: string, now: string): DagDoc {
   return {
     version: DAG_VERSION,
@@ -22,14 +21,7 @@ export function emptyDag(session: string, title: string, now: string): DagDoc {
   };
 }
 
-/**
- * Apply one write action to the current document.
- *
- * @param action - a validated write action.
- * @param current - the stored document, or `undefined` when there is none.
- * @param session - the owning (root) session id.
- * @param now - ISO timestamp; a parameter so tests need no fake timers.
- */
+/** `now` 是参数而不是内部取时钟：为了让测试不必装假计时器。 */
 export function applyDagWrite(
   action: DagWrite,
   current: DagDoc | undefined,

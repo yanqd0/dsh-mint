@@ -29,7 +29,6 @@ import type {
   ToolResultLike,
 } from '../shared/types.js';
 
-/** The nodes whose worktrees are still on disk, in declaration order. */
 export function outstandingWorktrees(nodes: readonly DagNodeView[]): DagNodeView[] {
   return nodes.filter((node) => node.worktree !== undefined && node.worktree.state !== 'removed');
 }
@@ -62,10 +61,6 @@ export function worktreeSweepReminder(nodes: readonly DagNodeView[]): string {
   );
 }
 
-/**
- * `tools/post-execute` listener: after a successful `plan close`, append the
- * leftover-worktree list once, when there is one.
- */
 export async function worktreeSweepListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
@@ -93,13 +88,6 @@ export async function worktreeSweepListener(
   }
 }
 
-/**
- * Register the plan-close worktree sweep on `tools/post-execute`.
- *
- * @param ctx - the plugin's root context, so every session's tool calls are seen.
- * @param dagDir - DAG directory override; absent means {@link DAG_DIR} (tests
- *   point it at a temporary directory).
- */
 export function installWorktreeSweep(ctx: DshContext, dagDir?: string): () => void {
   return ctx.on(
     'tools/post-execute',

@@ -41,6 +41,8 @@ afterEach(() => {
   resetOwnProjectCache();
 });
 
+// 台账只认「本项目的 mint 写」：读、别的工具、出错的调用都不算这次会话记录过工作。
+// 用 mint 工具/bash 与 `-p` 同项目、他项目、备忘未命中的组合样本逐条断言。
 describe('isOwnProjectMintWrite', () => {
   it('counts own-project writes from the tool and from bash', () => {
     expect(isOwnProjectMintWrite(mintExec(['issue', 'state', 'start', '42']), success)).toBe(true);
@@ -127,6 +129,8 @@ describe('session ledger', () => {
     expect(takeRecordGapNotice('sess-1')).toBe(false);
   });
 
+  // 计划模式两态共用一格：后写的赢（不是两条独立事实），且有上限、可重置。
+  // 依次写 true/false、灌满 MAX_SESSIONS+5 条，断言取值、淘汰与 reset 后的空态。
   it('keeps the observed plan-mode state bounded, exclusive and resettable', () => {
     expect(planModeKnownState('sess-1')).toBeUndefined();
     notePlanModeState(undefined, true);
@@ -171,6 +175,8 @@ describe('session ledger', () => {
   });
 });
 
+// 台账挂在宿主两个事件入口上：tools/result 判本项目 mint 写，session 日志判计划模式退出。
+// 桩 ctx 捕获 handler 后逐类喂事件，断言记了什么、以及读不出的输入不抛。
 describe('installSessionLedger', () => {
   function makeCtx(): {
     ctx: DshContext;

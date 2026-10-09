@@ -158,6 +158,8 @@ describe('fetchOverview', () => {
     expect((await fetchOverview('/proj')).project).toBeUndefined();
   });
 
+  // 形状不符的 list --json 不能静默读成空 backlog，否则会话会误判无事可做。
+  // 桩 runMint 回 `{data: []}`（无 items 数组），断言 issues 为空但 warnings 点明原因。
   it('flags an unrecognized list shape instead of reporting an empty backlog', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ data: [] }) })
@@ -229,6 +231,8 @@ describe('fetchOverview', () => {
     expect(overview.issues).toEqual([]);
   });
 
+  // mint 执行失败是错误路径：必须把原始错误抛出，而不是降级成空概览。
+  // 桩 runMint 回一次 {ok:false,error}，断言 rejects.toThrow 原始 error 文本。
   it('throws on mint failure', async () => {
     runMintMock.mockResolvedValueOnce({ ok: false, error: 'mint: db not found' });
     await expect(fetchOverview('/proj')).rejects.toThrow('mint: db not found');
@@ -258,6 +262,8 @@ describe('fetchOverview', () => {
     expect(runMintMock).toHaveBeenNthCalledWith(4, '/proj', ['doctor', '--json']);
   });
 
+  // doctor 探测以 `-V` 版本为门禁：老 CLI 不许白花一次子进程。
+  // 桩 -V 回 mint 0.8.1，断言 doctor 为空且 runMint 恰被调用 3 次。
   it('does not spend a spawn on doctor for an older CLI', async () => {
     runMintMock
       .mockResolvedValueOnce({ ok: true, text: JSON.stringify({ items: [] }) })
@@ -356,6 +362,8 @@ describe('renderOverview', () => {
     expect(text).toContain('plan create --milestone 1');
   });
 
+  // 注入预算的硬边界：概览只列前 5 条，且必须报出真实总数。
+  // 直接造 9 条 issue 调 renderOverview，断言表头 top 5 of 9 且 `- #` 行恰 5 条。
   it('caps the issue list at five and states the real total', () => {
     const issues = Array.from({ length: 9 }, (_, index) => ({
       id: index + 1,
@@ -418,6 +426,8 @@ describe('renderOverview', () => {
     expect(text).not.toContain('(latest )');
   });
 
+  // 最多一个 running milestone 以 CLI 门禁为准：2 个必须告警，旧的手工重开建议不得回归。
+  // 直接喂两个 running milestone 给 renderOverview，断言出现 WARNING 与 --force、旧文案消失。
   it('warns on 2+ running milestones with the CLI guard, not a manual reopen', () => {
     const text = renderOverview({
       issues: [],
@@ -689,6 +699,8 @@ describe('registerMintContext', () => {
     expect(ownProjectOf('/elsewhere', undefined)).toBeUndefined();
   });
 
+  // 注入通道的降级契约：概览拉取失败要回空串，绝不能把异常抛进系统提示装配。
+  // 桩 runMint 一次失败，断言 provider() 最终为空串（waitFor 等异步落地）。
   it('degrades to empty text on mint failure', async () => {
     runMintMock.mockResolvedValueOnce({ ok: false, error: 'mint: db not found' });
     const { ctx, registered } = makeAgentCtx();
@@ -700,6 +712,8 @@ describe('registerMintContext', () => {
     expect(provider()).toBe('');
   });
 
+  // 入口不可解析必须显式告警：不能读成「空项目」让会话以为无事可做。
+  // 让 resolveMintEntry 抛一次，断言文本就是 MINT_ENTRY_WARNING 且 runMint 零调用。
   it('surfaces an unresolvable entry instead of reading as an empty project', async () => {
     vi.mocked(resolveMintEntry).mockImplementationOnce(() => {
       throw new Error('mint-faa missing');
@@ -736,6 +750,8 @@ describe('registerMintContext', () => {
     expect(registered[1]?.text).toBe(MINT_TOOL_GUIDANCE);
   });
 
+  // 工具优先口径是外部契约：正文只此一处，且绝不能带 bash 提权文案。
+  // 用 makeAgentCtx 收 section，断言 order 110、含「一律走宿主 mint 工具」、不含提权词。
   it('registers the tool-first guidance with no bash-escalation prompt', () => {
     const { ctx, sections } = makeAgentCtx();
     registerMintContext(ctx, '/proj');
@@ -821,6 +837,8 @@ describe('installOverviewChannel', () => {
     expect(registered).toHaveLength(1);
   });
 
+  // 子代理会话已继承 mint 工具，不能再注入一次：重复注入要吃掉上下文预算。
+  // 造 delegationDepth=1 的 agent 触发 agent/created，断言 registered 为空数组。
   it('skips subagent sessions, which already inherit the mint tool', () => {
     const { ctx, listeners } = makeRootCtx();
     installOverviewChannel(ctx);
@@ -846,6 +864,8 @@ describe('installOverviewChannel', () => {
     expect(registered.map((r) => r.name)).toEqual(['mint:overview']);
   });
 
+  // 宿主串行派发 agent/created，监听器抛错会连累后续 agent：必须自行吞错。
+  // 让 systemPrompt.context 抛错并再派一个空 payload，断言两次调用都不 throw。
   it('never throws out of a listener: agent/created is serial', () => {
     const { ctx, listeners } = makeRootCtx();
     installOverviewChannel(ctx);

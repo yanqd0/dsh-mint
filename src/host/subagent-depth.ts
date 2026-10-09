@@ -7,16 +7,12 @@
  * `.volatile()`，所以设置改完**下一次委派**就生效、不必重启）。`ctx.get('subagents')`
  * 免 `inject` 声明即可读（本仓已这样读 `agents` / `sessionProjections`）。
  *
- * 备选路径（未实现）：`ctx.get('settings').describe()` 也能读到同一份 schema 的
- * 当前值，但它要自己走一遍 settings 的形状、且拿不到 `'provider-managed'` 归一化后的
- * 生效值——服务自己的 `resolveMaxDepth()` 就是这条问题的单一真源。
- *
  * 本模块只做「读不到就说不出来」：读不到**不降级**（`unknown` 一律不渲染文案），
  * 因为按错误的深度给建议比不给更糟。
  */
 import type { DshContext } from '../shared/types.js';
 
-/** 宿主 `subagents` 服务里本插件消费的那一个方法。 */
+/** 宿主 `subagents` 服务中本插件消费的那一个方法。 */
 export interface SubagentsLike {
   resolveMaxDepth?(configured?: number | 'provider-managed'): unknown;
 }
@@ -33,8 +29,6 @@ export type DelegationShape = 'two-level' | 'single-agent' | 'no-delegation' | '
  * 服务缺失、方法缺失、调用抛错、返回值不是非负安全整数（含 `undefined`）一律
  * `{ kind: 'unknown' }`：**绝不抛**，也绝不猜。这是一个附加信号，读不到只该让
  * 文案消失，不该让工具调用或上下文装配失败。
- *
- * @param ctx - 根 ctx（服务是全局层的，装配时机可能晚于本插件，所以调用方每次现读）。
  */
 export function readSubagentDepth(ctx: DshContext): SubagentDepth {
   try {

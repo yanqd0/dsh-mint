@@ -64,6 +64,8 @@ describe('sampleOf / sameSample', () => {
 });
 
 describe('sampleMetrics', () => {
+  // 文档里已不存在的节点不得再带指标进面板：否则会留一份画不出来的幽灵读数。
+  // 夹具给一个 running 节点与一份多出 dropped 的表，断言只留节点那份。
   it('keeps only the metrics of nodes the document still carries', () => {
     const dag = { title: '', revision: 1, created_at: '', updated_at: '', nodes: [node('a', 'running')], edges: [] };
     const metrics = { a: { tokens: 1 }, dropped: { tokens: 9 } };

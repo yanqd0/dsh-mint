@@ -37,6 +37,8 @@ describe('panel styles', () => {
     expect(direct).not.toEqual(viaPlan);
   });
 
+  // plan 芯片也落在真实主题 token 上：臆造的 token 会渲染成无样式方块。
+  // 断言取色/边框色与圆角三处取值。
   it('draws a plan chip quietly, from real theme tokens', () => {
     const plan = placementChip('plan');
     expect(plan.color).toBe('var(--dsw-alias-label-secondary)');
@@ -89,6 +91,8 @@ describe('live metric styles', () => {
 });
 
 describe('label badges', () => {
+  // 标签色从数据库经 CLI 到 CSS：可信的十六进制要原样成色，贴合 shell Tag 的观感。
+  // 断言 color/background/borderColor 与圆角取值。
   it('tints the badge from the recorded color, like the shell Tag tones', () => {
     const badge = labelBadge('#bbdd3c');
     expect(badge.color).toBe('#bbdd3c');

@@ -164,6 +164,8 @@ describe('worktree naming', () => {
 });
 
 describe('node id guard', () => {
+  // 非法 id 的硬门禁：subject、分支名与路径段都由 node.id 拼出，决不许它进到命令行。
+  // 换成记账用的假 runner，对三个写入口各喂坏 id，断言全部拒绝且一次 git 都没调用。
   it('refuses an id that would reach a git ref, without running a single git command', async () => {
     // 三个写入口（建/合/删）都先在本地挡下：subject、分支名与路径段都由 node.id 拼出，
     // 所以「拒绝」必须发生在任何 git 命令之前，否则非法 id 已经进了命令行。
@@ -276,7 +278,6 @@ describe('mergeWorktree', () => {
     expect(merged.worktree.merged_sha).toMatch(/^[0-9a-f]{7,}$/);
     // 成功路径也要带 target：下游按它继续判定「已合并」。
     expect(merged.worktree.target).toBe('main');
-    // The file is on the target branch now, and the merge is recorded.
     expect(gitIn(repo, 'show', 'HEAD:feature.txt')).toContain('work');
     const log = gitIn(repo, 'log', '--oneline', '-3');
     expect(log).toContain('merge a1');
@@ -284,6 +285,8 @@ describe('mergeWorktree', () => {
     expect(log).not.toMatch(/#\d/);
   });
 
+  // 冲突契约：停在冲突态交给调用方决定，绝不自动解冲突，主树保持可 abort。
+  // 让工作树与 main 各改同一文件触发冲突，断言返回 `state:'conflict'` 与完整的落盘字段。
   it('reports a conflict and leaves the main tree stopped (no auto-resolution)', async () => {
     const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
@@ -426,6 +429,8 @@ describe('mergeWorktree target guard', () => {
 });
 
 describe('removeWorktree', () => {
+  // 未合并的树默认不许删：先拒绝、再显式 force 才移除，移除后不再出现在 list 里。
+  // 同一棵树连调两次 `removeWorktree`，断言第一次报「尚未合并」、带 force 的那次成功。
   it('refuses an unmerged branch, then removes it with force', async () => {
     const created = await createWorktree(deps(), { id: 'a1' });
     expect(created.ok).toBe(true);
@@ -498,6 +503,8 @@ describe('removeWorktree', () => {
  * 都走假 runner——真 git 装不出老版本那个局面。
  */
 describe('worktree 降级指引', () => {
+  // 降级指引：建树失败后要补上本机 git 版本与「共享工作区串行」这条可行动替代。
+  // 用假 runner 模拟 git 1.9（没有 `worktree` 子命令），断言失败文案同时含版本与替代动作。
   it('appends the local version and the shared-workspace fallback to a failed add', async () => {
     const withFake = deps({ git: fakeGit() });
     const outcome = await createWorktree(withFake, { id: 'a1' });
@@ -554,6 +561,8 @@ describe('pruneWorktrees', () => {
     return created.worktree.path;
   }
 
+  // 开工点清理的验收点：已合并、干净、够老的树删掉，但分支必须留下当凭据。
+  // 在真临时仓建一棵零领先的树，`minAgeMs: 0` 触发 prune 后断言目录没了、分支还在。
   it('removes a merged, clean and old tree but keeps its branch', async () => {
     // 刚建出来的树就在 HEAD 上（零领先）→ 已合并；没有未提交改动 → 干净。
     const path = await tree('a1');

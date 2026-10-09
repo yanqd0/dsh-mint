@@ -8,21 +8,19 @@ import type {
   ToolResultLike,
 } from '../shared/types.js';
 
-/** Tool names a bash command reaches the host through. */
+/** bash 命令到达宿主所用的工具名。 */
 export const BASH_TOOL_NAMES: ReadonlySet<string> = new Set(['bash', 'tool:bash']);
 const ESCALATION_PREFIX = 'escalate sandbox to danger-full-access: ';
 const MAX_PENDING = 100;
-/** One argv token of a bare mint invocation: no shell metacharacters. */
+/** 裸 mint 调用的一个 argv token：不含任何 shell 元字符。 */
 const MINT_ARG = /^[A-Za-z0-9_./:=+-]+$/;
-/** Standardised model justification for a mint run (context injection). */
+/** 一次 mint 运行的标准模型理由（由上下文注入规定）。 */
 const MINT_JUSTIFICATION = /^mint\b/;
 
 /**
- * True when `command` is a bare `mint ...` invocation a host-trusted pass can
- * safely recognize: optional leading whitespace, the literal `mint` word, then
- * only plain argv tokens. Anything shell-shaped (`;`, `&&`, quotes, env
- * prefixes, redirections) is NOT recognized — such calls keep the ordinary
- * sandbox-denial and approval path.
+ * `command` 是否是宿主信任通道能安全识别的裸 `mint ...` 调用：可选前导空白、字面 `mint`
+ * 词，然后只有普通 argv token。任何 shell 形状（`;`、`&&`、引号、环境变量前缀、重定向）都
+ * **不**被识别——这类调用继续走常规的沙箱拒绝与审批路径。
  */
 export function isMintCommand(command: string): boolean {
   const cmd = command.trimStart();
@@ -34,18 +32,16 @@ export function isMintCommand(command: string): boolean {
   return args.split(/[ \t]+/).every((token) => token.length > 0 && MINT_ARG.test(token));
 }
 
-/** True when an approval ask is a bash sandbox escalation to the widest mode. */
+/** 一次审批请求是否是 bash 沙箱提权到最宽模式。 */
 export function isMintEscalation(reason: string | undefined): boolean {
   return typeof reason === 'string' && reason.startsWith(ESCALATION_PREFIX);
 }
 
 /**
- * A stable identity for one agent's grant memory. The runtime may hand the
- * gate a *different* Agent object for each tool dispatch (the agent is rebuilt
- * per activation/step), so keying `granted` on the object reference is
- * unreliable. The session id is stable for the whole session and is the right
- * once-per-session key; we fall back to the object only for agent-less
- * requests (which the gate never grants anyway).
+ * 某个 agent 授权记忆的稳定身份。运行时就一次工具分发可能交给门禁**另一个** Agent 对象
+ * （agent 每次激活/步进都重建），所以把 `granted` 键在对象引用上并不可靠。会话 id 在整个
+ * 会话期间稳定，是正确的「每会话一次」键；只有无 agent 的请求才回退到对象（门禁反正不会
+ * 授权它们）。
  */
 function agentKey(agent: ApprovalRequestLike['agent']): unknown {
   const sessionId = (agent as { session?: { id?: unknown } } | undefined)?.session?.id;
@@ -54,39 +50,30 @@ function agentKey(agent: ApprovalRequestLike['agent']): unknown {
 
 export interface GateConfig {
   /**
-   * Explicit trust opt-in: mint escalation asks are auto-allowed without any
-   * user prompt, including the first one (default false — first ask per
-   * session goes through the composed answerer chain).
+   * 显式信任声明：mint 提权请求无需任何用户提示即自动放行，包括第一次（默认 false——每会话
+   * 首次询问走组合出的答复链）。
    */
   autoApprove?: boolean;
 }
 
 /**
- * Approval gate (B-v2): after the user allows ONE mint escalation for an
- * agent session, later mint escalation asks for that session resolve
- * `allowed-once` immediately — no prompt, no repeat denials, and every grant
- * still lands the seam's `approval/asked` + `approval/decided` audit pair.
+ * 审批门禁（B-v2）：用户为某个 agent 会话放行一次 mint 提权之后，该会话此后的 mint 提权请求
+ * 立即解析为 `allowed-once`——不提示、不重复拒绝，而每次授权仍会落下接缝的
+ * `approval/asked` + `approval/decided` 审计对。
  *
- * Mint identity is established from TWO signals so the gate stays robust when
- * one is unavailable in a given harness:
+ * mint 身份由**两个**信号确立，好让门禁在某个信号于给定 harness 不可用时不倒：
  *
- * 1. **command correlation (authoritative when present)** — the approval ask
- *    carries no command text, so the gate correlates it with the in-flight
- *    bash call through a `callId → command` map filled by `tools/pre-execute`
- *    (which strictly precedes the escalation ask inside the tool body) and
- *    cleared by `tools/post-execute`. When a correlated command exists and is
- *    NOT a bare `mint` invocation, the ask is never treated as mint.
- * 2. **escalation reason fallback** — only consulted when no command could be
- *    correlated. The reason is harness-built as `escalate sandbox to
- *    danger-full-access: <justification>`, and the model is instructed to use
- *    the standard justification `mint`, so a leading `mint` justification
- *    identifies a mint run without depending on the `tools/pre-execute`
- *    delivery/timing that command correlation relies on.
+ * 1. **命令关联（存在时权威）**——审批请求不携带命令文本，所以门禁经
+ *    `tools/pre-execute` 填充、`tools/post-execute` 清除的 `callId → command` 表，把它与
+ *    在飞的 bash 调用关联起来（前者严格先于工具体内的提权请求）。当关联到的命令存在且**不是**
+ *    裸 `mint` 调用时，该请求永不被当作 mint。
+ * 2. **提权理由兜底**——只在关联不到命令时才查。理由是 harness 按
+ *    `escalate sandbox to danger-full-access: <justification>` 拼的，而模型被指示使用标准
+ *    理由 `mint`，所以以 `mint` 开头的理由无需依赖命令关联所依赖的 `tools/pre-execute`
+ *    送达/时序，就能认出一次 mint 运行。
  *
- * Only bare-mint-tagged escalations are ever auto-allowed; every other request
- * delegates to `next()` so the normal answerer chain keeps its decision slot.
- * Any gate failure fails open to that same delegation — it can never break an
- * unrelated approval.
+ * 只有带裸 mint 标记的提权才会被自动放行；其余请求一律交给 `next()`，让常规答复链保住它的
+ * 决定权。门禁自身的任何失败也 fail open 到同样的委派——它绝不能弄坏一次无关审批。
  */
 export function installApprovalGate(ctx: DshContext, config: GateConfig): () => void {
   const pending = new Map<string, string>();
@@ -112,7 +99,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
           pending.set(String(exec.callId), command);
         }
       } catch {
-        // correlation is best-effort — never disturb tool dispatch
+        // 关联是尽力而为——绝不打扰工具分发
       }
       return next();
     }
@@ -128,22 +115,22 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
       try {
         if (exec.callId !== undefined) pending.delete(String(exec.callId));
       } catch {
-        // stale entries only cost a later failed correlation
+        // 残留条目只让稍后的关联失败一次
       }
       return next();
     }
   );
 
-  /** True when `req` is a bash sandbox escalation the gate may auto-grant. */
+  /** `req` 是否是门禁可以自动授权的 bash 沙箱提权。 */
   function isMintEscalationRequest(req: ApprovalRequestLike): boolean {
     if (!BASH_TOOL_NAMES.has(req.toolName)) return false;
     if (!isMintEscalation(req.reason)) return false;
-    // Command signal is authoritative when the correlation is present.
+    // 关联存在时，命令信号是权威。
     if (req.callId !== undefined) {
       const command = pending.get(String(req.callId));
       if (command !== undefined) return isMintCommand(command);
     }
-    // No correlated command: fall back to the standardised justification.
+    // 没有关联命令：回退到标准化理由。
     const justification =
       typeof req.reason === 'string' ? req.reason.slice(ESCALATION_PREFIX.length).trim() : '';
     return justification.length > 0 && MINT_JUSTIFICATION.test(justification);
@@ -164,7 +151,7 @@ export function installApprovalGate(ctx: DshContext, config: GateConfig): () => 
         if (outcome === 'allowed-once') granted.add(key);
         return outcome;
       } catch {
-        // fail open — the composed answerer chain decides instead
+        // fail open——改由组合出的答复链决定
         return next();
       }
     },

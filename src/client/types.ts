@@ -1,11 +1,7 @@
 /**
- * Minimal structural types for the DSH *client* surface.
- *
- * The browser half may not import any `@deepseek-ai/*` type package (only the
- * frozen platform module table is importable at runtime, and the host's type
- * packages are not in it), so — exactly as on the host side — these are
- * structural approximations of the services the panel consumes. Verify against
- * the live page with `cordis_inspect_query` (client `Slots.listSubTree`).
+ * 客户端面的最小结构类型：浏览器半边不能 import 任何 `@deepseek-ai/*` 类型包（运行时只有平台冻结的
+ * 模块表可 import，宿主的类型包不在其中），故与宿主侧一样按结构近似面板消费的服务；核对活页面用
+ * `cordis_inspect_query`（客户端 `Slots.listSubTree`）。
  */
 import type {
   ContainerDetail,
@@ -43,15 +39,13 @@ export type {
   PlanItem,
 } from '../shared/records.js';
 
-/** The translate function a locale namespace binds. */
 export type { Translate };
 
 /** Subset of the client `locale` service. */
 export interface LocaleServiceLike {
   /**
-   * Single-locale form. The typed two-argument form is unavailable out of tree:
-   * it requires every built-in locale's dictionary and a namespace merged into
-   * the host's own key table.
+   * 单 locale 形式。带类型的双参数形式在仓外用不了：它要求每个内置 locale 的词典，
+   * 以及把命名空间并进宿主自己的 key 表。
    */
   register(namespace: string, locale: string, dict: Record<string, string>): () => void;
   bind(namespace: string): Translate;
@@ -67,7 +61,6 @@ export interface GuideEntryLike {
   icon?: unknown;
 }
 
-/** Stage one: what a tab type is. */
 export interface TabDefinitionLike {
   id: string;
   kind: string;
@@ -92,12 +85,9 @@ export interface SidebarOpenTabLike {
 }
 
 /**
- * Subset of the right sidebar runtime (`ctx.sidebarRight`).
- *
- * Only what the DAG tab's auto-open needs: the current on-screen session
- * (`mounted`), what is already open (`openTabs`), and the one call that opens a
- * page type. `subscribe` stays optional — the prober polls instead, so it works
- * against a double that only implements snapshots.
+ * 右侧栏运行时（`ctx.sidebarRight`）的子集，只取 DAG tab 自动打开要用的三样：当前屏幕会话
+ * （`mounted`）、已开 tab（`openTabs`），以及开一个页类型的那次调用。`subscribe` 保持可选——
+ * 探针用轮询，故只实现快照的替身也能工作。
  */
 export interface SidebarRightLike {
   openTab(kind: string, options?: { params?: Record<string, unknown> }): void;
@@ -108,7 +98,6 @@ export interface SidebarRightLike {
   readonly openTabs: { getSnapshot(): readonly SidebarOpenTabLike[] };
 }
 
-/** Registration options for a keyed slot body. */
 export interface SlotRegistrationLike {
   name: string;
   /** The tab definition's `id`: the seat dispatches by it. */
@@ -131,16 +120,14 @@ export interface ClientContextLike {
   slots: SlotsServiceLike;
   sidebarRightTabs: SidebarRightTabsLike;
   /**
-   * The right sidebar runtime. Optional on purpose: `inject` declares the
-   * package, but a lean context (a test double, a host without the sidebar)
-   * simply has no such service, and the panel must still register.
+   * 右侧栏运行时。故意可选：`inject` 只声明了包，而精简上下文（测试替身、没有右侧栏的宿主）
+   * 根本没有这个服务，面板仍必须完成注册。
    */
   sidebarRight?: SidebarRightLike;
   /** Owns a registration for the plugin's lifetime; the host always provides it. */
   effect?(callback: () => unknown, label?: string): unknown;
 }
 
-/** What the panel's transport exposes to its views. */
 export interface MintApiLike {
   issues(
     query: Record<string, string | undefined>,
@@ -154,14 +141,12 @@ export interface MintApiLike {
     query: Record<string, string | undefined>,
     signal?: AbortSignal
   ): Promise<MintResponse<MintListPayload<MilestoneItem>>>;
-  /** One issue in full: the list fields plus the body. */
   issue(id: number, signal?: AbortSignal): Promise<MintResponse<MintIssuePayload>>;
   /**
-   * The panel's lookup tables in one read: plans, milestones, and labels.
+   * 面板的查找表一次读完：plan、milestone 与 label。
    *
-   * An issue's placement now arrives on the issue row itself, so this read
-   * only carries the version/colour dictionaries a row renders with; the
-   * dictionaries are re-read on every request, so a panel refresh needs no flag.
+   * issue 的归属现在随 issue 行一起下发，故这次读只带行渲染用的版本/颜色字典；
+   * 字典每次请求都重读，所以面板刷新不需要额外标志。
    */
   meta(signal?: AbortSignal): Promise<MintResponse<MintMetaPayload>>;
   plan(id: number, signal?: AbortSignal): Promise<MintResponse<MintDetailPayload<ContainerDetail>>>;
@@ -198,14 +183,12 @@ export interface TabInfoLike {
   };
 }
 
-/** Props the panel body receives: session identity, copy, transport, and the tab. */
 export interface MintBodyProps {
   /** The session whose project the panel reads; delivered by the slot. */
   sessionId: string;
   /**
-   * The copy seat. Injected (not the framework's `t`) so keys are the checked
-   * `CopyKey` union instead of the framework's open string domain; both built-in
-   * locales carry a complete dictionary, and a key none carries shows as itself.
+   * copy 座位。注入它而不用框架的 `t`，是为了让 key 是被检查的 `CopyKey` 联合而非框架的
+   * 开放字符串域；两个内置 locale 都带完整词典，都没有的 key 就显示 key 本身。
    */
   copy: CopyTranslate;
   /** Transport injected by `apply`. */

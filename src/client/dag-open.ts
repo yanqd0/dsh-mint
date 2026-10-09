@@ -1,40 +1,33 @@
 /**
- * The DAG tab's auto-open prober (spec: `notes/plan-dag.md`).
+ * DAG tab 的自动打开探测器（规格见 `notes/plan-dag.md`）。
  *
- * A session with a plan DAG should not need the user to know a tab exists for
- * it. The host cannot push (no SSE primitive), so the browser half asks at a low
- * frequency whether this session has a DAG yet, and opens the tab once when the
- * answer turns to yes.
+ * 会话里有 plan DAG 时，不该要求用户先知道有这么个 tab。宿主没有推送手段（没有 SSE 原语），
+ * 所以由浏览器侧低频询问本会话是否已有 DAG，答案变成「有」时打开一次。
  *
- * Two deliberate properties keep this cheap and safe to leave running:
+ * 两条刻意的性质让它可以便宜且安全地常驻：
  *
- * - **Page-type uniqueness does the de-duplication.** A `multiple !== true` type
- *   has one address per session, so a repeated `openTab` focuses rather than
- *   stacks; the open-tab check is a courtesy that saves the call, not the
- *   correctness argument.
- * - **Every failure is swallowed.** A dead route, a dead session, or a transient
- *   fetch error must not surface in a conversation nobody asked to interrupt.
+ * - **去重靠页面类型的唯一性**：`multiple !== true` 的类型每会话只有一个地址，重复
+ *   `openTab` 只会聚焦而不会叠开；查已开 tab 只是省一次调用的人情，不是正确性论据。
+ * - **一切失败都吞掉**：路由已死、会话已死、临时 fetch 错误，都不得闯进没人要求打断的对话。
  */
 import type { MintDagPayload } from '../shared/records.js';
 import type { MintApiLike, SidebarOpenTabLike, SidebarRightLike } from './types.js';
 
-/** How often the prober looks for a DAG (5s: a plan does not appear instantly). */
+/** 探测间隔（5s：plan 不会瞬间出现）。 */
 export const DAG_PROBE_MS = 5000;
 
 /**
- * The tab type's discriminator, and the guide entry's id.
+ * tab 类型的判别值，也是 guide 条目的 id。
  *
- * Exported from here rather than from the plugin entry so the prober and the
- * registration cannot name two different kinds.
+ * 从本模块而非插件入口导出，探测器与注册处就不可能叫出两种 kind。
  */
 export const DAG_TAB_KIND = 'plan-dag';
 
 /**
- * Whether this payload is a reason to open the tab.
+ * 这份 payload 是否构成打开 tab 的理由。
  *
- * A missing document is not (there is nothing to draw), and neither is an empty
- * one — an `init` with no nodes yet would otherwise steal focus for a blank
- * canvas. An already-open tab is not either, however the answer changed since.
+ * 没有文档不是理由（没东西可画），空文档也不是——空节点的 `init` 会为一块空白画布抢走
+ * 焦点。已经开着的 tab 同样不是，无论答案此后怎么变。
  */
 export function shouldOpenDag(
   payload: MintDagPayload,
@@ -45,31 +38,27 @@ export function shouldOpenDag(
   return !openTabs.some((tab) => tab.sessionId === sessionId && tab.kind === DAG_TAB_KIND);
 }
 
-/** What the prober needs from the surrounding plugin: the seat and a transport. */
 export interface DagOpenHost {
   sidebarRight: SidebarRightLike;
   apiFor(sessionId: string): Pick<MintApiLike, 'dag'>;
 }
 
 export interface DagOpenOptions {
-  /** Probe period; the tests inject a smaller one. */
+  /** 探测周期；测试注入一个更小的值。 */
   intervalMs?: number;
-  /** Test seam; defaults to the page's timers. */
+  /** 测试缝；缺省用页面的定时器。 */
   timers?: {
     setInterval(cb: () => void, ms: number): unknown;
     clearInterval(handle: unknown): void;
   };
-  /** Whether a probe is worth making; hidden pages skip the request entirely. */
+  /** 这次是否值得探测；页面隐藏时整个请求都跳过。 */
   visible?: () => boolean;
 }
 
 /**
- * Start probing for this session's DAG, opening the tab once one appears.
+ * 开始探测本会话的 DAG，一旦出现就打开 tab。
  *
- * @param host - the sidebar seat and the transport factory, both read per tick
- *   (the on-screen session changes while the prober lives).
- * @param options - probe period, timer seam, and the visibility gate.
- * @returns the disposer: stops the timer and cancels any further probe.
+ * 座位与传输工厂都按 tick 现读——探测器活着的时候，屏上的会话会变。
  */
 export function startDagAutoOpen(host: DagOpenHost, options: DagOpenOptions = {}): () => void {
   const intervalMs = options.intervalMs ?? DAG_PROBE_MS;
@@ -96,8 +85,7 @@ export function startDagAutoOpen(host: DagOpenHost, options: DagOpenOptions = {}
     const payload = await host.apiFor(sessionId).dag();
     if (stopped) return;
     if (payload.ok === false) return;
-    // The mount line turned the feature off: stop asking, this session cannot
-    // re-enable it without a reload.
+    // mount 那一行把功能关掉了：别再问了，本会话不重载就开不回来。
     if (payload.autoOpen === false) {
       stop();
       return;
@@ -107,12 +95,10 @@ export function startDagAutoOpen(host: DagOpenHost, options: DagOpenOptions = {}
     }
   };
 
-  // `stop` is only reachable from inside `tick` (after this line has run, since
-  // `setInterval` returns before it ever fires) or from the disposer below, so
-  // the handle is always initialized by the time it is read.
+  // `stop` 只能从 `tick` 内部（这一行跑完之后才可能触发，因为 `setInterval` 在它首次
+  // 触发之前就返回了）或下面的 disposer 调到，故读 handle 时它一定已初始化。
   const handle = timers.setInterval(() => {
-    // A probe failing is an expected state, not an event: the next tick is the
-    // retry, and nothing in a conversation should hear about it.
+    // 探测失败是预期状态而非事件：下一次 tick 就是重试，对话里谁都不该听说它。
     void tick().catch(() => {});
   }, intervalMs);
 

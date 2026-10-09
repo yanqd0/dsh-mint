@@ -1,21 +1,13 @@
 import type { AgentsLike } from './types.js';
 
 /**
- * Session identity of a host `Agent` (or of anything carrying one).
+ * 宿主 `Agent`（或任何带着它的东西）的会话身份：运行时可能每次派发都给一个新 `Agent`
+ * 对象，只有 session id 稳定，故一切会话级决策（审批授权、mint 写台账、注入去重）都以
+ * 它为键；id 缺失或非字符串即 `undefined`，意为「不作归属」，调用方据此 fail open
+ * （不记授权、不做注入去重）。
  *
- * The runtime may hand out a fresh `Agent` object per dispatch, so only the
- * session id is stable — every session-scoped decision (approval grants, the
- * mint-write ledger, the injection channel's dedup) has to key on it. Absent
- * or non-string ids yield `undefined`, which means "do not attribute": callers
- * then fail open (no grant remembered, no injection dedup applied).
- *
- * Its own module only so the three callers can share one rule instead of
- * restating the shape three times (which is what this module prevents).
- *
- * {@link rootSession} lives here too: it is the same question asked one level
- * up the chain, and **two** tools need the answer (`mint_plan_dag` and the
- * worktree tool), so keeping the walk next to `sessionIdOf` is what stops a
- * second copy of it from appearing in the next tool.
+ * {@link rootSession} 也放这里：它是同一条链往上问一层，且 `mint_plan_dag` 与 worktree
+ * 工具都要答案——紧挨 `sessionIdOf` 才不会再长出第二份拷贝。
  */
 
 export function sessionIdOf(agent: unknown): string | undefined {
@@ -32,9 +24,7 @@ export function sessionIdOf(agent: unknown): string | undefined {
  * 到一张不该存在的文件里（或撞上同名旧文档），所以调用方要能分辨这两件事。
  */
 export interface RootSession {
-  /** 可达链的最后一跳。 */
   id: string;
-  /** 是否确实走到了「没有父会话」的顶层。 */
   resolved: boolean;
 }
 
@@ -47,21 +37,12 @@ export interface RootSession {
 const MAX_SESSION_HOPS = 16;
 
 /**
- * The session id a session-scoped write belongs to.
+ * 会话级写入该归属的会话：子代理自己的会话不是主人——plan DAG 描述的是 *main* agent 的
+ * plan，画它的面板也挂在那条会话上——故沿 `session.header.parentSession` 上溯，带 visited
+ * 集合与跳数上限：链损坏或成环必须 fail closed，不能打转。
  *
- * A subagent's own session is the wrong owner: the plan DAG describes the plan
- * the *main* agent is running, and the panel that draws it is attached to that
- * session. So the walk follows `session.header.parentSession` up to the top,
- * with a visited set and a hop ceiling because a corrupted or cyclic chain must
- * fail closed rather than loop.
- *
- * 出口两分（见 {@link RootSession}）：没有父会话 = 真根（`resolved: true`），
- * 注册表答不出下一跳 = 链到此为止（`resolved: false`）；起点读不出 id、成环、
- * 超过跳数上限一律 `undefined`（fail closed，调用方据此拒绝而不是猜归属）。
- *
- * @param agent - the tool execution's agent, however malformed.
- * @param agents - the host's live-agent registry, when the composition has one.
- * @returns the last reachable session, or `undefined` when the walk cannot start.
+ * 出口两分（见 {@link RootSession}）：没有父会话 = 真根（`resolved: true`），注册表答不出
+ * 下一跳 = 链到此为止（`resolved: false`）；起点读不出 id、成环、超上限一律 `undefined`。
  */
 export function rootSession(
   agent: unknown,
@@ -85,22 +66,17 @@ export function rootSession(
   return undefined;
 }
 
-/** 一次调用解析出的工具面归属：要么给出归属会话，要么给出拒绝理由。 */
 export type OwnerResolution = { ok: true; id: string } | { ok: false; error: string };
 
 /**
- * 工具面的归属策略：把 {@link rootSession} 的两种出口翻译成「能用 / 不能用」。
- *
- * 规则只写这一处（两个工具共用），四条：
+ * 工具面的归属策略：把 {@link rootSession} 的两种出口翻译成「能用 / 不能用」，规则只写
+ * 这一处（两个工具共用）：
  * ① 上溯根本没开始（起点读不出 id / 成环 / 超深）→ 拒绝；
  * ② 走到顶 → 用那个根；
  * ③ 断在**起点**（无注册表的 lean 宿主，或调用者自己就是顶层）→ 仍用起点这**一个** id：
  *    这是本改动前的口径，不收紧；
- * ④ 断在**中途** → 拒绝并点名那个查不到的会话：写中间会话的文件既不是根，也可能
- *    撞上同名旧文档，宁可让 main 收尾。
- *
- * @param agent - the tool execution's agent, however malformed.
- * @param agents - the host's live-agent registry, when the composition has one.
+ * ④ 断在**中途** → 拒绝并点名那个查不到的会话：写中间会话的文件既不是根，也可能撞上
+ *    同名旧文档，宁可让 main 收尾。
  */
 export function resolveToolOwner(
   agent: unknown,

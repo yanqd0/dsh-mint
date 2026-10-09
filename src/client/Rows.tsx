@@ -1,10 +1,8 @@
 /**
- * The list rows, shared by every surface that draws a list.
+ * 列表行组件，所有画列表的地方共用。
  *
- * Extracted so the three outer lists and the lists embedded in a container
- * detail cannot drift apart: they all call these, and only the data source
- * differs (the outer ones page and filter; an embedded one shows everything its
- * container holds).
+ * 抽出来的目的就是不让三个外层列表与容器明细里的内嵌列表各自漂移：它们都调这里，区别只在
+ * 数据来源（外层分页与过滤，内嵌显示容器持有的全部）。
  */
 import type { ReactElement } from 'react';
 
@@ -16,17 +14,14 @@ import { LABELS, META, NOTE, ROW, labelBadge, placementChip, pill } from './styl
 
 export interface LabelBadgesProps {
   labels: readonly string[];
-  /** The label dictionary, where every color lives; absent until it loads. */
+  /** label 字典，颜色都在其中；加载完之前缺席。 */
   meta: MintMetaPayload | undefined;
 }
 
 /**
- * One line of label badges, each tinted by the color mint recorded for it.
+ * 一行 label 徽标，各自染上 mint 为它记下的颜色。
  *
- * An issue carries label names only, so a name the dictionary does not know (or
- * a color it cannot trust) still renders — as a neutral chip.
- *
- * @param props - the label names and the dictionary they are looked up in.
+ * issue 只带 label 名，所以字典不认的名字（或不可信的颜色）照样渲染成中性 chip。
  */
 export function LabelBadges({ labels, meta }: LabelBadgesProps): ReactElement | null {
   if (labels.length === 0) return null;
@@ -53,16 +48,10 @@ export function LabelBadges({ labels, meta }: LabelBadgesProps): ReactElement | 
 
 export interface PlacementChipsProps {
   copy: CopyTranslate;
-  /** `undefined` when the row has no placement the panel can state. */
+  /** 行没有可陈述的归属时为 `undefined`。 */
   placement: PlacementView | undefined;
 }
 
-/**
- * The parent references one issue carries: its plan, and the milestone that
- * follows from it.
- *
- * @param props - the copy seat and the resolved placement.
- */
 export function PlacementChips({ copy, placement }: PlacementChipsProps): ReactElement | null {
   if (placement === undefined) return null;
   const { planId, milestoneVersion, direct } = placement;
@@ -88,17 +77,11 @@ export function PlacementChips({ copy, placement }: PlacementChipsProps): ReactE
 export interface IssueRowProps {
   copy: CopyTranslate;
   item: IssueItem;
-  /** The lookup tables; absent while they load, or after a failed read. */
+  /** 查表；加载中或读取失败之后缺席。 */
   meta: MintMetaPayload | undefined;
   onSelect: (item: IssueItem) => void;
 }
 
-/**
- * One issue: title, then status and where it sits, then its labels on their own
- * line.
- *
- * @param props - copy, the record, the lookup tables, and the select callback.
- */
 export function IssueRow({ copy, item, meta, onSelect }: IssueRowProps): ReactElement {
   const placement = issuePlacement(item, meta);
   return (
@@ -125,11 +108,6 @@ export interface ContainerRowViewProps {
   onSelect: () => void;
 }
 
-/**
- * One plan or milestone row.
- *
- * @param props - the projected row and the select callback.
- */
 export function ContainerRowView({ row, onSelect }: ContainerRowViewProps): ReactElement {
   return (
     <button type="button" style={ROW} onClick={onSelect}>

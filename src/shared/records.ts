@@ -1,14 +1,10 @@
 /**
- * Wire records shared by the host's mint query routes (`src/routes.ts`) and the
- * browser half (`src/client/*`).
+ * 宿主 mint 查询路由（`src/routes.ts`）与浏览器半边（`src/client/*`）共用的线格式。
  *
- * Types only — nothing here is emitted, so the host bundle and the client bundle
- * agree on one declaration without a runtime edge between them. The field names
- * mirror the mint CLI's own `--json` output (0.9.0-alpha.1), which is what the
- * guards in `src/mint-json.ts` validate.
+ * 只有类型、无产物：宿主 bundle 与 client bundle 靠一份声明对齐，二者之间不留运行时边；
+ * 字段名镜像 mint CLI 的 `--json` 输出，由 `src/mint-json.ts` 的守卫校验。
  */
 
-/** One `list --json` issue record. */
 export interface IssueItem {
   id: number;
   title: string;
@@ -38,7 +34,6 @@ export interface IssueItem {
   updated_at: string;
 }
 
-/** One `show <id> --json` issue: everything `list --json` carries, plus the body. */
 export interface IssueDetail extends IssueItem {
   /**
    * The issue's markdown body, or `null` when it was created without one (mint
@@ -55,7 +50,6 @@ export interface IssueDetail extends IssueItem {
   test_cmd?: string | null;
 }
 
-/** One `plan list --json` record. */
 export interface PlanItem {
   id: number;
   title: string;
@@ -71,7 +65,6 @@ export interface PlanItem {
   updated_at: string;
 }
 
-/** One `milestone list --json` record. */
 export interface MilestoneItem {
   id: number;
   title: string;
@@ -83,7 +76,7 @@ export interface MilestoneItem {
   updated_at: string;
 }
 
-/** One `label list --json` record; the color only exists here, never on an issue. */
+/** label 的颜色只在这里出现，issue 上从不带。 */
 export interface LabelItem {
   id: number;
   name: string;
@@ -102,10 +95,9 @@ export interface LabelItem {
 /**
  * 面板的字典表：一次读齐，而不是每行读一遍。
  *
- * `list --json` 既不带 label 的颜色、也不带 plan 的版本，所以宿主在这里补齐
- * 这两本字典。issue 归属曾经也在这里拼装（每个 milestone 一次 CLI 调用）；
- * mint 0.9.0-alpha.1 改为把 `milestone_id` / `milestone_direct` 直接写在每个
- * issue 上，故本 payload 只剩字典。
+ * `list --json` 既不带 label 颜色、也不带 plan 版本，故宿主在这里补齐这两本字典；
+ * issue 归属自 mint 0.9.0-alpha.1 起直接写在每个 issue 的 `milestone_id` /
+ * `milestone_direct` 上，本 payload 只剩字典。
  */
 export interface MintMetaPayload {
   ok: true;
@@ -116,7 +108,6 @@ export interface MintMetaPayload {
   warnings?: string[];
 }
 
-/** One issue as a container's `show --json` embeds it. */
 export interface ContainerChild {
   id: number;
   title: string;
@@ -124,7 +115,6 @@ export interface ContainerChild {
   status: string;
 }
 
-/** `plan show <id> --json` / `milestone show <id> --json`. */
 export interface ContainerDetail {
   id: number;
   title: string;
@@ -151,7 +141,7 @@ export interface MintListPayload<T> {
   warnings?: string[];
 }
 
-/** `issue show <id> --json` — the whole issue, with the body the list omits. */
+/** `issue show <id> --json`：整条 issue，含 list 不返回的 body。 */
 export interface MintIssuePayload {
   ok: true;
   item: IssueDetail;
@@ -173,18 +163,14 @@ export interface MintFailurePayload {
 export type MintResponse<T extends { ok: true }> = T | MintFailurePayload;
 
 /**
- * The plan DAG's wire records.
+ * plan DAG 的线格式：宿主 `/dsh-mint/dag` 路由与渲染它的浏览器半边共用一份声明。
  *
- * One declaration for the host's `/dsh-mint/dag` route and the browser half that
- * renders it: the document lives in `/tmp/mint/dag/<sessionId>.json`, and the
- * panel is a pure function of what this route answers. The host-side document
- * (`src/dag.ts`) adds its own ownership fields on top of {@link DagView}.
+ * 文档在 `/tmp/mint/dag/<sessionId>.json`，面板是这条路由答案的纯函数；宿主侧文档
+ * （`src/dag.ts`）在 {@link DagView} 之上另加自己的归属字段。
  */
 
-/** Which half of a plan the node belongs to. */
 export type DagPhase = 'research' | 'exec';
 
-/** A node's lifecycle: not started, in flight, settled. */
 export type DagStatus = 'pending' | 'running' | 'done';
 
 /**
@@ -196,28 +182,21 @@ export type DagStatus = 'pending' | 'running' | 'done';
 export type DagVerdict = 'pass' | 'fail';
 
 /**
- * Where a node's isolated working tree stands.
- *
- * `active` — the worktree exists and its branch is not merged yet.
- * `merged` — the branch is in the **target branch** (the one checked out when
- * the worktree was created); the worktree may still exist.
- * `conflict` — a merge stopped on conflicts and was left for a decision.
- * `removed` — the worktree is gone (merged first, or removed by hand).
+ * 节点工作树的去处：`active` 存在且分支尚未合入；`merged` 分支已在**目标分支**里
+ * （建树时签出的那条，工作树可能仍在）；`conflict` 合并停在冲突上待裁决；`removed`
+ * 工作树已不在（先合后删，或手工删除）。
  */
 export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
 
 /**
- * The node-level git worktree a plan's parallel issue develops in.
+ * plan 的并行 issue 开发所用的节点级 git worktree：一个节点至多一个，基于一个 commit。
  *
- * One node may own one worktree, based on one commit. It is a **collaboration**
- * boundary, not a security one: the subagent's file sandbox is still the session
- * workspace, so isolation comes from the path the work happens in (`.worktrees/`
- * inside the workspace) plus file whitelists, not from confinement.
+ * 它是**协作**边界而非安全边界：子代理的文件沙箱仍是会话工作区，隔离来自工作路径
+ * （工作区内的 `.worktrees/`）与文件白名单，不来自围栏。
  */
 export interface DagWorktree {
   /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<s8>/<node>`。 */
   path: string;
-  /** The branch the worktree is checked out on. */
   branch: string;
   /** The commit the worktree (and its branch) started from. */
   base: string;
@@ -228,7 +207,6 @@ export interface DagWorktree {
   target?: string;
 }
 
-/** One node of the plan DAG, as the panel renders it. */
 export interface DagNodeView {
   id: string;
   /** Short label drawn inside the node (≤6 code points, enforced by the host). */

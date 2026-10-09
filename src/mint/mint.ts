@@ -11,35 +11,31 @@ const require = createRequire(import.meta.url);
 export const MINT_TIMEOUT_MS = 30_000;
 
 /**
- * Wall-clock limit for the **first** mint run of a process.
+ * 一个进程**首次** mint 运行的墙钟上限。
  *
- * A fresh install has no mint binary yet: `mint-faa` downloads the GitHub
- * release lazily on first use, and that download can exceed 30 s on a slow link.
- * The first run therefore gets a much larger budget; every later run is warm and
- * stays on {@link MINT_TIMEOUT_MS}.
+ * 全新安装还没有 mint 二进制：`mint-faa` 首次使用时才懒下载 GitHub release，慢链路上可能
+ * 超过 30 s。所以首次运行拿到大得多的预算；此后每次都是热的，留在 {@link MINT_TIMEOUT_MS}。
  */
 export const MINT_COLD_TIMEOUT_MS = 180_000;
 
-/** Environment override for the mint entry, consulted before the mint-faa default. */
+/** mint 入口的环境覆写，优先级先于 mint-faa 默认值。 */
 export const MINT_ENTRY_ENV = 'MINT_ENTRY';
 
 /**
- * Sentinel `mintEntry`/`MINT_ENTRY` value that forces the dependency chain even
- * when the other knob carries a path override — what a user-env check
- * needs while the dev profile is pinned to a local build.
+ * `mintEntry`/`MINT_ENTRY` 的哨兵值，用于在另一个旋钮带了路径覆写时仍强制走依赖链——
+ * 开发 profile 被钉在本地构建时，用户想查自己的环境就需要它。
  */
 export const MINT_ENTRY_DEPENDENCY = 'dependency';
 
-/** Entries matching this are Node scripts; anything else is a native binary. */
+/** 匹配它的入口是 Node 脚本；其余都是原生二进制。 */
 const NODE_ENTRY = /\.(cjs|mjs|js)$/i;
 
-/** Package-relative path of the wrapper shipped by the `mint-faa` dependency. */
+/** `mint-faa` 依赖提供的包装脚本的包内相对路径。 */
 const MINT_FAA_ENTRY = join('node_modules', 'mint-faa', 'run-mint.js');
 
 /**
- * Actionable failure text for the tool channel. A bare
- * `Cannot find module 'mint-faa/run-mint.js'` reads like a plugin bug with no
- * way out; this names the two overrides and the profile-side fix.
+ * 工具通道的可行动失败文案。一句光秃秃的 `Cannot find module 'mint-faa/run-mint.js'`
+ * 读起来像插件 bug 且无路可走；这段文字点名两个覆写旋钮与 profile 侧的修法。
  */
 export const MINT_ENTRY_HINT =
   'mint 入口解析失败：mint-faa 依赖不可见（DSH 下插件裸包名由 harness/profile 作用域解析，' +
@@ -49,40 +45,35 @@ export const MINT_ENTRY_HINT =
   'dsh plugin --profile <p> approve-builds --all 后重装。';
 
 /**
- * One-line variant for the per-request `[Mint]` overview. Only rendered on
- * failure, so it never enters the every-request budget.
+ * 每请求 `[Mint]` 概览用的一行版本。只在失败时渲染，所以从不进入每请求预算。
  */
 export const MINT_ENTRY_WARNING =
   'mint 入口解析失败（mint-faa 不可见）→ 挂载行 mintEntry（如 ~/bin/mint）或 MINT_ENTRY，改后重启 harness';
 
 /**
- * Seams for {@link resolveMintEntry}; all optional, the production path leaves
- * every one at its default.
+ * {@link resolveMintEntry} 的接缝；全部可选，生产路径一律留默认值。
  */
 export interface MintEntryOptions {
   /**
-   * Entry override (`mintEntry` on the mount line; `MintRunOptions.entry` at
-   * call time): a `run-mint.js` path, a native mint binary, a `~`-prefixed
-   * path, a bare `PATH` command, or the {@link MINT_ENTRY_DEPENDENCY} sentinel.
-   * Wins over the `MINT_ENTRY` environment.
+   * 入口覆写（挂载行的 `mintEntry`；调用时的 `MintRunOptions.entry`）：可以是
+   * `run-mint.js` 路径、原生 mint 二进制、`~` 前缀路径、裸 `PATH` 命令，或
+   * {@link MINT_ENTRY_DEPENDENCY} 哨兵。优先于 `MINT_ENTRY` 环境变量。
    */
   entry?: string;
-  /** Package root probed for the bundled dependency (tests point it at a fixture). */
+  /** 探测捆绑依赖用的包根（测试指向 fixture）。 */
   packageRoot?: string;
-  /** Filesystem probe seam (`fs.existsSync`). */
+  /** 文件系统探测接缝（`fs.existsSync`）。 */
   exists?: (path: string) => boolean;
-  /** Bare-specifier resolver seam (`createRequire(...).resolve`). */
+  /** 裸说明符解析接缝（`createRequire(...).resolve`）。 */
   resolveBare?: (specifier: string) => string;
 }
 
 /**
- * Package root of this plugin: the nearest ancestor carrying a `package.json`.
+ * 本插件的包根：最近的带 `package.json` 的祖先目录。
  *
- * Not a fixed `..`: the bundle sits in `dist/` (depth 1) while the source sits in
- * `src/<module>/` (depth 2), and under `pnpm dev`/vitest it is the source that
- * runs — counting levels would then probe `src/node_modules` and silently fall
- * back to a bare-specifier lookup, which is exactly the `mint-faa` failure this
- * probe exists to avoid.
+ * 不能写死 `..`：打包产物在 `dist/`（深度 1），源码在 `src/<module>/`（深度 2），而
+ * `pnpm dev`/vitest 下跑的是源码——数层级就会去探 `src/node_modules` 并静默退回裸说明符
+ * 查找，而那正是本探测要避免的 `mint-faa` 故障。
  */
 function defaultPackageRoot(): string {
   const start = dirname(fileURLToPath(import.meta.url));
@@ -95,7 +86,7 @@ function defaultPackageRoot(): string {
   }
 }
 
-/** Expand a leading `~` — a mount-line YAML value never sees a shell. */
+/** 展开开头的 `~`——挂载行的 YAML 值从不过 shell。 */
 export function expandMintEntry(entry: string): string {
   if (entry === '~') return homedir();
   if (entry.startsWith('~/')) return join(homedir(), entry.slice(2));
@@ -103,14 +94,12 @@ export function expandMintEntry(entry: string): string {
 }
 
 /**
- * Locate `mint-faa`'s `run-mint.js` **without a bare-specifier lookup first**.
+ * 定位 `mint-faa` 的 `run-mint.js`，**先不走裸说明符查找**。
  *
- * DSH resolves a plugin's bare specifiers through the harness/profile package
- * table (`notes/dsh-plugin-dev.md`), where the plugin's own dependency is
- * invisible — that is the `Cannot find module 'mint-faa/run-mint.js'` outage.
- * Probing the plugin's own package root works for pnpm (isolated and
- * hoisted) and npm layouts alike; `require.resolve` stays as the fallback for
- * layouts this probe does not cover.
+ * DSH 经 harness/profile 包表解析插件的裸说明符（`notes/dsh-plugin-dev.md`），那里看不到
+ * 插件自己的依赖——那正是 `Cannot find module 'mint-faa/run-mint.js'` 故障。探测插件自己的
+ * 包根对 pnpm（隔离与提升布局）和 npm 布局都成立；`require.resolve` 留作本探测没覆盖的
+ * 布局的兜底。
  */
 export function resolveDependencyEntry(options: MintEntryOptions = {}): string {
   const root = options.packageRoot ?? defaultPackageRoot();
@@ -121,7 +110,7 @@ export function resolveDependencyEntry(options: MintEntryOptions = {}): string {
   return resolveBare('mint-faa/run-mint.js');
 }
 
-/** {@link resolveDependencyEntry} with {@link MINT_ENTRY_HINT} attached on failure. */
+/** {@link resolveDependencyEntry}，失败时附上 {@link MINT_ENTRY_HINT}。 */
 function dependencyEntry(options: MintEntryOptions): string {
   try {
     return resolveDependencyEntry(options);
@@ -132,17 +121,15 @@ function dependencyEntry(options: MintEntryOptions): string {
 }
 
 /**
- * Resolve the mint CLI entry.
+ * 解析 mint CLI 入口。
  *
- * Precedence: mount-line `mintEntry` config → `MINT_ENTRY` environment → the
- * `mint-faa` dependency ({@link MINT_ENTRY_DEPENDENCY} at either knob forces
- * the last one). An explicit entry may be a `run-mint.js` path, a native mint
- * binary, a `~`-prefixed path, or a bare command name that `spawn` resolves
- * through `PATH`.
+ * 优先级：挂载行 `mintEntry` 配置 → `MINT_ENTRY` 环境变量 → `mint-faa` 依赖
+ * （任一带 {@link MINT_ENTRY_DEPENDENCY} 即强制最后一条）。显式入口可以是
+ * `run-mint.js` 路径、原生 mint 二进制、`~` 前缀路径，或由 `spawn` 经 `PATH` 解析的裸
+ * 命令名。
  *
- * The dependency range (`>=0.8.0 <1.0.0`) already lets a user pick up any
- * pre-1.0 `mint-faa` without a plugin release; the overrides cover what a range
- * cannot — dogfooding an unreleased or locally built mint.
+ * 依赖范围（`>=0.8.0 <1.0.0`）已经让用户不必等插件发版就能升到任意 pre-1.0 `mint-faa`；
+ * 覆写覆盖的是范围做不到的事——dogfood 未发布或本地构建的 mint。
  */
 export function resolveMintEntry(options: MintEntryOptions = {}): string {
   const configured = options.entry?.trim();
@@ -159,12 +146,11 @@ export function resolveMintEntry(options: MintEntryOptions = {}): string {
 }
 
 /**
- * Build the spawn argv for a resolved entry.
+ * 为解析出的入口拼 spawn argv。
  *
- * A `.js`/`.mjs`/`.cjs` entry is a Node script (the `mint-faa` default) and runs
- * under the host Node binary; any other path is a native mint executable and
- * spawns directly — that is what lets a session dogfood a locally built Rust
- * binary instead of the published one.
+ * `.js`/`.mjs`/`.cjs` 入口是 Node 脚本（`mint-faa` 默认）并在宿主 Node 二进制下运行；
+ * 其余路径是原生 mint 可执行文件，直接 spawn——这才让会话能 dogfood 本地构建的 Rust 二进制
+ * 而不是已发布那个。
  */
 export function mintCommand(entry: string): { command: string; prefix: string[] } {
   return NODE_ENTRY.test(entry)
@@ -173,11 +159,9 @@ export function mintCommand(entry: string): { command: string; prefix: string[] 
 }
 
 /**
- * Shorten an entry into something a session can afford to see on every request.
- * `-V` reads the same for a debug and a release build, so the entry —
- * not just the version — is what tells the two apart; a symlinked launcher
- * (`~/bin/mint`) is resolved first so the label names the actual build
- * (`…/target/release/mint`).
+ * 把一个入口缩短成会话每请求都负担得起的形状。`-V` 在 debug 与 release 构建上读起来一样，
+ * 所以区分两者的是入口本身——不只是版本；符号链接启动器（`~/bin/mint`）先解析，好让标签
+ * 点名真正的构建（`…/target/release/mint`）。
  */
 export function describeMintEntry(entry: string): string {
   if (!entry.includes('/') && !entry.includes('\\')) return `PATH:${entry}`;
@@ -185,27 +169,26 @@ export function describeMintEntry(entry: string): string {
   try {
     resolved = realpathSync(entry);
   } catch {
-    // Not on disk (or not readable) — describe what the user wrote.
+    // 不在磁盘上（或不可读）——就描述用户写下的东西。
   }
-  // The pnpm store path is long and version-tagged: keep the interesting part.
+  // pnpm store 路径又长又带版本标签：只留有意思的那段。
   const faa = /mint-faa@([^/\\]+)/.exec(resolved);
   if (faa?.[1] !== undefined) return `mint-faa@${faa[1]}`;
   const parts = resolved.split(/[/\\]+/).filter((part) => part.length > 0);
   return parts.length <= 3 ? resolved : `…/${parts.slice(-3).join('/')}`;
 }
 
-/** Extract the version out of `mint -V` output (`mint 0.8.0-alpha.1`). */
+/** 从 `mint -V` 输出（`mint 0.8.0-alpha.1`）里取出版本。 */
 export function parseMintVersion(text: string | undefined): string | undefined {
   const match = /\bmint\s+v?(\d[^\s]*)/.exec(text ?? '');
   return match?.[1];
 }
 
 export interface MintRunOptions extends MintEntryOptions {
-  /** Wall-clock limit for the CLI process (default {@link MINT_TIMEOUT_MS}). */
+  /** CLI 进程的墙钟上限（默认 {@link MINT_TIMEOUT_MS}）。 */
   timeoutMs?: number;
   /**
-   * Cooperative cancellation. Tool executions carry `exec.signal`, and a tool
-   * body is expected to observe and forward it; aborting kills the child.
+   * 协作式取消。工具执行携带 `exec.signal`，工具本体应当观察并转发它；abort 会杀掉子进程。
    */
   signal?: AbortSignal;
 }
@@ -214,43 +197,37 @@ export interface MintRunResult {
   ok: boolean;
   text?: string;
   /**
-   * Raw stderr. On success this is *not* an error channel: mint writes
-   * advisory lines there (`mint: hint: …`, e.g. a dedup merge suggestion or an
-   * unmerged-machine warning) and dropping them hides an actionable note.
-   * The `list` pagination footer is no longer one of them — since mint
-   * 0.8 it is written to stdout (`# Page x/y`), so the stdout path carries it.
-   * On failure the message also lands in {@link MintRunResult.error}.
+   * 原始 stderr。成功时它*不是*错误通道：mint 会把建议行写在那里（`mint: hint: …`，例如
+   * 去重合并建议或未合并机器的告警），丢掉它们就藏起了一条可行动说明。`list` 的分页脚注
+   * 已不再属于它们——自 mint 0.8 起它写到 stdout（`# Page x/y`），所以由 stdout 路径携带。
+   * 失败时该消息也会落到 {@link MintRunResult.error}。
    */
   stderr?: string;
   error?: string;
-  /** Process exit code when the CLI ran and failed; absent on abort/timeout. */
+  /** CLI 跑过并失败时的进程退出码；中止/超时时缺失。 */
   exitCode?: number;
   /**
-   * True when the child was killed by the wall-clock limit. Only set on the
-   * failure path: a run that finished within its budget never carries it. Callers
-   * turn it into the cold-download hint instead of a bare `exit timeout`.
+   * 子进程是否被墙钟上限杀掉。只在失败路径上置位：在预算内跑完的运行从不携带它。调用方把
+   * 它变成冷下载提示，而不是光秃秃的 `exit timeout`。
    */
   timedOut?: boolean;
-  /** True when the run was cancelled through `options.signal`. */
+  /** 该次运行是否经 `options.signal` 取消。 */
   aborted?: boolean;
 }
 
 /**
- * Process-wide cold-start bookkeeping.
+ * 进程级冷启动记账。
  *
- * The session-start overview fires three mint calls concurrently, and
- * `mint-faa`'s lazy installer removes the binary directory before downloading
- * with no lock — parallel first runs would destroy each other's install. So the
- * **first** run holds a slot: concurrent callers wait for it instead of spawning
- * a second cold install. The slot is released on every settle, and only a
- * *successful* cold run marks the process warm, so a failed download does not
- * downgrade the next attempt to the 30 s budget.
+ * 会话启动概览会并发发起三次 mint 调用，而 `mint-faa` 的懒安装器在下载前先删二进制目录
+ * 且不加锁——并行首跑会互相破坏安装。所以**首次**运行持一个槽位：并发调用方等它，而不是
+ * 再 spawn 一次冷安装。槽位在每次结算时释放，且只有*成功*的冷运行才把进程标成热的，所以
+ * 下载失败不会把下一次尝试降级到 30 s 预算。
  */
 let mintWarmed = false;
 let coldRun: Promise<void> | undefined;
 let releaseColdRun: (() => void) | undefined;
 
-/** Test seam: forget the process-wide cold-start state. */
+/** 测试接缝：忘掉进程级冷启动状态。 */
 export function resetMintWarmState(): void {
   mintWarmed = false;
   coldRun = undefined;
@@ -258,8 +235,8 @@ export function resetMintWarmState(): void {
 }
 
 /**
- * Take the cold slot, or wait for the run that holds it (and re-check afterwards:
- * a failed holder hands the slot on instead of leaving callers warm).
+ * 拿冷启动槽位，或等持有它的那次运行（之后再复查：失败的持有者把槽位传下去，而不是让调用方
+ * 被当成热的）。
  */
 async function acquireColdSlot(): Promise<boolean> {
   while (!mintWarmed) {
@@ -274,7 +251,7 @@ async function acquireColdSlot(): Promise<boolean> {
   return false;
 }
 
-/** Release the cold slot taken by {@link acquireColdSlot}. */
+/** 释放 {@link acquireColdSlot} 取到的冷启动槽位。 */
 function settleColdSlot(ok: boolean): void {
   if (ok) mintWarmed = true;
   const release = releaseColdRun;
@@ -284,18 +261,16 @@ function settleColdSlot(ok: boolean): void {
 }
 
 /**
- * Run the mint CLI by spawning `node <mint-entry>` directly.
+ * 直接 spawn `node <mint-entry>` 来运行 mint CLI。
  *
- * Plugin code is host-trusted, and its own child processes do not pass through
- * the session file sandbox (`ctx.shell` / Seatbelt), so mint can read and write
- * its data directory even in `workspace-write` sessions.
+ * 插件代码是宿主信任的，它自己的子进程不过会话文件沙箱（`ctx.shell` / Seatbelt），所以
+ * mint 在 `workspace-write` 会话里也能读写自己的数据目录。
  *
- * Nonzero exits and spawn failures resolve (not reject) with an error message,
- * matching the old shell-backed contract so callers never need to catch.
+ * 非零退出与 spawn 失败都 resolve（不 reject）成一条错误消息，与旧的 shell 实现契约一致，
+ * 调用方因此永远不用 catch。
  *
- * `options.timeoutMs` is the caller's own budget and opts out of the cold-start
- * bookkeeping; otherwise the first run of the process gets
- * {@link MINT_COLD_TIMEOUT_MS} and later ones {@link MINT_TIMEOUT_MS}.
+ * `options.timeoutMs` 是调用方自己的预算，并退出冷启动记账；否则进程首次运行拿
+ * {@link MINT_COLD_TIMEOUT_MS}、之后拿 {@link MINT_TIMEOUT_MS}。
  */
 export async function runMint(
   cwd: string,
@@ -329,7 +304,7 @@ export async function runMint(
       try {
         child?.kill('SIGTERM');
       } catch {
-        // already gone — the close handler settles
+        // 已经没了——close 处理器会结算
       }
       settle({ ok: false, aborted: true, error: 'aborted' });
     }
@@ -347,10 +322,8 @@ export async function runMint(
       return;
     }
 
-    // Armed before spawn so it is registered ahead of spawn's own timeout timer
-    // for the same deadline: by the time the killed child closes, the flag is
-    // already set and `code === null` can be reported as a timeout rather than a
-    // bare crash.
+    // 在 spawn 之前武装，好让它注册在 spawn 自己为同一截止时间设的超时定时器之前：等被杀
+    // 的子进程关闭时，标志位已置好，`code === null` 就能报成超时而不是光秃秃的崩溃。
     timer = setTimeout(() => {
       timedOut = true;
     }, timeoutMs);

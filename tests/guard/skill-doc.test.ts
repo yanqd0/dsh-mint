@@ -190,6 +190,8 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
 ];
 
 describe('skill layout', () => {
+  // 常驻预算门禁：SKILL.md 只买「机制 + 路由」，超出 3200 B 就说明分支内容没拆到 references。
+  // 直接按 UTF-8 字节量 SKILL.md，断言不超过标注的上限（历史值见下方注释）。
   it('keeps the always-loaded body inside the router budget', () => {
     // 6965 B before the split; 3987 B before the reference-split refactor. The
     // ceiling was re-pinned to 3200 B with that refactor (non-mainline sections
@@ -202,6 +204,8 @@ describe('skill layout', () => {
     expect(skill).toContain(marker);
   });
 
+  // 拆分不许丢规则：搬出 SKILL.md 的门禁必须在各自的新家文件里仍然存在。
+  // 遍历 `HOME_MARKERS` 的「文件 → 标记」表，先确认文件在盘上，再逐个断言文本命中。
   it('keeps the markers that moved out of SKILL.md in their home file', () => {
     for (const [file, markers] of HOME_MARKERS) {
       expect(existsSync(`${SKILL_DIR}/${file}`), `${file} missing`).toBe(true);
@@ -212,6 +216,8 @@ describe('skill layout', () => {
     }
   });
 
+  // 回归钉：工具优先的口径只许留在常驻 guidance 里，不许回到 skill 或工具描述（旧写法已删）。
+  // 对 SKILL.md 与工具描述断言不含旧文案，对 `MINT_TOOL_GUIDANCE` 断言必须含。
   it('leaves the tool-first policy to the always-on guidance', () => {
     expect(skill).not.toContain('不要用 bash');
     expect(skill).not.toContain('不经 bash');
@@ -235,6 +241,8 @@ describe('skill layout', () => {
     }
   });
 
+  // 回归钉：`blocked-by` 的 kebab 拼写是 CLI 唯一认的形状，下划线写法必须不再出现。
+  // 读 `references/commands.md`，正向断言 kebab 串、反向断接下划线串。
   it('documents the kebab link value the CLI accepts', () => {
     const commands = read('references/commands.md');
     expect(commands).toContain('"blocked-by"');

@@ -9,6 +9,8 @@ describe('checkNodeId', () => {
     }
   });
 
+  // 上库与路径双禁区：`#数字` 进不了 merge subject 与分支名，`/`、`.` 开头的 id 逃不出会话目录。
+  // 把可能越界或进上库的样本逐个喂给 `checkNodeId`，断言全部拒绝且文案含「只允许」。
   it('refuses anything that could reach committed content or escape the directory', () => {
     // `#<数字>` 会被拼进 merge subject 与分支名（上库内容不得出现 mint ID）；空白、
     // `/`、`\` 是 git ref 的禁区；`.`/`..`/`.hidden` 会让 worktree 的路径段逃出会话
@@ -20,6 +22,8 @@ describe('checkNodeId', () => {
     }
   });
 
+  // 判据顺序契约：空串/非字符串与超长必须排在字符集之前，各自给出专属文案。
+  // 分别传 `''`、数字 7 与 65 个字符，断言前两条文案与长度分支的「过长」。
   it('keeps the empty and length rules ahead of the charset', () => {
     expect(checkNodeId('')).toEqual({ error: '节点 id 必须是非空字符串' });
     expect(checkNodeId(7)).toEqual({ error: '节点 id 必须是非空字符串' });

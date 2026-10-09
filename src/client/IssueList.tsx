@@ -1,8 +1,6 @@
 /**
- * The issue list: filter bar, pagination, and one row per issue.
- *
- * The rows are buttons (not `div`s) so the list is reachable and operable from
- * the keyboard without inventing a roving-focus model.
+ * issue 列表：筛选栏、分页与每行一条 issue。行用按钮而非 `div`，
+ * 这样键盘可达且可操作，无需另造 roving focus 模型。
  */
 import type { ReactElement } from 'react';
 
@@ -16,11 +14,9 @@ import { BODY, BUTTON, FILTER_LABEL, INPUT, NOTE, TAB_ACTIVE, TOOLBAR } from './
 export interface IssueListProps {
   copy: CopyTranslate;
   state: LoadState<MintListPayload<IssueItem>>;
-  /** The dictionaries a row renders with (milestone version, label colour). */
   meta: MintMetaPayload | undefined;
-  /** The search box's live text (the caller debounces it into a request). */
+  /** 搜索框实时文本；由调用方防抖后才成为请求。 */
   search: string;
-  /** Whether the hide-settled default is off. */
   allStates: boolean;
   onSearch: (next: string) => void;
   onAllStates: (next: boolean) => void;
@@ -29,11 +25,6 @@ export interface IssueListProps {
   onSelect: (item: IssueItem) => void;
 }
 
-/**
- * Render the list.
- *
- * @param props - copy, loaded state, filters, and the callbacks that change them.
- */
 export function IssueList(props: IssueListProps): ReactElement {
   const { copy, state, meta, search, allStates, onSearch, onAllStates, onRefresh, onPage, onSelect } =
     props;

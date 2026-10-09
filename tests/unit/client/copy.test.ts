@@ -125,12 +125,16 @@ describe('panel copy', () => {
     expect(callSites().length).toBeGreaterThan(0);
   });
 
+  // 面板文案只能来自 copy.ts：其他源码的字符串字面量里出现中文就是硬编码文案。
+  // 用 TS AST 只扫字符串/模板字面量（注释里的中文合法），逐文件断言命中为空。
   it('is the only file the panel text lives in', () => {
     for (const { file, text } of callSites()) {
       expect(literalWideText(text, file), `${file} must not carry hard-coded Chinese copy`).toEqual([]);
     }
   });
 
+  // 反向守卫：字典里不能留面板从不请求的键，否则翻译白做、还会掩盖拼错的键名。
+  // 把所有调用点源码拼成一份文本，逐键断言其中出现该键的字面量。
   it('has no key the panel never asks for', () => {
     const sources = callSites()
       .map(({ text }) => text)

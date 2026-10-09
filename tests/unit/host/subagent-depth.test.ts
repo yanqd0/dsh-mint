@@ -54,6 +54,8 @@ describe('readSubagentDepth', () => {
   });
 });
 
+// 读不到深度时不得降级成「禁派/单层」：按一个不存在的宿主能力给建议比不说更糟。
+// 覆盖 0/1/2/9 的映射边界（0 是禁派、9 不越界），并断言 unknown 原样透传。
 describe('delegationShape', () => {
   it.each([
     [0, 'no-delegation'],
@@ -69,6 +71,8 @@ describe('delegationShape', () => {
   });
 });
 
+// 降级文案必须给出可执行的 GUI 路径与生效时机，否则用户无法恢复第二层委派。
+// 对 single-agent / no-delegation 断言关键片段，two-level 与 unknown 断言零输出。
 describe('renderDagDepthNotice', () => {
   it('says nothing at two levels or when the depth is unknown', () => {
     expect(renderDagDepthNotice('two-level')).toBe('');

@@ -1,8 +1,7 @@
 /**
- * The loading / empty / failed notices every mint view shares.
- *
- * One component means a broken mint entry, a dead session, and an empty project
- * look like three states of the same panel rather than three different panels.
+ * 所有 mint 视图共用的 loading / empty / failed 提示：共用一个组件，
+ * 让 mint 入口损坏、会话失效与空项目呈现为同一面板的三种状态，
+ * 而不是三个互不相同的面板。
  */
 import type { ReactElement } from 'react';
 
@@ -13,19 +12,12 @@ import { routeErrorKey } from './model.js';
 export interface StateNoticeProps {
   copy: CopyTranslate;
   state: 'loading' | 'empty' | 'failed';
-  /** Failure text as the route reported it. */
   message?: string | undefined;
-  /** mint's own stderr, shown verbatim when it carried something actionable. */
+  /** mint 自身 stderr：属诊断信息，原样展示。 */
   stderr?: string | undefined;
-  /** Offered for `failed` and `empty`: load again. */
   onRetry?: (() => void) | undefined;
 }
 
-/**
- * Render one notice.
- *
- * @param props - the state, its text, and the retry hook.
- */
 export function StateNotice({ copy, state, message, stderr, onRetry }: StateNoticeProps): ReactElement {
   // A failure the panel can name in its own words is localized; any other text
   // (mint's stderr, a shape warning) is diagnostic and shows verbatim.
