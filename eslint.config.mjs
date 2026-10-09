@@ -24,4 +24,18 @@ export default tseslint.config(
       'no-console': 'error',
     },
   },
+  // 文件限大：口径是「逻辑行」——空行与纯注释行不计，src/AGENTS.md「文件限大与内部拆分」。
+  {
+    files: ['src/**/*.ts', 'src/**/*.tsx'],
+    rules: {
+      'max-lines': ['error', { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // 测试不设硬门禁：拆分只随源文件（见 tests/AGENTS.md「镜像与拆分」），这里降为 warn 只提示体量。
+  {
+    files: ['tests/**/*.ts'],
+    rules: {
+      'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
+    },
+  },
 );

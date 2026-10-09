@@ -18,6 +18,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - **小步快跑、小提交**：每个逻辑变更独立 commit（Angular 前缀）。
 - **dogfooding**：用 mint 管理 dsh-mint 自身开发。
 - **文档分工**：`README.md`（英）与 `README.zh.md`（中）是**必须同步的双语对**——改一侧即改另一侧，两侧同结构、同小节顺序、顶部各带语言切换相对链接（`tests/guard/readme.test.ts` 守标题序列、互链与内链可达）；README **面向使用者**（装 / 用 / 配 / 卸 + 能力概览），开发者内容进 `CONTRIBUTING.md`（英，人类开发者），不重复 AGENTS.md/notes 已有口径；对外英文文档放 `docs/`（未来 i18n 工程，**暂不做**）；对内中文记录放 `notes/`（索引 `notes/memory.md`，新会话先读）；CONTRIBUTING/CHANGELOG 维持英文。
+- **编程/测试规范真源**：编码与文件拆分口径在 `src/AGENTS.md`（`max-lines` 门禁在 `eslint.config.mjs`），测试的镜像与注释口径在 `tests/AGENTS.md`；根文档不重复其内容。
 
 ## issue/计划管理（mint）
 
