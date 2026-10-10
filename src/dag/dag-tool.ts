@@ -393,7 +393,12 @@ export async function executeDagTool(
       });
     }
   }
-  return answer(`${setHeadline(parsed)}；${dagSummary(doc)}`);
+  const headline = `${setHeadline(parsed)}；${dagSummary(doc)}`;
+  // 降级行只在 `running` 这一笔上带：那一刻才是「即将派发」——子代理马上要按当前生效的
+  // 深度被派出去，提示才落在可行动的时点上；`pending`/`done` 改的是记录，与派发形态无关。
+  return answer(
+    parsed.status === 'running' ? withDepthNotice(headline, input.subagentDepth) : headline
+  );
 }
 
 /**
