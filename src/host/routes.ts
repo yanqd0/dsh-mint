@@ -36,6 +36,11 @@ import type { MintRunOptions, MintRunResult } from '../mint/mint.js';
 import type { DagNodeMetrics, DagStatus, MintDagPayload } from '../shared/records.js';
 import { ROUTE_PREFIX, isRouteName } from '../shared/route-paths.js';
 import { hasControlCharacter } from '../shared/text.js';
+import {
+  META_LABELS_ARGV,
+  META_MILESTONES_ARGV,
+  META_PLANS_ARGV,
+} from './routes/internal/cli-surface.js';
 import type {
   AgentsLike,
   DshContext,
@@ -48,6 +53,17 @@ import type {
  * 拼同样的路径。
  */
 export { ROUTE_PREFIX };
+
+/**
+ * 只读 mint CLI 面的公开面：白名单与 meta 三次整表读的实现移到
+ * `./routes/internal/cli-surface.js`，本文件内部消费与外部（含测试）都取同一份。
+ */
+export {
+  META_LABELS_ARGV,
+  META_MILESTONES_ARGV,
+  META_PLANS_ARGV,
+  READ_ONLY_SUBCOMMANDS,
+} from './routes/internal/cli-surface.js';
 
 /**
  * 运行中节点的实测时间要变化多少，才值得重写它已存的采样。文档落在 `/tmp`，所以这是
@@ -66,37 +82,6 @@ export const MAX_PAGE_SIZE = 100;
 
 /** 接受的最长过滤值；过滤条件是针，不是文档。 */
 const MAX_FILTER_LENGTH = 200;
-
-/**
- * 这些路由唯一会跑的 mint 子命令。从这里可达的一切都是读：`list`、`show`、
- * `plan list`、`plan show`、`milestone list`、`milestone show`、`label list`。
- * 任何 argv 头部不在此列的调用都是 bug——`label` 只为颜色字典而来，绝不是 `label set`。
- */
-export const READ_ONLY_SUBCOMMANDS = [
-  'list',
-  'show',
-  'plan',
-  'issue',
-  'milestone',
-  'label',
-] as const;
-
-/** meta 路由始终执行的三次整表读，均不分页。 */
-export const META_MILESTONES_ARGV: readonly string[] = [
-  'milestone',
-  'list',
-  '--all-states',
-  '--json',
-  '--no-page',
-];
-export const META_PLANS_ARGV: readonly string[] = [
-  'plan',
-  'list',
-  '--all-states',
-  '--json',
-  '--no-page',
-];
-export const META_LABELS_ARGV: readonly string[] = ['label', 'list', '--json', '--no-page'];
 
 /** 这些路由拒绝的一次请求：路径坏、id 坏或过滤值坏。 */
 export class RouteRequestError extends Error {}
