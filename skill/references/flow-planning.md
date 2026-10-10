@@ -37,8 +37,8 @@
    不做事前预检分流。无并行机会也写「单批串行」+ 一句理由。
    把批次表写进 plan body 的 `## 并行批次` 段 —— `plan create --body` 时**就带该段**；
    细化用 `mint({ args: ["plan","set","<PLAN>","--body-section","并行批次","--body-file","<文件>"] })`
-   （标题不存在报 `section not found`；以 `- ` 开头的值**必须经 `--body-file`**，
-   直接 `--body "- …"` 会被 CLI 当成参数）；宿主 plan 正文同步该表。
+   （标题不存在报 `section not found`；以 `- ` 开头的值怎么传见 `body-editing.md`——直接写
+   `--body "- …"` 会被 CLI 当成参数）；宿主 plan 正文同步该表。
    执行侧见 `flow-impl.md` 并行批次小节。
 5. **方案定稿后出 DAG 全景**：正文定稿即**分界节点** —— 定稿**前**的调研 DAG 已按 `references/plan-dag.md` 动态生长
    （进计划模式即启动、每轮 `add` 节点），本步骤只是把那张动态图转成**静态全景**：节点=本 plan 的 issue、
