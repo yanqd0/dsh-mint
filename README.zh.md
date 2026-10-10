@@ -23,7 +23,8 @@
 - **plan 绑定（单向）** —— 项目没有**已拆解**的 mint plan 时 `exit_plan_mode` 被拒，
   宿主计划模式不会与 mint plan 脱钩；但**建 mint plan 不要求计划模式**。
 - **右侧边栏 mint 面板** —— 从 tab 栏的新建按钮打开，与「工作区文件」「新建终端」并列，
-  以只读方式显示当前会话项目的 issue、plan 与 milestone。
+  以只读方式显示当前会话项目的 issue、plan 与 milestone。详情页的正文默认渲染为
+  Markdown 预览，可在同一片区域切到高亮的原文代码块。
 - **plan DAG 面板** —— 与 mint 面板并列的第二个侧边栏 tab，画出 agent 用 `mint_plan_dag`
   记录的 plan 执行图：pending、running（边框闪烁）与已定论节点，各自显示宿主从子会话实测的
   token 数与执行时长（子代理结束后仍保留为带时刻的样本），悬停显示完整标题与结论原文；

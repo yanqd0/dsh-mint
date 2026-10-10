@@ -30,7 +30,8 @@ plan always has a mint plan behind it.
   record — but **creating a mint plan does not require plan mode**.
 - **Mint panel in the right sidebar** — opened from the tab strip's add control
   beside _Workspace files_ and _New terminal_, it shows this project's issues,
-  plans and milestones read-only.
+  plans and milestones read-only. A detail page renders its body as a Markdown
+  preview and can switch the same area to the highlighted raw code block.
 - **Plan DAG panel** — a second sidebar tab, beside the mint panel, draws the
   execution graph the agent records through the `mint_plan_dag` tool: pending,
   running (pulsing) and settled nodes, each showing the token count and elapsed

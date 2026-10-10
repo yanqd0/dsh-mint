@@ -321,11 +321,41 @@ console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存
 - **CI 先测后构建**：任何「读 dist 产物」的测试都必须在测试内自行构建到临时目录（并清理）。
 - **声明 `exports` 就等于给展示元数据上门禁**：`readPluginMeta` 用 Node resolver 解析
   `<pkg>/package.json` 与 `<pkg>/locale/en.json`，缺这两个子路径时 `ERR_PACKAGE_PATH_NOT_EXPORTED`
-  被 `optionalResourcePath` **静默吞掉**（无报错、无 placeholder），插件页只剩包名。见 §8。
+  被 `optionalResourcePath` **静默吞掉**（无报错、无 placeholder），插件页只剩包名。见 §9。
 - **修完 exports 必须重启 harness 才生效**：resolver 的 `package.json` 缓存按进程存活，
   **磁盘改好 + headless 复核通过 ≠ 运行中的 harness 变了**——「headless 已好、页面仍空」时先重启，别怀疑 UI。见 §6.5。
+- **同目录的组件与纯模块不许只差大小写**：`Body.tsx` 与 `body.ts` 并存时，`scripts/build-client.mjs`（esbuild）
+  解析 `./Body.js` 会先按大小写不敏感报出「改用 `body.ts`」，再因拿不到 `Body.ts` 整体失败
+  （`Cannot read file: …/src/client/Body.ts`）；vitest 与 `tsc` 都不会红（Vite 解析器与 NodeNext 都能落到
+  `Body.tsx`），所以这个坑只在构建期暴露。判据：客户端半边的文件名两两不得只差大小写。
 
-## 8. 插件展示元数据（插件页的标题/描述/图标）
+## 8. 正文 Markdown 预览（primitives 契约）
+
+面板三处详情（issue / plan / milestone）的正文由 `src/client/Body.tsx` 统一渲染：默认模式是 shell 的
+`MarkdownText`，第二模式是原文 `CodeBlock`，切换控件用 `SegmentedControl`，词条与默认值在
+`src/client/body-view.ts`。三者都来自 `@deepseek-ai/dsh-client-ui-primitives`，**零新依赖**。
+
+- **平台模块是全导出的冻结命名空间**：`@deepseek-ai/dsh-web-frontend/dist/assets/index-*.js` 里
+  `const <别名>=Object.freeze(Object.defineProperty({__proto__:null, Button:…, SegmentedControl:…,
+MarkdownText:…}))`，启动种子表拿的是**整份导出**，不是按需挑过的子集。因此「某个 primitives 导出运行时
+  是否可用」只看它在 `lib/types/index.d.ts` 里导出即可。**注意**：`tests/guard/client-bundle.test.ts`
+  只校验 specifier、不校验导出名——缺导出不会让 CI 变红，只在页面上白屏，故新用导出仍要人眼过一遍。
+- **KaTeX 已在 shell 产物内**：`dist/assets/vendor-*.css`（katex 样式）与 `dist/assets/fonts/KaTeX_*`，
+  正文里的数学不需要我们供给 CSS/字体；mermaid 不在此列（围栏按普通代码块渲染）。
+- **`MarkdownText` 的 props**：`text` + 必填 `labels: { code: { copyLabel, copiedLabel }, footnotes }`；
+  `variant` 缺省 `body`（文档排版），`compact` 把正文降成 `--dsw-alias-label-tertiary` 灰字并拉平标题——
+  那是次要 chrome 的语气，面板主内容不要用。raw HTML 渲染成字面文本、目标地址走协议白名单；**不挂
+  `MarkdownDelegateProvider`** 时 HTTP(S) 链接走原生锚点，本地文件链接/图片与 footnote 引用退化为纯文本/
+  alt 文本（只读面板正是要这个）。
+- **`SegmentedControl` 的 DOM id 契约**：受控 props `{ id, value, options, onChange, label }`；每个 tab 的
+  id 是 `<id>-<value>`、`aria-controls` 指向 `<id>-<value>-panel`，方向键游走与焦点迁移由控件自理。因此
+  **`id` 必须页面内唯一**（同一页面可挂多个会话的 mint tab）→ 面板用 `useId()`，被认领的面板元素自带
+  `role="tabpanel"` + `aria-labelledby`；只渲染当前模式的面板（把另一模式隐藏会让长正文双份渲染）。
+- **`labels` 不 memo**：`copy` 座位跨语言切换是**稳定引用**（绑定函数每次调用才读 locale，见 §4.1），按它
+  `useMemo` 会把围栏复制按钮与脚注标题冻结在旧语言；要 memo 只能按三个词条值。面板选择每次渲染现取——
+  mint 正文只有几 KB，`React.memo` 失效的代价是一次亚毫秒级解析。
+
+## 9. 插件展示元数据（插件页的标题/描述/图标）
 
 【插件】界面（右侧边栏 **插件** 面板的包详情页、设置 → 插件 → **插件列表** 的卡片）里的标题与描述
 都来自一个宿主 reader，与客户端半边无关：

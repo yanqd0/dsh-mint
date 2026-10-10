@@ -28,7 +28,7 @@ title: dsh-mint 双产物与运行时归属
 flowchart TB
   subgraph build["构建期 pnpm build"]
     srchost["src 宿主面<br/>index / routes / context / mint"]
-    srcclient["src/client 浏览器面<br/>index.tsx / MintBody / api / copy<br/>Rows.tsx / Body.tsx / model.ts / styles.ts"]
+    srcclient["src/client 浏览器面<br/>index.tsx / MintBody / api / copy<br/>Rows.tsx / Body.tsx / body-view.ts / model.ts / styles.ts"]
     shared["src/shared/records.ts<br/>仅类型，两端共享"]
     tsup["tsup<br/>ESM 加 d.ts"]
     esb["scripts/build-client.mjs<br/>esbuild 加加载器包装"]
@@ -154,6 +154,7 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 | tab 记录与 `tab.signal`                                  | 侧边栏 Tab 域                  | tab 关闭或插件卸载时 abort                                       |
 | 当前视图（Issue/Plan/Milestone）、筛选、页码、选中的条目 | **MintBody 组件内 `useState`** | 组件卸载即丢；不落盘（0.2.0 刻意如此）                           |
 | 打开的是哪个容器（`{kind,id}`）与它所在 tab              | MintBody 组件内                | kind 随目标存，故切 tab 不会用对方的 id 取表；切回仍保留各自详情 |
+| 正文的呈现模式（预览 / 原文代码块）                      | **BodyView 组件内 `useState`** | 默认预览；离开详情即丢，不落盘                                   |
 | 字典（plans/milestones/labels/placement）                | MintBody 组件内                | 挂载与刷新时各读一次；失败即降级显示                             |
 | 一次读取的 loading/failed/ready                          | MintBody 组件内                | 每次输入变化重新请求（旧请求 abort）                             |
 | 文案词典                                                 | client locale 注册表           | 插件生命周期                                                     |
@@ -187,4 +188,5 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 - 面板**不含写操作**（issue 状态迁移、plan close 等）。
 - 没有快捷键/命令入口：只能从 guide 新建；`commandId` 留空。
 - 视图状态不持久化；不跨项目查询。
+- 正文预览复用 shell 的 `MarkdownText`（含 KaTeX），mermaid 与写操作都不在范围内。
 - 组件无 DOM 测试环境（jsdom + RTL 属 0.3.0）。
