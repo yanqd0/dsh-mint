@@ -54,7 +54,7 @@ describe('install-skill-postinstall.mjs guard', () => {
     // ESM stub entry: writes a marker file, proving the guard imported it
     writeFileSync(
       join(root, 'dist', 'install-skill.js'),
-      "import { writeFileSync } from 'node:fs'; writeFileSync(process.env.MARKER, 'ran');\n",
+      "import { writeFileSync } from 'node:fs'; writeFileSync(process.env.MARKER, 'ran');\n"
     );
 
     const marker = join(root, 'marker');

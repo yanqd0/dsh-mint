@@ -30,13 +30,13 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
 参数与动作（`parseWorktreeAction` 校验，非法组合给明确拒绝）：
 
-| 动作 | 参数 | 语义 |
-| --- | --- | --- |
-| `create` | `node`（必需）、`base`（可选） | 从 `base`（缺省 HEAD）建节点分支与工作树，并把**当前分支**记成该节点的 `worktree.target` |
-| `list` | 无 | 仓库级清单（见 §3），**不读 DAG、不需要节点** |
-| `merge` | `node`（必需） | 把节点分支合回它记录的**目标分支** |
-| `remove` | `node`（必需）、`force`（可选，布尔） | 清理工作树；**未合并默认拒绝** |
-| `prune` | 无 | 仓库级按规则清理旧树（见 §5），**不读 DAG、不需要节点** |
+| 动作     | 参数                                  | 语义                                                                                     |
+| -------- | ------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `create` | `node`（必需）、`base`（可选）        | 从 `base`（缺省 HEAD）建节点分支与工作树，并把**当前分支**记成该节点的 `worktree.target` |
+| `list`   | 无                                    | 仓库级清单（见 §3），**不读 DAG、不需要节点**                                            |
+| `merge`  | `node`（必需）                        | 把节点分支合回它记录的**目标分支**                                                       |
+| `remove` | `node`（必需）、`force`（可选，布尔） | 清理工作树；**未合并默认拒绝**                                                           |
+| `prune`  | 无                                    | 仓库级按规则清理旧树（见 §5），**不读 DAG、不需要节点**                                  |
 
 - **非法组合**：`该动作需要 node`（create/merge/remove 缺 node）、`prune 不接受 node`、
   `base 只用于 create`、`force 只用于 remove`、`base 必须是非空字符串（commit / ref）`、
@@ -118,14 +118,14 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
 判据按顺序短路，**任一命中即保留**并记因（决不从 `--force` 找补）：
 
-| 顺序 | verdict | 判据 | 动作 |
-| --- | --- | --- | --- |
-| 1 | `unmerged` | `merge-base --is-ancestor <branch> HEAD` 失败；`branch` 为空（detached）同样算 | 保留 |
-| 2 | `dirty` | 在该树路径下跑 `status --porcelain`，输出非空（**绝不 `--force`**，命令本身也会拒） | 保留 |
-| 3 | `recent` | 年龄 < `minAgeMs`（缺省 `WORKTREE_MIN_AGE_MS = 3_600_000`，即 1 小时） | 保留 |
-| 4 | `unmeasured` | 树目录 `statSync` 失败（已被手工删/权限），年龄无从判定 | 保留（宁可不删） |
-| — | `removed` | 已合并 + 干净 + 够老 → `git worktree remove <path>`（**不带 `--force`**）成功 | 删树 |
-| — | `failed` | 判定够格但 `worktree remove` 失败（错误不抛，记因保留） | 保留 |
+| 顺序 | verdict      | 判据                                                                                | 动作             |
+| ---- | ------------ | ----------------------------------------------------------------------------------- | ---------------- |
+| 1    | `unmerged`   | `merge-base --is-ancestor <branch> HEAD` 失败；`branch` 为空（detached）同样算      | 保留             |
+| 2    | `dirty`      | 在该树路径下跑 `status --porcelain`，输出非空（**绝不 `--force`**，命令本身也会拒） | 保留             |
+| 3    | `recent`     | 年龄 < `minAgeMs`（缺省 `WORKTREE_MIN_AGE_MS = 3_600_000`，即 1 小时）              | 保留             |
+| 4    | `unmeasured` | 树目录 `statSync` 失败（已被手工删/权限），年龄无从判定                             | 保留（宁可不删） |
+| —    | `removed`    | 已合并 + 干净 + 够老 → `git worktree remove <path>`（**不带 `--force`**）成功       | 删树             |
+| —    | `failed`     | 判定够格但 `worktree remove` 失败（错误不抛，记因保留）                             | 保留             |
 
 - **年龄** = `nowMs`（缺省 `Date.now()`）− **max(树目录 `statSync(path).mtimeMs`, 分支头提交时间)**
   （`git log -1 --format=%ct <branch>` × 1000）；分支读不到时只用目录 mtime。取较大者是判据本身：
@@ -150,15 +150,15 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
 ## 6. 落点与测试
 
-| 层 | 文件 |
-| --- | --- |
-| 工具面 | `src/dag/worktree-tool.ts`（`TOOL_NAME`/`WORKTREE_TOOL_DESCRIPTION`/`parseWorktreeAction`/`executeWorktreeTool`/`installWorktreeTool`；注册器与执行器分离） |
-| git 层 | `src/dag/dag-worktree.ts`（`worktreeRoot`/`worktreePath`/`worktreeBranch`/`createWorktree`/`mergeWorktree`/`removeWorktree`/`installedWorktrees`/`pruneWorktrees`/`WorktreeDeps`） |
-| 文档记录 | `src/dag/dag.ts` 的 `dag/internal`（节点 `worktree` 字段的读写校验 `checkWorktree` 在 `internal/validate.ts`）、`src/dag/dag-store.ts`（`updateDag`） |
-| 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用） |
-| 挂载 | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁） |
-| 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`） |
-| skill | `skill/references/worktree-exec.md`（唯一一份操作指南；保留现场与开工点清理见 §7） |
+| 层       | 文件                                                                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具面   | `src/dag/worktree-tool.ts`（`TOOL_NAME`/`WORKTREE_TOOL_DESCRIPTION`/`parseWorktreeAction`/`executeWorktreeTool`/`installWorktreeTool`；注册器与执行器分离）                        |
+| git 层   | `src/dag/dag-worktree.ts`（`worktreeRoot`/`worktreePath`/`worktreeBranch`/`createWorktree`/`mergeWorktree`/`removeWorktree`/`installedWorktrees`/`pruneWorktrees`/`WorktreeDeps`） |
+| 文档记录 | `src/dag/dag.ts` 的 `dag/internal`（节点 `worktree` 字段的读写校验 `checkWorktree` 在 `internal/validate.ts`）、`src/dag/dag-store.ts`（`updateDag`）                              |
+| 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用）                                                                                     |
+| 挂载     | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁）                                                                                                           |
+| 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`）                                                                      |
+| skill    | `skill/references/worktree-exec.md`（唯一一份操作指南；保留现场与开工点清理见 §7）                                                                                                 |
 
 测试：
 

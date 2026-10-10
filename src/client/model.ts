@@ -108,9 +108,7 @@ export function describeLink(value: unknown): LinkLine | undefined {
       : typeof record.uid === 'string'
         ? record.uid
         : '';
-  return labelKey === undefined
-    ? { rel, target }
-    : { rel, labelKey, target };
+  return labelKey === undefined ? { rel, target } : { rel, labelKey, target };
 }
 
 export function issueMeta(item: IssueItem): string {
@@ -295,7 +293,10 @@ export const EMBEDDED_PAGE_SIZE = 100;
  * 内嵌列表要显示全部关联项——已结算的状态也算。外层列表默认把它们藏起来，若在这里沿用
  * 那个默认，藏掉的恰恰是 plan/milestone 明细存在的意义。
  */
-export function embeddedIssuesQuery(kind: 'plan' | 'milestone', id: number): Record<string, string> {
+export function embeddedIssuesQuery(
+  kind: 'plan' | 'milestone',
+  id: number
+): Record<string, string> {
   return {
     [kind]: String(id),
     allStates: '1',

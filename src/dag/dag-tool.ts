@@ -34,7 +34,11 @@ import { applyDagWrite, dagSummary, isValidDagSession, parseDagAction, sampleOf 
 import type { DagDoc, DagWrite } from './dag.js';
 import { readAgentMetrics, withSample } from './dag-lifecycle.js';
 import { rememberMeasurement } from './dag-metrics.js';
-import { delegationShape, readSubagentDepth, renderDagDepthNotice } from '../host/subagent-depth.js';
+import {
+  delegationShape,
+  readSubagentDepth,
+  renderDagDepthNotice,
+} from '../host/subagent-depth.js';
 import type { SubagentDepth } from '../host/subagent-depth.js';
 import { resolveToolOwner, sessionIdOf } from '../shared/session-id.js';
 import { DAG_DIR, readDag, updateDag } from './dag-store.js';
@@ -336,7 +340,8 @@ export async function executeDagTool(
     const read = await readDag(sessionId, dir);
     // A missing file is the normal "no plan yet" state, not a failure
     // (`notes/plan-dag.md` §1.5), so it answers ok with the empty-state line.
-    if (read.state === 'missing') return answer(withDepthNotice('本会话暂无 DAG', input.subagentDepth));
+    if (read.state === 'missing')
+      return answer(withDepthNotice('本会话暂无 DAG', input.subagentDepth));
     if (read.state === 'unreadable') {
       return { ok: false, summary: `${PREFIX}DAG 不可读：${read.error}（${read.file}）` };
     }

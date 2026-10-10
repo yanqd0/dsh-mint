@@ -160,7 +160,10 @@ function doctorDetail(counts: Record<string, number>): string {
 function isDoctorReport(value: unknown): value is DoctorReport {
   if (!isRecord(value)) return false;
   if (typeof value.warnings !== 'number') return false;
-  return isRecord(value.counts) && Object.values(value.counts).every((count) => typeof count === 'number');
+  return (
+    isRecord(value.counts) &&
+    Object.values(value.counts).every((count) => typeof count === 'number')
+  );
 }
 
 /**
@@ -172,9 +175,7 @@ function isDoctorReport(value: unknown): value is DoctorReport {
  */
 export function supportsDoctor(version: string): boolean {
   const [core = ''] = version.split('-', 1);
-  const [major = 0, minor = 0] = core
-    .split('.')
-    .map((part) => Number.parseInt(part, 10) || 0);
+  const [major = 0, minor = 0] = core.split('.').map((part) => Number.parseInt(part, 10) || 0);
   return major > 0 || minor >= 9;
 }
 

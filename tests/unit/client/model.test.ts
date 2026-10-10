@@ -153,7 +153,10 @@ describe('links', () => {
       labelKey: 'link.blocks',
       target: '#42',
     });
-    expect(describeLink({ rel: 'invented', uid: 'abc' })).toEqual({ rel: 'invented', target: 'abc' });
+    expect(describeLink({ rel: 'invented', uid: 'abc' })).toEqual({
+      rel: 'invented',
+      target: 'abc',
+    });
     expect(describeLink({ rel: 'blocks' })).toEqual({
       rel: 'blocks',
       labelKey: 'link.blocks',

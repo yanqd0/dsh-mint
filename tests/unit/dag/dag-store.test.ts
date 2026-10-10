@@ -6,7 +6,13 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { emptyDag, parseDagAction, applyDagWrite } from '../../../src/dag/dag.js';
 import type { DagDoc } from '../../../src/dag/dag.js';
-import { DAG_DIR, DagPathError, dagFilePath, readDag, updateDag } from '../../../src/dag/dag-store.js';
+import {
+  DAG_DIR,
+  DagPathError,
+  dagFilePath,
+  readDag,
+  updateDag,
+} from '../../../src/dag/dag-store.js';
 
 /** The session every case writes under; the id shape is the only one allowed. */
 const SESSION = 'sess-1';
@@ -108,7 +114,10 @@ describe('readDag', () => {
     expect(futureRead.error).toContain('version');
 
     const foreign = dir();
-    writeFileSync(dagFilePath(SESSION, foreign), JSON.stringify(emptyDag('other-session', '', NOW)));
+    writeFileSync(
+      dagFilePath(SESSION, foreign),
+      JSON.stringify(emptyDag('other-session', '', NOW))
+    );
     const foreignRead = await readDag(SESSION, foreign);
     if (foreignRead.state !== 'unreadable') throw new Error('expected unreadable');
     expect(foreignRead.error).toContain('other-session');
@@ -128,7 +137,9 @@ describe('readDag', () => {
 
 describe('updateDag', () => {
   it('refuses an invalid session before touching the filesystem', async () => {
-    await expect(updateDag('../escape', () => ({ skip: true }), '/tmp')).rejects.toThrow(DagPathError);
+    await expect(updateDag('../escape', () => ({ skip: true }), '/tmp')).rejects.toThrow(
+      DagPathError
+    );
   });
 
   it('honours skip without writing anything', async () => {
@@ -167,7 +178,9 @@ describe('updateDag', () => {
         expect(state.state).toBe('ok');
         if (state.state !== 'ok') return { error: 'expected a document' };
         seen.push(`revision=${String(state.doc.revision)}`);
-        return { doc: { ...state.doc, title: 'second', revision: state.doc.revision + 1, updated_at: NOW } };
+        return {
+          doc: { ...state.doc, title: 'second', revision: state.doc.revision + 1, updated_at: NOW },
+        };
       },
       where
     );
@@ -185,14 +198,13 @@ describe('updateDag', () => {
     const adds = Array.from({ length: 12 }, (_, index) => index);
     await Promise.all(
       adds.map(async (index) =>
-        write(
-          where,
-          {
-            action: 'add',
-            nodes: [{ id: `n${String(index)}`, label: '分', title: `node ${String(index)}`, phase: 'exec' }],
-            edges: [],
-          }
-        )
+        write(where, {
+          action: 'add',
+          nodes: [
+            { id: `n${String(index)}`, label: '分', title: `node ${String(index)}`, phase: 'exec' },
+          ],
+          edges: [],
+        })
       )
     );
     const read = await readDag(SESSION, where);
@@ -208,7 +220,11 @@ describe('updateDag', () => {
     // A regular file where the directory should be: `mkdir` cannot create it.
     const blocked = join(root, 'blocked');
     writeFileSync(blocked, 'not a directory');
-    const blockedWrite = await updateDag(SESSION, () => ({ doc: emptyDag(SESSION, '', NOW) }), blocked);
+    const blockedWrite = await updateDag(
+      SESSION,
+      () => ({ doc: emptyDag(SESSION, '', NOW) }),
+      blocked
+    );
     if (blockedWrite.ok) throw new Error('expected a write failure');
     expect(blockedWrite.error).toContain('写入 DAG 失败');
   });

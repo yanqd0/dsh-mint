@@ -101,10 +101,7 @@ async function invoke(
   method = 'GET'
 ): Promise<FakeResponse> {
   const res = new FakeResponse();
-  await handler(
-    { method, url } as unknown as IncomingMessage,
-    res as unknown as ServerResponse
-  );
+  await handler({ method, url } as unknown as IncomingMessage, res as unknown as ServerResponse);
   return res;
 }
 
@@ -232,7 +229,9 @@ describe('route argv builders', () => {
   });
 
   it('maps container filters onto the flags mint offers', () => {
-    expect(buildListArgv('milestone', new URLSearchParams({ status: 'open' }), { page: 1, pageSize: 20 })).toEqual([
+    expect(
+      buildListArgv('milestone', new URLSearchParams({ status: 'open' }), { page: 1, pageSize: 20 })
+    ).toEqual([
       'milestone',
       'list',
       '--json',
@@ -304,9 +303,18 @@ describe('route argv builders', () => {
     for (const argv of argvs) {
       expect(READ_ONLY_SUBCOMMANDS).toContain(argv[0]);
       for (const token of argv) {
-        expect(['add', 'set', 'state', 'close', 'drop', 'delete', 'import', 'sync', 'attach', 'detach']).not.toContain(
-          token
-        );
+        expect([
+          'add',
+          'set',
+          'state',
+          'close',
+          'drop',
+          'delete',
+          'import',
+          'sync',
+          'attach',
+          'detach',
+        ]).not.toContain(token);
       }
     }
     expect(buildIssueDetailArgv(9)).toEqual(['show', '9', '--json']);
@@ -459,7 +467,10 @@ describe('mint routes', () => {
   // 项目目录只取会话上下文：面板自带的 cwd 查询参数不得改变 mint 的运行目录。
   // harness 把会话 cwd 固定为 /proj，请求里再塞 cwd=/etc，断言 run 收到的 cwd。
   it('reads the session project, never a browser-supplied path', async () => {
-    const { handler, runs } = harness({ cwd: '/proj', result: JSON.stringify({ items: [ISSUE_ITEM] }) });
+    const { handler, runs } = harness({
+      cwd: '/proj',
+      result: JSON.stringify({ items: [ISSUE_ITEM] }),
+    });
     const res = await invoke(handler, `${ROUTE_PREFIX}/issues?session=s1&cwd=/etc`);
     expect(runs[0]?.cwd).toBe('/proj');
     expect(res.statusCode).toBe(200);
@@ -518,7 +529,10 @@ describe('mint routes', () => {
     expect(run.runs[0]?.argv).toEqual(['plan', 'list', '--all-states', '--json', '--no-page']);
     expect(filtered.json()).toMatchObject({
       ok: true,
-      items: [{ id: 1, status: 'open' }, { id: 5, status: 'running' }],
+      items: [
+        { id: 1, status: 'open' },
+        { id: 5, status: 'running' },
+      ],
       page: 1,
       page_size: 20,
       pages: 1,
@@ -642,7 +656,8 @@ describe('mint routes', () => {
     const run = harness({
       cwd: '/proj',
       byArgv: (argv) => {
-        if (argv[0] === 'milestone') return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
+        if (argv[0] === 'milestone')
+          return JSON.stringify({ items: [MILESTONE_ITEM, MILESTONE_ITEM_4] });
         if (argv[0] === 'plan') return JSON.stringify({ items: [PLAN_ITEM] });
         if (argv[0] === 'label') return JSON.stringify({ items: [LABEL_ITEM] });
         return JSON.stringify({ items: [] });
@@ -1175,7 +1190,10 @@ describe('the plan DAG route', () => {
   it('refuses a session id that could not be a path segment', async () => {
     const { handler } = harness({ cwd: '/proj', dagDir: dir });
     for (const session of ['', '../../etc/passwd', 'a/b', 'x'.repeat(65)]) {
-      const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=${encodeURIComponent(session)}`);
+      const res = await invoke(
+        handler,
+        `${ROUTE_PREFIX}/dag?session=${encodeURIComponent(session)}`
+      );
       expect(res.statusCode).toBe(400);
       expect(res.json()).toMatchObject({ ok: false });
     }

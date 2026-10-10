@@ -251,10 +251,7 @@ describe('createWorktree', () => {
     // 路径解析失败必须原样报错：静默回落到主工作树就等于丢掉隔离。
     const notARepo = mkdtempSync(join(tmpdir(), 'dsh-mint-wt-nogit-'));
     try {
-      const outcome = await createWorktree(
-        { git, repo: notARepo, session: SESSION },
-        { id: 'a1' }
-      );
+      const outcome = await createWorktree({ git, repo: notARepo, session: SESSION }, { id: 'a1' });
       expect(outcome.ok).toBe(false);
       if (outcome.ok) return;
       expect(outcome.error).toContain('无法确定 git 公共目录');

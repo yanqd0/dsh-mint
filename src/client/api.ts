@@ -106,8 +106,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
   };
 
   return {
-    issues: (query, signal) =>
-      get<MintListPayload<IssueItem>>(ROUTES.issues, query, signal),
+    issues: (query, signal) => get<MintListPayload<IssueItem>>(ROUTES.issues, query, signal),
     plans: (query, signal) => get<MintListPayload<PlanItem>>(ROUTES.plans, query, signal),
     milestones: (query, signal) =>
       get<MintListPayload<MilestoneItem>>(ROUTES.milestones, query, signal),

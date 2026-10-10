@@ -15,9 +15,22 @@ describe('checkNodeId', () => {
     // `#<数字>` 会被拼进 merge subject 与分支名（上库内容不得出现 mint ID）；空白、
     // `/`、`\` 是 git ref 的禁区；`.`/`..`/`.hidden` 会让 worktree 的路径段逃出会话
     // 目录。控制字符由这一条字符集一并挡住，不再单独判。
-    for (const id of ['a1#1', '#1', '总1', 'a b', 'a/b', 'a\\b', '.', '..', '.hidden', '-x', 'a\u0000']) {
+    for (const id of [
+      'a1#1',
+      '#1',
+      '总1',
+      'a b',
+      'a/b',
+      'a\\b',
+      '.',
+      '..',
+      '.hidden',
+      '-x',
+      'a\u0000',
+    ]) {
       const checked = checkNodeId(id);
-      if (typeof checked === 'string') throw new Error(`expected a refusal for ${JSON.stringify(id)}`);
+      if (typeof checked === 'string')
+        throw new Error(`expected a refusal for ${JSON.stringify(id)}`);
       expect(checked.error, JSON.stringify(id)).toContain('只允许');
     }
   });

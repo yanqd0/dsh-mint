@@ -125,7 +125,7 @@ const UNDECOMPOSED_DENY_REASON =
 function multiRunningReason(cluster: readonly PlanListItem[]): string {
   return (
     `${clusterIds(cluster)} are running in the same milestone — this project works one plan at a time. ` +
-    'Attach this session\'s work to the running plan, or stop the other one first: ' +
+    "Attach this session's work to the running plan, or stop the other one first: " +
     'park its planned issues with mint({args:["issue","state","reset","<issue id>"]}) ' +
     '(a plan already in dev/test belongs to another session — hand that back to the user); ' +
     'a finished plan revived by a newly attached open issue is freed with ' +

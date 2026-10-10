@@ -13,7 +13,11 @@ import {
   inject,
   mintTabDefinition,
 } from '../../../src/client/index.js';
-import type { ClientContextLike, SlotRegistrationLike, TabDefinitionLike } from '../../../src/client/types.js';
+import type {
+  ClientContextLike,
+  SlotRegistrationLike,
+  TabDefinitionLike,
+} from '../../../src/client/types.js';
 
 /** One slot registration the double captured. */
 interface Registration {

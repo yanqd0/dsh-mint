@@ -20,7 +20,10 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/consistent-type-imports': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'no-console': 'error',
     },
   },
@@ -37,5 +40,5 @@ export default tseslint.config(
     rules: {
       'max-lines': ['warn', { max: 500, skipBlankLines: true, skipComments: true }],
     },
-  },
+  }
 );

@@ -87,9 +87,7 @@ describe('package manifest', () => {
     // The sidebar's tab registry is provided by another client plugin, so the
     // browser half has no seat to register into until that bundle arrived.
     it('waits for the right-sidebar client bundle', () => {
-      expect(manifest.dsh?.client?.inject).toContain(
-        '@deepseek-ai/dsh-client-ui-sidebar-right'
-      );
+      expect(manifest.dsh?.client?.inject).toContain('@deepseek-ai/dsh-client-ui-sidebar-right');
     });
 
     // Everything the bundle requires must come from the shell's frozen platform

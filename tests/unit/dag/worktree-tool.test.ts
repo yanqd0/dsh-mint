@@ -227,9 +227,7 @@ describe('installWorktreeTool', () => {
     // 必须拒绝并点名那个查不到的会话；`list` 是仓库级动作，照样能跑。
     const agents: AgentsLike = {
       get: (id) =>
-        id === 'child'
-          ? { session: { id: 'child', header: { parentSession: 'mid' } } }
-          : undefined,
+        id === 'child' ? { session: { id: 'child', header: { parentSession: 'mid' } } } : undefined,
     };
     const { ctx, registered } = toolContext({ agents });
     installWorktreeTool(ctx, dir);
@@ -240,7 +238,10 @@ describe('installWorktreeTool', () => {
       agent: { session: { id: 'child', header: { cwd: repo } } },
     };
 
-    const refused = (await execute?.({ action: 'create', node: 'a1' }, exec)) as WorktreeToolOutcome;
+    const refused = (await execute?.(
+      { action: 'create', node: 'a1' },
+      exec
+    )) as WorktreeToolOutcome;
     expect(refused.ok).toBe(false);
     expect(refused.summary).toContain('查不到链上会话 mid');
 

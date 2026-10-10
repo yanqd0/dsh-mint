@@ -1,7 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DagView, MintDagPayload, MintResponse } from '../../../src/shared/records.js';
-import { DAG_PROBE_MS, DAG_TAB_KIND, shouldOpenDag, startDagAutoOpen } from '../../../src/client/dag-open.js';
+import {
+  DAG_PROBE_MS,
+  DAG_TAB_KIND,
+  shouldOpenDag,
+  startDagAutoOpen,
+} from '../../../src/client/dag-open.js';
 import type { DagOpenHost, DagOpenOptions } from '../../../src/client/dag-open.js';
 import type { SidebarOpenTabLike } from '../../../src/client/types.js';
 
@@ -30,7 +35,14 @@ function doc(nodes = true): DagView {
 
 /** A payload as the route answers it, overridable field by field. */
 function payload(extra: Partial<MintDagPayload> = {}): MintDagPayload {
-  return { ok: true, dag: doc(), revision: 1, file: '/tmp/mint/dag/s1.json', autoOpen: true, ...extra };
+  return {
+    ok: true,
+    dag: doc(),
+    revision: 1,
+    file: '/tmp/mint/dag/s1.json',
+    autoOpen: true,
+    ...extra,
+  };
 }
 
 /** A manual clock: the callback is recorded and fired by the test. */
@@ -228,9 +240,7 @@ describe('startDagAutoOpen', () => {
     let calls = 0;
     const world = host(() => {
       calls += 1;
-      return calls === 1
-        ? Promise.reject(new Error('network down'))
-        : Promise.resolve(payload());
+      return calls === 1 ? Promise.reject(new Error('network down')) : Promise.resolve(payload());
     });
     const stop = startDagAutoOpen(world.host, { timers: clock.timers });
     await clock.tick();

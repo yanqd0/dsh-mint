@@ -41,22 +41,36 @@ describe('sampleOf / sameSample', () => {
     const metrics: Record<string, DagNodeMetrics> = { a: { tokens: 1 } };
     const base = sampleOf(payload({ revision: 2, sampled_at: 5, metrics }));
     expect(sameSample(base, sampleOf(payload({ revision: 2, sampled_at: 5, metrics })))).toBe(true);
-    expect(sameSample(base, sampleOf(payload({ revision: 3, sampled_at: 5, metrics })))).toBe(false);
-    expect(sameSample(base, sampleOf(payload({ revision: 2, sampled_at: 6, metrics })))).toBe(false);
-    expect(sameSample(base, sampleOf(payload({ revision: 2, sampled_at: 5, metrics: { a: { tokens: 9 } } })))).toBe(
+    expect(sameSample(base, sampleOf(payload({ revision: 3, sampled_at: 5, metrics })))).toBe(
       false
     );
+    expect(sameSample(base, sampleOf(payload({ revision: 2, sampled_at: 6, metrics })))).toBe(
+      false
+    );
+    expect(
+      sameSample(
+        base,
+        sampleOf(payload({ revision: 2, sampled_at: 5, metrics: { a: { tokens: 9 } } }))
+      )
+    ).toBe(false);
     expect(sameSample(undefined, base)).toBe(false);
   });
 
   it('compares metrics field by field, treating a missing map as its own reading', () => {
     const one = sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 2 } } }));
-    expect(sameSample(one, sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 2 } } })))).toBe(true);
+    expect(
+      sameSample(one, sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 2 } } })))
+    ).toBe(true);
     // 一个字段动了就是新读数；条目数不同亦然。
-    expect(sameSample(one, sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 3 } } })))).toBe(false);
-    expect(sameSample(one, sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 2 }, b: { tokens: 1 } } })))).toBe(
-      false
-    );
+    expect(
+      sameSample(one, sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 3 } } })))
+    ).toBe(false);
+    expect(
+      sameSample(
+        one,
+        sampleOf(payload({ metrics: { a: { tokens: 1, elapsed_ms: 2 }, b: { tokens: 1 } } }))
+      )
+    ).toBe(false);
     // 两侧都是「没有样本」才算同一次读数；一侧缺失一侧有值是不同读数。
     expect(sameSample(sampleOf(payload()), sampleOf(payload()))).toBe(true);
     expect(sameSample(sampleOf(payload()), one)).toBe(false);
@@ -67,7 +81,14 @@ describe('sampleMetrics', () => {
   // 文档里已不存在的节点不得再带指标进面板：否则会留一份画不出来的幽灵读数。
   // 夹具给一个 running 节点与一份多出 dropped 的表，断言只留节点那份。
   it('keeps only the metrics of nodes the document still carries', () => {
-    const dag = { title: '', revision: 1, created_at: '', updated_at: '', nodes: [node('a', 'running')], edges: [] };
+    const dag = {
+      title: '',
+      revision: 1,
+      created_at: '',
+      updated_at: '',
+      nodes: [node('a', 'running')],
+      edges: [],
+    };
     const metrics = { a: { tokens: 1 }, dropped: { tokens: 9 } };
     expect(sampleMetrics(payload({ dag, metrics }))).toEqual({ a: { tokens: 1 } });
   });
@@ -89,7 +110,9 @@ describe('measuredTimeMs', () => {
 
   // 存盘样本（带 at）是宿主早先量到的读数：子会话已不在，不能拿浏览器时钟继续累加。
   it('shows a stored sample verbatim instead of aging it', () => {
-    expect(measuredTimeMs(node('a', 'running'), { elapsed_ms: 1000, at: 9_000 }, 10_000, 12_500)).toBe(1000);
+    expect(
+      measuredTimeMs(node('a', 'running'), { elapsed_ms: 1000, at: 9_000 }, 10_000, 12_500)
+    ).toBe(1000);
   });
 });
 

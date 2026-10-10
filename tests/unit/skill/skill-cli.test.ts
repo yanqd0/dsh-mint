@@ -15,7 +15,13 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 import { OWNER_MARKER } from '../../../src/skill/install-skill.js';
-import { linkSkill, runSkillCli, skillStatus, statusLine, uninstallSkill } from '../../../src/skill/skill-cli.js';
+import {
+  linkSkill,
+  runSkillCli,
+  skillStatus,
+  statusLine,
+  uninstallSkill,
+} from '../../../src/skill/skill-cli.js';
 
 /** Every scratch root this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];
@@ -193,7 +199,9 @@ describe('skillStatus', () => {
   it('reports absence, stale copies and foreign paths', () => {
     const f = fixture();
     expect(skillStatus({ dshHome: f.dshHome, source: f.source }).form).toBe('absent');
-    expect(statusLine(skillStatus({ dshHome: f.dshHome, source: f.source }))).toContain('nothing installed');
+    expect(statusLine(skillStatus({ dshHome: f.dshHome, source: f.source }))).toContain(
+      'nothing installed'
+    );
 
     run(f, []);
     const current = skillStatus({ dshHome: f.dshHome, source: f.source });

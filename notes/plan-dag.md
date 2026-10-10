@@ -2,12 +2,13 @@
 
 > 来源：mint plan 正文（milestone 0.3.0，version 0.3.0）。
 > 范围：宿主工具 `mint_plan_dag`（init/add/set/get）+ 状态文件 `/tmp/mint/dag/<sessionId>.json`
-> + 只读路由 `GET /dsh-mint/dag` + 右侧边栏并列新 tab（`kind=plan-dag`）。
-> **worktree 动作（create/list/merge/remove）已从本工具拆出**，成为独立的 `worktree` 工具：
-> 规格真源见 [worktree-tool.md](worktree-tool.md)，操作流程见 `skill/references/worktree-exec.md`。
-> 本文件是**将来实现会话的规格真源**：照做即可，不需要再做设计决策；只写事实与规格，
-> 不含实现代码（字段示例除外）。客户端侧 seat / 产物契约见 [client-face.md](client-face.md)，
-> 会话事件与只在状态变更后提醒的分工见 [todo-panel.md](todo-panel.md)。
+>
+> - 只读路由 `GET /dsh-mint/dag` + 右侧边栏并列新 tab（`kind=plan-dag`）。
+>   **worktree 动作（create/list/merge/remove）已从本工具拆出**，成为独立的 `worktree` 工具：
+>   规格真源见 [worktree-tool.md](worktree-tool.md)，操作流程见 `skill/references/worktree-exec.md`。
+>   本文件是**将来实现会话的规格真源**：照做即可，不需要再做设计决策；只写事实与规格，
+>   不含实现代码（字段示例除外）。客户端侧 seat / 产物契约见 [client-face.md](client-face.md)，
+>   会话事件与只在状态变更后提醒的分工见 [todo-panel.md](todo-panel.md)。
 
 ## 1. 状态文件契约
 
@@ -27,36 +28,44 @@
 ### 1.3 文档结构
 
 ```json
-{ "version": 1, "session": "<sessionId>", "title": "", "revision": 1,
-  "created_at": "", "updated_at": "", "nodes": [], "edges": [["a", "b"]] }
+{
+  "version": 1,
+  "session": "<sessionId>",
+  "title": "",
+  "revision": 1,
+  "created_at": "",
+  "updated_at": "",
+  "nodes": [],
+  "edges": [["a", "b"]]
+}
 ```
 
-| 字段 | 说明 |
-| --- | --- |
-| `version` | 固定 `1`；不识别即「DAG 不可读」 |
-| `session` | 所属 sessionId |
-| `title` | 文档标题，`init` 的 `title?` 写入 |
-| `revision` | 每次写 +1；新建/重置后从 1 起，客户端据此判断是否需要重渲 |
-| `created_at` / `updated_at` | 创建 / 最后写入时间 |
-| `nodes` | 节点数组，字段见 §1.4 |
-| `edges` | 边数组，元素为 `[from, to]` 二元组（节点 id） |
+| 字段                        | 说明                                                      |
+| --------------------------- | --------------------------------------------------------- |
+| `version`                   | 固定 `1`；不识别即「DAG 不可读」                          |
+| `session`                   | 所属 sessionId                                            |
+| `title`                     | 文档标题，`init` 的 `title?` 写入                         |
+| `revision`                  | 每次写 +1；新建/重置后从 1 起，客户端据此判断是否需要重渲 |
+| `created_at` / `updated_at` | 创建 / 最后写入时间                                       |
+| `nodes`                     | 节点数组，字段见 §1.4                                     |
+| `edges`                     | 边数组，元素为 `[from, to]` 二元组（节点 id）             |
 
 ### 1.4 node 全字段
 
-| 字段 | 必填 | 取值 / 语义 |
-| --- | --- | --- |
-| `id` | 是 | 文档内唯一 |
-| `label` | 是 | ≤6 字，面板节点上显示 |
-| `title` | 是 | 完整标题，悬停 tooltip 显示 |
-| `phase` | 是 | `research` \| `exec` |
-| `status` | 是 | `pending` \| `running` \| `done`（新建默认 `pending`） |
-| `verdict` | 否 | `pass` \| `fail`，**仅终态（`status='done'`）**可有 |
-| `depends_on` | 否 | 前置节点 id 数组（缺省为空） |
-| `issue` | 否 | 关联 mint issue id |
-| `agent` | 否 | 子代理 sessionId（由 §3 生命周期回填） |
-| `tokens` | 否 | 节点 token 数；**宿主在子代理收尾时实测并写入（优先）**，模型仍可显式传，被实测覆盖；**main 给自己的节点收尾不填**（那是整会话累计，见 §7.8.3） |
-| `note` | 否 | 子代理回给 main 的结论原文；tooltip 显示，可滚动 |
-| `updated_at` | 是 | 该节点最后一次变更时间 |
+| 字段         | 必填 | 取值 / 语义                                                                                                                                     |
+| ------------ | ---- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`         | 是   | 文档内唯一                                                                                                                                      |
+| `label`      | 是   | ≤6 字，面板节点上显示                                                                                                                           |
+| `title`      | 是   | 完整标题，悬停 tooltip 显示                                                                                                                     |
+| `phase`      | 是   | `research` \| `exec`                                                                                                                            |
+| `status`     | 是   | `pending` \| `running` \| `done`（新建默认 `pending`）                                                                                          |
+| `verdict`    | 否   | `pass` \| `fail`，**仅终态（`status='done'`）**可有                                                                                             |
+| `depends_on` | 否   | 前置节点 id 数组（缺省为空）                                                                                                                    |
+| `issue`      | 否   | 关联 mint issue id                                                                                                                              |
+| `agent`      | 否   | 子代理 sessionId（由 §3 生命周期回填）                                                                                                          |
+| `tokens`     | 否   | 节点 token 数；**宿主在子代理收尾时实测并写入（优先）**，模型仍可显式传，被实测覆盖；**main 给自己的节点收尾不填**（那是整会话累计，见 §7.8.3） |
+| `note`       | 否   | 子代理回给 main 的结论原文；tooltip 显示，可滚动                                                                                                |
+| `updated_at` | 是   | 该节点最后一次变更时间                                                                                                                          |
 
 ### 1.4.1 文档级 `samples`（宿主实测样本）
 
@@ -182,24 +191,23 @@
 节点**底色**由 `dagTone` 决定（下表）；tooltip 的**徽章**另用 `dagStatusTone`：`pending` 与 `running` 都取 `warn`
 （徽章要一眼看到"在做什么"），只有 `done+fail` 取 `error`。
 
-| 状态 | 节点底色 |
-| --- | --- |
-| `pending` | 黄 `--dsw-alias-state-warn-primary` |
-| `running` | 绿 `--dsw-alias-state-success-primary` + 边框闪烁 |
-| `done` + `pass` | 绿 `--dsw-alias-state-success-primary`（不闪） |
-| `done` + `fail` | 红 `--dsw-alias-state-error-primary` |
+| 状态            | 节点底色                                          |
+| --------------- | ------------------------------------------------- |
+| `pending`       | 黄 `--dsw-alias-state-warn-primary`               |
+| `running`       | 绿 `--dsw-alias-state-success-primary` + 边框闪烁 |
+| `done` + `pass` | 绿 `--dsw-alias-state-success-primary`（不闪）    |
+| `done` + `fail` | 红 `--dsw-alias-state-error-primary`              |
 
 实测数字另有自己的两种颜色，只上数字、不上单位：
 
-| 量 | 颜色 |
-| --- | --- |
+| 量         | 颜色                                                                 |
+| ---------- | -------------------------------------------------------------------- |
 | token 数字 | 黄 `--dsw-alias-state-warn-primary`（金钱语义，复用主题已有的 warn） |
-| 时长数字 | 紫 `#8b76f6`（`styles.ts` 的 `LIVE_TIME_COLOR` 常量） |
+| 时长数字   | 紫 `#8b76f6`（`styles.ts` 的 `LIVE_TIME_COLOR` 常量）                |
 
 > **为什么紫色是字面量**：本主题的 403 个 `--dsw-*` token 里没有紫色 alias——紫只出现在 onboarding 渐变
 > 与 shiki 语法色。这与 `labelBadge` 接受 label 自带字面色的先例同一取舍；浅/深主题下的可读性靠人眼确认，
 > 需要时改这一个常量。
-
 
 ### 4.5 闪烁与降级
 
@@ -220,10 +228,10 @@
 
 **真源 = 宿主会话投影，不是子代理自报**（dsh 子代理 UI 用的就是同一对值）：
 
-| 量 | 投影 key | 算法 |
-| --- | --- | --- |
-| token | `tokenUsage`（`@deepseek-ai/dsh-token-meter`，`dsh-base` 已挂） | `totals.uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens`（四桶不相交） |
-| 时长 | `subagentTiming`（`@deepseek-ai/dsh-subagent`） | `settledMs + max(0, end - active.since)`，`end = 节点 running ? sampledMs : active.through`（与子代理 UI 的 `activityDuration` 同式） |
+| 量    | 投影 key                                                        | 算法                                                                                                                                  |
+| ----- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| token | `tokenUsage`（`@deepseek-ai/dsh-token-meter`，`dsh-base` 已挂） | `totals.uncachedInputTokens + outputTokens + cacheReadTokens + cacheWriteTokens`（四桶不相交）                                        |
+| 时长  | `subagentTiming`（`@deepseek-ai/dsh-subagent`）                 | `settledMs + max(0, end - active.since)`，`end = 节点 running ? sampledMs : active.through`（与子代理 UI 的 `activityDuration` 同式） |
 
 - 读取：`ctx.sessionProjections.stateOf(session, key)`——**同步、内存、按 session 惰性 fold**；
   key 未注册返回 `undefined`（不抛）。session 由 `ctx.agents.get(node.agent)?.session` 取，与
@@ -364,14 +372,14 @@
 
 ### 7.3 落点
 
-| 层 | 文件 |
-| --- | --- |
-| 纯数据/校验/分层 | `src/dag/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`） |
-| 文件层 | `src/dag/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖） |
-| 工具面 | `src/dag/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离）；worktree 动作已拆到 `src/dag/worktree-tool.ts`（见 [worktree-tool.md](worktree-tool.md)） |
-| 生命周期 | `src/dag/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点） |
-| 路由 | `src/host/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/shared/route-paths.ts`、`src/shared/records.ts` |
-| 客户端 | `src/client/dag-model.ts`（分层/几何/配色）、`src/client/DagBody.tsx`（SVG + tooltip + 2s 轮询）、`src/client/dag-open.ts`（5s 探测 + 唯一性判据）、`src/client/{index,api,copy,styles,types}.ts(x)` |
+| 层               | 文件                                                                                                                                                                                                 |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 纯数据/校验/分层 | `src/dag/dag.ts`（`DagDoc`/`DagAction`/`parseDagAction`/`applyDagWrite`/`parseDagDoc`/`dagLayers`/`findCycle`/`unknownDependencies`/`dagSummary`）                                                   |
+| 文件层           | `src/dag/dag-store.ts`（`DAG_DIR`/`dagFilePath`/`readDag`/`updateDag`：临时文件 + `rename`、按会话 promise 锁、损坏文件不覆盖）                                                                      |
+| 工具面           | `src/dag/dag-tool.ts`（`mint_plan_dag`，root ctx 注册；根会话上溯；执行器与注册分离）；worktree 动作已拆到 `src/dag/worktree-tool.ts`（见 [worktree-tool.md](worktree-tool.md)）                     |
+| 生命周期         | `src/dag/dag-lifecycle.ts`（`subagent/start` 回填 agent、`subagent/end` 兜底 `done+fail+stopReason`；不自动建节点）                                                                                  |
+| 路由             | `src/host/routes.ts`（`/dsh-mint/dag` + `MintRouteDeps.dagDir/openDagTab`）、`src/shared/route-paths.ts`、`src/shared/records.ts`                                                                    |
+| 客户端           | `src/client/dag-model.ts`（分层/几何/配色）、`src/client/DagBody.tsx`（SVG + tooltip + 2s 轮询）、`src/client/dag-open.ts`（5s 探测 + 唯一性判据）、`src/client/{index,api,copy,styles,types}.ts(x)` |
 
 ### 7.4 实测
 
@@ -422,7 +430,7 @@
   返回 agent，于是该节点的实测值整份消失（`done` 节点只剩自报 `tokens` 与 `note`）。所以实测时长
   目前**只覆盖 `running` 期间**；缓存/落盘的取舍见 §7.6。
 - **仍留给人眼确认**：紫/黄在浅色与深色主题下的可读性、逐秒走秒的观感、`?` 与 `-` 的出现时机，
- 以及 tab 自动打开（agent 无 DOM 可自证）。
+  以及 tab 自动打开（agent 无 DOM 可自证）。
 
 ### 7.6 样本落盘与调研阶段 DAG 化
 
@@ -607,15 +615,15 @@ zstd -dc $D/<agentId>/session.v4.jsonl.zstd | grep -o '"usage":{[^}]*}'
 一个节点、**下一条消息**才派发」执行，7 个由子代理收尾的节点**各自 `agent` 互不相同**，
 且**每个都留下了 `samples`**（`tokens`/`elapsed_ms`）：
 
-| 节点 | `agent`（前 8 位） | `samples` tokens | `samples` elapsed_ms |
-|---|---|---|---|
-| `e177` | `2c036a02` | 4430676 | 202505 |
-| `n4` | `9bf3301c` | 10962231 | 345845 |
-| `n2` | `1c5d5597` | 1460935 | 113365 |
-| `n1` | `a7ef4a12` | 23988658 | 587434 |
-| `n3` | `5f9da8af` | 11050146 | 370347 |
-| `n5` | `6e88afa2` | 1246004 | 103227 |
-| `e178` | `c43e0bcb` | 5312534 | 213295 |
+| 节点   | `agent`（前 8 位） | `samples` tokens | `samples` elapsed_ms |
+| ------ | ------------------ | ---------------- | -------------------- |
+| `e177` | `2c036a02`         | 4430676          | 202505               |
+| `n4`   | `9bf3301c`         | 10962231         | 345845               |
+| `n2`   | `1c5d5597`         | 1460935          | 113365               |
+| `n1`   | `a7ef4a12`         | 23988658         | 587434               |
+| `n3`   | `5f9da8af`         | 11050146         | 370347               |
+| `n5`   | `6e88afa2`         | 1246004          | 103227               |
+| `e178` | `c43e0bcb`         | 5312534          | 213295               |
 
 **可操作判据**：同一时刻**只有一个** `running` 且无 `agent` 的节点 → 配对与样本必然对位。
 想复核就查 `/tmp/mint/dag/<session>.json` 的 `nodes[].agent` 与 `samples`：

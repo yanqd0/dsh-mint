@@ -156,7 +156,7 @@ export function linkSkill(options: SkillOptions = {}): SkillLinkResult {
       } else if (existing.isDirectory()) {
         if (!force && !looksLikeOurSkill(target)) {
           log?.(
-            `[dsh-mint] skill target is not this plugin's copy, left alone (${target}) — use --force to replace it`,
+            `[dsh-mint] skill target is not this plugin's copy, left alone (${target}) — use --force to replace it`
           );
           return { reason: 'kept' };
         }
@@ -197,7 +197,7 @@ export function uninstallSkill(options: SkillOptions = {}): SkillRemoval {
     if (existing.isSymbolicLink()) {
       if (!force && !isOurLink(target)) {
         log?.(
-          `[dsh-mint] kept ${target}: it does not resolve to this plugin's skill — use --force to unlink it anyway`,
+          `[dsh-mint] kept ${target}: it does not resolve to this plugin's skill — use --force to unlink it anyway`
         );
         return { reason: 'kept' };
       }
@@ -247,7 +247,9 @@ export function runSkillCli(argv: readonly string[], io: SkillCliIo = {}): numbe
     log(USAGE);
     return 0;
   }
-  const unknown = argv.filter((arg) => arg !== '--force' && !(MODES as readonly string[]).includes(arg));
+  const unknown = argv.filter(
+    (arg) => arg !== '--force' && !(MODES as readonly string[]).includes(arg)
+  );
   if (unknown.length > 0) {
     error(`unknown option: ${unknown[0]}`);
     error(USAGE);

@@ -78,10 +78,7 @@ export type OwnerResolution = { ok: true; id: string } | { ok: false; error: str
  * ④ 断在**中途** → 拒绝并点名那个查不到的会话：写中间会话的文件既不是根，也可能撞上
  *    同名旧文档，宁可让 main 收尾。
  */
-export function resolveToolOwner(
-  agent: unknown,
-  agents: AgentsLike | undefined
-): OwnerResolution {
+export function resolveToolOwner(agent: unknown, agents: AgentsLike | undefined): OwnerResolution {
   const root = rootSession(agent, agents);
   if (root === undefined) {
     return { ok: false, error: '无法确定会话：请在本会话内调用（需要 agent session id）' };

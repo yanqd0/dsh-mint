@@ -36,7 +36,12 @@ import type { MintRunOptions, MintRunResult } from '../mint/mint.js';
 import type { DagNodeMetrics, DagStatus, MintDagPayload } from '../shared/records.js';
 import { ROUTE_PREFIX, isRouteName } from '../shared/route-paths.js';
 import { hasControlCharacter } from '../shared/text.js';
-import type { AgentsLike, DshContext, SessionProjectionsLike, WebServerLike } from '../shared/types.js';
+import type {
+  AgentsLike,
+  DshContext,
+  SessionProjectionsLike,
+  WebServerLike,
+} from '../shared/types.js';
 
 /**
  * 从 {@link ./route-paths.js} 再导出：该前缀与浏览器半边共用，后者为它的 `fetch`
@@ -67,7 +72,14 @@ const MAX_FILTER_LENGTH = 200;
  * `plan list`、`plan show`、`milestone list`、`milestone show`、`label list`。
  * 任何 argv 头部不在此列的调用都是 bug——`label` 只为颜色字典而来，绝不是 `label set`。
  */
-export const READ_ONLY_SUBCOMMANDS = ['list', 'show', 'plan', 'issue', 'milestone', 'label'] as const;
+export const READ_ONLY_SUBCOMMANDS = [
+  'list',
+  'show',
+  'plan',
+  'issue',
+  'milestone',
+  'label',
+] as const;
 
 /** meta 路由始终执行的三次整表读，均不分页。 */
 export const META_MILESTONES_ARGV: readonly string[] = [
@@ -77,7 +89,13 @@ export const META_MILESTONES_ARGV: readonly string[] = [
   '--json',
   '--no-page',
 ];
-export const META_PLANS_ARGV: readonly string[] = ['plan', 'list', '--all-states', '--json', '--no-page'];
+export const META_PLANS_ARGV: readonly string[] = [
+  'plan',
+  'list',
+  '--all-states',
+  '--json',
+  '--no-page',
+];
 export const META_LABELS_ARGV: readonly string[] = ['label', 'list', '--json', '--no-page'];
 
 /** 这些路由拒绝的一次请求：路径坏、id 坏或过滤值坏。 */
@@ -280,12 +298,7 @@ export function settledContainerPage<T extends { status: string }>(
   };
 }
 
-function pushFilter(
-  argv: string[],
-  params: URLSearchParams,
-  name: string,
-  flag: string
-): void {
+function pushFilter(argv: string[], params: URLSearchParams, name: string, flag: string): void {
   const value = filterValue(params, name);
   if (value !== undefined) argv.push(flag, value);
 }
@@ -387,7 +400,8 @@ async function flushRememberedSample(sessionId: string, read: DagRead, dir: stri
           // 写入时对*当前*文档重查同一条规则，所以并发的写不会被更旧的读数覆盖。
           const stored = state.doc.samples?.[nodeId];
           const node = state.doc.nodes.find((candidate) => candidate.id === nodeId);
-          if (stored !== undefined && !outgrewStored(stored, sample, node?.status ?? 'done')) continue;
+          if (stored !== undefined && !outgrewStored(stored, sample, node?.status ?? 'done'))
+            continue;
           doc = withSample(doc, nodeId, sample, now) ?? doc;
         }
         return doc === state.doc ? { skip: true } : { doc };
@@ -410,7 +424,10 @@ function outgrewStored(stored: DagSample, fresh: DagSample, status: DagStatus): 
   if (status !== 'running') {
     return stored.tokens !== fresh.tokens || stored.elapsed_ms !== fresh.elapsed_ms;
   }
-  const grown = fresh.elapsed_ms !== undefined && stored.elapsed_ms !== undefined && fresh.elapsed_ms - stored.elapsed_ms >= SAMPLE_WRITE_MS;
+  const grown =
+    fresh.elapsed_ms !== undefined &&
+    stored.elapsed_ms !== undefined &&
+    fresh.elapsed_ms - stored.elapsed_ms >= SAMPLE_WRITE_MS;
   const tokensMoved = fresh.tokens !== undefined && fresh.tokens !== stored.tokens;
   return grown && tokensMoved;
 }
@@ -576,12 +593,9 @@ export function createMintHandler(
     }
 
     const warnings: string[] = [];
-    const milestonePage = parseItems(
-      'milestone list --json',
-      milestones.text,
-      isMilestoneItem,
-      { noun: 'meta' }
-    );
+    const milestonePage = parseItems('milestone list --json', milestones.text, isMilestoneItem, {
+      noun: 'meta',
+    });
     const planPage = parseItems('plan list --json', plans.text, isPlanItem, { noun: 'meta' });
     const labelPage = parseItems('label list --json', labels.text, isLabelItem, { noun: 'meta' });
     for (const warning of [milestonePage.warning, planPage.warning, labelPage.warning]) {

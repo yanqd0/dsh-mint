@@ -42,7 +42,7 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 
 ## TypeScript 口径
 
-工具已管的**不复述**：格式→prettier；lint→ESLint（`recommendedTypeChecked` + 本仓追加规则）；类型→tsc（strict 系列）。只写工具管不到的：
+工具已管的**不复述**：格式→`pnpm format:check`（prettier）；lint→ESLint（`recommendedTypeChecked` + 本仓追加规则）；类型→tsc（strict 系列）。只写工具管不到的：
 
 - **命名**：文件 kebab-case、组件 `UpperCamelCase.tsx`；类型 `UpperCamelCase`（无 `I` 前缀）；宿主结构面 `*Like`、线格式 `*Payload`/`*View`；仅模块级常量 `CONSTANT_CASE`；`_` 前缀只表未使用（偏离 Google）。
 - **类型**：对象形状 `interface`，联合/映射/工具类型 `type`；不用 `enum`（判别联合 + `as const`）；边界用 `unknown` + 类型谓词/zod；`as` 需注明理由，优先 `satisfies`；只读 `readonly T[]`。

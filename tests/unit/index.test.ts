@@ -126,7 +126,11 @@ describe('dsh-mint plugin', () => {
     };
     const onCreate = listeners['agent/created'];
     expect(onCreate).toBeTypeOf('function');
-    (onCreate as (payload: { agent?: { ctx: DshContext; session: { header: { cwd?: string } } } }) => void)({
+    (
+      onCreate as (payload: {
+        agent?: { ctx: DshContext; session: { header: { cwd?: string } } };
+      }) => void
+    )({
       agent: { ctx: agentCtx, session: { header: { cwd: '/proj' } } },
     });
 
@@ -145,9 +149,7 @@ describe('dsh-mint plugin', () => {
     };
     apply(ctx, { debug: false, autoApprove: false, autoInstallSkill: true, openDagTab: true });
     const onCreate = listeners['agent/created'];
-    expect(() =>
-      (onCreate as (payload: { agent?: unknown }) => void)({}),
-    ).not.toThrow();
+    expect(() => (onCreate as (payload: { agent?: unknown }) => void)({})).not.toThrow();
     expect(runMintMock).not.toHaveBeenCalled();
   });
 

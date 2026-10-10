@@ -19,7 +19,11 @@ import { dagFilePath } from '../../../src/dag/dag-store.js';
 import type { DagDoc, DagSample } from '../../../src/dag/dag.js';
 import type { DagMetricsInput, MeasureDagNodesInput } from '../../../src/dag/dag-metrics.js';
 import type { DagNodeMetrics, DagNodeView, DagStatus } from '../../../src/shared/records.js';
-import type { AgentCwdLike, AgentsLike, SessionProjectionsLike } from '../../../src/shared/types.js';
+import type {
+  AgentCwdLike,
+  AgentsLike,
+  SessionProjectionsLike,
+} from '../../../src/shared/types.js';
 
 const NOW = '2026-10-07T00:00:00.000Z';
 const SESSION = 'session-1';

@@ -22,7 +22,14 @@ import { ContainerList } from './ContainerList.js';
 import { IssueDetail } from './IssueDetail.js';
 import { IssueList } from './IssueList.js';
 import { StateNotice } from './StateNotice.js';
-import { activeContainer, clampPage, containerRow, detailContainer, embeddedIssuesQuery, toLoadState } from './model.js';
+import {
+  activeContainer,
+  clampPage,
+  containerRow,
+  detailContainer,
+  embeddedIssuesQuery,
+  toLoadState,
+} from './model.js';
 import type { ContainerTarget, LoadState } from './model.js';
 import { HEADER, NOTE, SHELL, TAB, TAB_ACTIVE } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
@@ -56,7 +63,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
   const [draft, setDraft] = useState('');
   const [search, setSearch] = useState('');
   const [issuePage, setIssuePage] = useState(1);
-  const [issues, setIssues] = useState<LoadState<MintListPayload<IssueItem>>>({ status: 'loading' });
+  const [issues, setIssues] = useState<LoadState<MintListPayload<IssueItem>>>({
+    status: 'loading',
+  });
   const [openIssueId, setOpenIssueId] = useState<number | undefined>(undefined);
   const [issue, setIssue] = useState<LoadState<MintIssuePayload> | undefined>(undefined);
 
@@ -218,7 +227,9 @@ export function MintBody(props: MintBodyProps): ReactElement {
         : api.milestone(openContainer.id, controller.signal);
     void request.then((response) => {
       const state = toLoadState(response);
-      setContainer(state.status === 'ready' ? { status: 'ready', value: detailContainer(state.value) } : state);
+      setContainer(
+        state.status === 'ready' ? { status: 'ready', value: detailContainer(state.value) } : state
+      );
     });
     return () => {
       controller.abort();

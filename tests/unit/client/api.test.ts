@@ -10,11 +10,7 @@ interface Call {
 }
 
 /** Build a fetch double answering with `body` and `status`. */
-function fetchStub(
-  body: string,
-  status = 200,
-  calls: Call[] = []
-): typeof globalThis.fetch {
+function fetchStub(body: string, status = 200, calls: Call[] = []): typeof globalThis.fetch {
   return (input, init) => {
     calls.push({
       url: typeof input === 'string' ? input : input instanceof URL ? input.href : input.url,
@@ -53,7 +49,11 @@ describe('createApi', () => {
     const api = createApi({
       sessionId: 's1',
       baseUri: 'http://host/app/',
-      fetch: fetchStub(JSON.stringify({ ok: true, items: [], page: 1, page_size: 20, pages: 0, total: 0 }), 200, calls),
+      fetch: fetchStub(
+        JSON.stringify({ ok: true, items: [], page: 1, page_size: 20, pages: 0, total: 0 }),
+        200,
+        calls
+      ),
     });
     const result = await api.issues({ status: 'open', search: 'x' });
     expect(result.ok).toBe(true);
@@ -67,7 +67,11 @@ describe('createApi', () => {
     const api = createApi({
       sessionId: 's1',
       baseUri: 'http://host/',
-      fetch: fetchStub('{"ok":true,"items":[],"page":1,"page_size":20,"pages":0,"total":0}', 200, calls),
+      fetch: fetchStub(
+        '{"ok":true,"items":[],"page":1,"page_size":20,"pages":0,"total":0}',
+        200,
+        calls
+      ),
     });
     await api.milestones({ page: '2', pageSize: '10', allStates: '1' }, controller.signal);
     expect(calls[0]?.signal).toBe(controller.signal);

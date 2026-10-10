@@ -379,11 +379,13 @@ describe('nodeMetricsMap', () => {
     expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1, at: 0 } } })).toEqual({
       a: { tokens: 1, at: 0 },
     });
-    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1, at: 1_700_000_000_000 } } })).toEqual(
-      { a: { tokens: 1, at: 1_700_000_000_000 } }
-    );
+    expect(
+      nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1, at: 1_700_000_000_000 } } })
+    ).toEqual({ a: { tokens: 1, at: 1_700_000_000_000 } });
     // No `at` at all is the live case, and stays that way.
-    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1 } } })).toEqual({ a: { tokens: 1 } });
+    expect(nodeMetricsMap({ dag: doc, metrics: { a: { tokens: 1 } } })).toEqual({
+      a: { tokens: 1 },
+    });
   });
 
   // A sample the panel cannot date is not a sample it may age: dropping the whole

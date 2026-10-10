@@ -52,6 +52,7 @@
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src tests",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "check-types": "tsc --noEmit",
     "pack:check": "pnpm pack --dry-run",
     "skill": "node dist/install-skill.js"

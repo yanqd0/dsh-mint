@@ -49,7 +49,7 @@ function layout(withEntry = true): Layout {
     writeFileSync(
       join(root, 'dist', 'install-skill.js'),
       "const { writeFileSync } = require('node:fs');\n" +
-        "writeFileSync(process.env.MARKER, process.argv.slice(2).join(' '));\n",
+        "writeFileSync(process.env.MARKER, process.argv.slice(2).join(' '));\n"
     );
   }
   return { script, marker };

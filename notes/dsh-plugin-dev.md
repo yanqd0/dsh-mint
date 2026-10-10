@@ -52,7 +52,7 @@
 
 ## package.json 的 dsh.* 字段与插件识别（2026-08-30 调研）
 
-**dsh.* 全集只有两个字段，且都与浏览器半边/整包应用有关**：
+_*dsh.* 全集只有两个字段，且都与浏览器半边/整包应用有关_*：
 
 - `dsh.client`（client 面声明，`packages/client/modules/src/index.ts` 解析）：
   `{ platform: 'web'（必填）, inject?: string[], immediately?: boolean, external?: string[] }`；

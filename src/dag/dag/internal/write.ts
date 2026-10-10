@@ -39,7 +39,9 @@ export function applyDagWrite(
     const collision = action.nodes.find((node) => existing.has(node.id));
     if (collision !== undefined) return { error: `节点 id 已存在：${collision.id}` };
     if (current.nodes.length + action.nodes.length > DAG_NODE_MAX) {
-      return { error: `节点数超过上限 ${String(DAG_NODE_MAX)}（当前 ${String(current.nodes.length)}）` };
+      return {
+        error: `节点数超过上限 ${String(DAG_NODE_MAX)}（当前 ${String(current.nodes.length)}）`,
+      };
     }
     const added: DagNode[] = action.nodes.map((node) => ({
       ...node,

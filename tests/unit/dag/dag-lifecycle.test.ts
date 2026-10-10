@@ -378,7 +378,13 @@ describe('subagent/end 的兜底认领', () => {
   it('agent 找不到节点时，按认领记录结算并打上 fallback 前缀，样本也落回该节点', async () => {
     // 不带 agent 的 running 节点 = `start` 会认领的那个；`someone-else` 是之后被
     // 覆盖上去的（模拟错位/被覆盖），于是按 agent 定位必然找不到。
-    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    await seedNode(SESSION, {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+    });
     const events = harness();
     measurable(events);
     events.parents.set(AGENT, SESSION);
@@ -390,12 +396,19 @@ describe('subagent/end 的兜底认领', () => {
     if (claimed.state !== 'ok') return;
     expect(claimed.doc.nodes[0]?.agent).toBe(AGENT);
 
-    await updateDag(SESSION, (state) => {
-      if (state.state !== 'ok') return { skip: true };
-      return {
-        doc: { ...state.doc, nodes: state.doc.nodes.map((node) => ({ ...node, agent: 'someone-else' })) },
-      };
-    }, dir);
+    await updateDag(
+      SESSION,
+      (state) => {
+        if (state.state !== 'ok') return { skip: true };
+        return {
+          doc: {
+            ...state.doc,
+            nodes: state.doc.nodes.map((node) => ({ ...node, agent: 'someone-else' })),
+          },
+        };
+      },
+      dir
+    );
 
     events.end({ runId: 'r1', id: AGENT, stopReason: 'error' });
     await drain();
@@ -431,7 +444,13 @@ describe('subagent/end 的兜底认领', () => {
   it('按 agent 结算成功时，note 不带 fallback 前缀', async () => {
     // 与第一条互补：这里 `start` 的认领把 `agent` 回填成 AGENT，之后没人覆盖它，
     // 于是 `end` 走的是「按 agent 结算」那条路——fallback 分支不该被碰到。
-    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    await seedNode(SESSION, {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+    });
     const events = harness();
     events.parents.set(AGENT, SESSION);
 
@@ -451,7 +470,13 @@ describe('subagent/end 的兜底认领', () => {
 
 describe('subagent/start 的根归属与父感知认领', () => {
   it('孙代理的认领写进根会话的图，中间会话的文件不被创建', async () => {
-    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    await seedNode(SESSION, {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+    });
     const events = harness();
     // 注册表把整条链答出来：grand 的父是 mid，mid 的父是 root。
     events.parents.set(GRAND, MID);
@@ -572,7 +597,13 @@ describe('subagent/start 的根归属与父感知认领', () => {
   it('链断在中途时不认领：中间会话的文件不建，根会话的图也不动', async () => {
     // 三链 GRAND → MID → SESSION，而 MID 不在册：MID **不是**根（写它的文件不是 main
     // 的图），所以这次派发不认领——既不建 `mid.json`，也不动根会话的文档。
-    await seedNode(SESSION, { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running' });
+    await seedNode(SESSION, {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+    });
     const events = harness();
     events.parents.set(GRAND, MID);
     events.parents.set(MID, SESSION);

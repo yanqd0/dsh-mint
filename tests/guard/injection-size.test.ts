@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from '../../src/host/context.js';
-import {
-  renderDagDepthNotice,
-  renderOverviewDepthLine,
-} from '../../src/host/subagent-depth.js';
+import { renderDagDepthNotice, renderOverviewDepthLine } from '../../src/host/subagent-depth.js';
 import { DAG_TOOL_DESCRIPTION } from '../../src/dag/dag-tool.js';
 import { WORKTREE_TOOL_DESCRIPTION } from '../../src/dag/worktree-tool.js';
 import { MINT_ENTRY_WARNING } from '../../src/mint/mint.js';

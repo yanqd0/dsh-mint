@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { installCrossProjectGate, invocationsOf, sessionIdOf } from '../../../src/mint/cross-project-gate.js';
+import {
+  installCrossProjectGate,
+  invocationsOf,
+  sessionIdOf,
+} from '../../../src/mint/cross-project-gate.js';
 import { resetProjectCache } from '../../../src/mint/cross-project.js';
 import { executeMintTool } from '../../../src/mint/mint-tool.js';
 import { runMint } from '../../../src/mint/mint.js';

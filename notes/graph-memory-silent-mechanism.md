@@ -74,6 +74,7 @@ dsh-mint 已经拥有的「不经沙箱执行 mint」的**全套基建**：
 工具为唯一操作面；install-check/AGENTS 口径同步过渡。
 
 ### 为什么 B-v2 之后「仍有授权问题」（治标）
+
 - mint 所有子命令都以**读写模式**打开 db，落点在 workspace 外 → 模型 bash 跑 `mint` 必被
   `workspace-write` 沙箱拒 → 只能预置 `danger-full-access` 提权 → `approval/request`。
 - `src/mint/approval-gate.ts`（B-v2）把这段从「每次弹窗」降到「**每会话首条真人批一次 + 会话内
@@ -110,13 +111,14 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 
 ### 对比三方案
 
-| 方案 | 做法 | 授权体验 | 代价 / 风险 |
-|---|---|---|---|
+| 方案                                     | 做法                                                                                                       | 授权体验                                  | 代价 / 风险                                                                                                                                          |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
 | **A（对齐 graph-memory，推荐；已落地）** | 补宿主工具：读 + 状态机/plan/issue 写操作，execute 内 `runMint`；skill 与 install-check 改指示「调用工具」 | **设计上零授权**（不再经 bash）；审计干净 | 需覆盖 mint 子命令面 + 重写 skill（已解耦为**本仓 `skill/`**，不再依赖上游）与仓库内检查清单；仍有模型「图省事直接 bash」的偶然路径 → 保留 B-v2 兜底 |
-| **B（现状，最小改）** | 沿用 B-v2，把挂载行 `config.autoApprove: true` 打开 | 跨会话免批、会话内自动 | 仍逐条落 ask/decided 审计；只认单条裸 mint；子代理/复合命令不管；治标 |
-| C（上游根治） | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项） | 最正统、全项目受益 | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 mint-sandbox） |
+| **B（现状，最小改）**                    | 沿用 B-v2，把挂载行 `config.autoApprove: true` 打开                                                        | 跨会话免批、会话内自动                    | 仍逐条落 ask/decided 审计；只认单条裸 mint；子代理/复合命令不管；治标                                                                                |
+| C（上游根治）                            | 上游 extra writable-roots / `allow_always` scope（mint 官方 fork 曾搁置的开放项）                          | 最正统、全项目受益                        | 需 fork 合入 + 依赖上游版本，非 0.1.0 路径（见 mint-sandbox）                                                                                        |
 
 ### 迁移后仍保留的东西
+
 - `runMint()`、事件钩子、context 注入、planbind、reminders **全部不动** —— 只增宿主工具 + 改引导文档。
 - `approval-gate.ts` 作为**兜底保留**：模型偶发仍从 bash 跑裸 mint 时，本会话内仍自动放行，不回归。
 
@@ -132,6 +134,7 @@ mint 全命令面，取代原先只读的 `mint_query`。）**
 4. 回归：新会话不 bash、纯工具跑完整 dogfood，取证看 session JSONL（telemetry 默认关）。
 
 ## 速查（证据位置）
+
 - graph-memory 入口：`~/.dsh/profiles/web/node_modules/graph-memory/{dsh.ts,index.ts}`（dsh.ts=DSH 适配）；
   事件挂接与召回注入见 `dsh.ts` 的 `session/event`/`agent/pre-step`/`compactBeforeStep`/`insertDshRecallBeforeCurrentUser`；
   运行库 `~/.dsh/graph-memory/graph-memory.db(-wal/-shm)`。

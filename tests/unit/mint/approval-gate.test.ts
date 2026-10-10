@@ -1,7 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { installApprovalGate, isMintCommand, isMintEscalation } from '../../../src/mint/approval-gate.js';
-import type { ApprovalRequestLike, DshContext, ToolExecutionLike, ToolResultLike } from '../../../src/shared/types.js';
+import {
+  installApprovalGate,
+  isMintCommand,
+  isMintEscalation,
+} from '../../../src/mint/approval-gate.js';
+import type {
+  ApprovalRequestLike,
+  DshContext,
+  ToolExecutionLike,
+  ToolResultLike,
+} from '../../../src/shared/types.js';
 
 function makeCtx(): {
   ctx: DshContext;
@@ -32,22 +41,22 @@ const mintReq = (over: Partial<ApprovalRequestLike> = {}): ApprovalRequestLike =
 function recordBash(
   listeners: Record<string, (...args: unknown[]) => unknown>,
   callId: string,
-  command: string,
+  command: string
 ): void {
   const pre = listeners['tools/pre-execute'] as (
     exec: ToolExecutionLike,
-    next: () => Promise<{ kind: 'allow' }>,
+    next: () => Promise<{ kind: 'allow' }>
   ) => Promise<{ kind: 'allow' }>;
   const next = vi.fn(() => Promise.resolve({ kind: 'allow' as const }));
   void pre({ name: 'bash', callId, arguments: { command } }, next);
 }
 
 function approval(
-  listeners: Record<string, (...args: unknown[]) => unknown>,
+  listeners: Record<string, (...args: unknown[]) => unknown>
 ): (req: ApprovalRequestLike, next: () => Promise<string>) => Promise<string> {
   return listeners['approval/request'] as (
     req: ApprovalRequestLike,
-    next: () => Promise<string>,
+    next: () => Promise<string>
   ) => Promise<string>;
 }
 
@@ -113,7 +122,7 @@ describe('installApprovalGate', () => {
 
     expect(await approval(listeners)(mintReq({ callId: undefined }), next)).toBe('unavailable');
     expect(await approval(listeners)(mintReq({ reason: 'some other ask' }), next)).toBe(
-      'unavailable',
+      'unavailable'
     );
     expect(next).toHaveBeenCalledTimes(2);
   });
@@ -152,7 +161,7 @@ describe('installApprovalGate', () => {
 
     // second ask for the same session via a different object: immediate grant
     expect(await approval(listeners)(mintReq({ callId: 'call-2', agent: agentB }), next)).toBe(
-      'allowed-once',
+      'allowed-once'
     );
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -164,15 +173,15 @@ describe('installApprovalGate', () => {
     recordBash(listeners, 'call-2', 'mint list');
     const next = vi.fn(() => Promise.resolve('allowed-once'));
     expect(
-      await approval(listeners)(mintReq({ agent: { id: 'a1', session: { id: 'sess-A' } } }), next),
+      await approval(listeners)(mintReq({ agent: { id: 'a1', session: { id: 'sess-A' } } }), next)
     ).toBe('allowed-once');
     expect(next).toHaveBeenCalledTimes(1);
     // different session must still delegate
     expect(
       await approval(listeners)(
         mintReq({ callId: 'call-2', agent: { id: 'a2', session: { id: 'sess-B' } } }),
-        next,
-      ),
+        next
+      )
     ).toBe('allowed-once');
     expect(next).toHaveBeenCalledTimes(2);
   });
@@ -187,7 +196,7 @@ describe('installApprovalGate', () => {
     expect(next).toHaveBeenCalledTimes(1);
     // follow-up without correlation is auto-allowed from the grant
     expect(
-      await approval(listeners)(mintReq({ callId: 'call-2', agent: { ...agent } }), next),
+      await approval(listeners)(mintReq({ callId: 'call-2', agent: { ...agent } }), next)
     ).toBe('allowed-once');
     expect(next).toHaveBeenCalledTimes(1);
   });
@@ -203,7 +212,7 @@ describe('installApprovalGate', () => {
     expect(next).toHaveBeenCalledTimes(1);
     // grant exists, but the correlated command is NOT bare mint → must delegate
     expect(await approval(listeners)(mintReq({ callId: 'call-2', agent }), next)).toBe(
-      'allowed-once',
+      'allowed-once'
     );
     expect(next).toHaveBeenCalledTimes(2);
   });
@@ -257,10 +266,10 @@ describe('installApprovalGate', () => {
     const post = listeners['tools/post-execute'] as (
       exec: ToolExecutionLike,
       result: ToolResultLike,
-      next: () => Promise<{ kind: 'accept' }>,
+      next: () => Promise<{ kind: 'accept' }>
     ) => Promise<{ kind: 'accept' }>;
     void post({ name: 'bash', callId: 'call-1', arguments: {} }, okResult, () =>
-      Promise.resolve({ kind: 'accept' }),
+      Promise.resolve({ kind: 'accept' })
     );
 
     const next = vi.fn(() => Promise.resolve('allowed-once'));
@@ -273,11 +282,10 @@ describe('installApprovalGate', () => {
     installApprovalGate(ctx, {});
     const pre = listeners['tools/pre-execute'] as (
       exec: ToolExecutionLike,
-      next: () => Promise<{ kind: 'allow' }>,
+      next: () => Promise<{ kind: 'allow' }>
     ) => Promise<{ kind: 'allow' }>;
-    void pre(
-      { name: 'read', callId: 'call-1', arguments: { command: 'mint list' } },
-      () => Promise.resolve({ kind: 'allow' }),
+    void pre({ name: 'read', callId: 'call-1', arguments: { command: 'mint list' } }, () =>
+      Promise.resolve({ kind: 'allow' })
     );
 
     const next = vi.fn(() => Promise.resolve('allowed-once'));

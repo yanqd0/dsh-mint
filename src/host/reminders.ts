@@ -107,7 +107,7 @@ export function isFailedResult(result: ToolResultLike): boolean {
 export async function commitReminderListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
-  next: () => Promise<PostToolDecisionLike>,
+  next: () => Promise<PostToolDecisionLike>
 ): Promise<PostToolDecisionLike> {
   if (isFailedResult(result) || !isGitCommit(exec)) {
     return next();
@@ -169,7 +169,7 @@ export function todoSyncChanged(exec: ToolExecutionLike): boolean {
 export async function todoSyncReminderListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
-  next: () => Promise<PostToolDecisionLike>,
+  next: () => Promise<PostToolDecisionLike>
 ): Promise<PostToolDecisionLike> {
   const delegationDepth = exec.agent?.session?.header?.delegationDepth ?? 0;
   if (isFailedResult(result) || delegationDepth > 0 || !todoSyncChanged(exec)) {
@@ -210,7 +210,7 @@ export const SESSION_RECORD_REMINDER =
 export async function sessionRecordReminderListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
-  next: () => Promise<PostToolDecisionLike>,
+  next: () => Promise<PostToolDecisionLike>
 ): Promise<PostToolDecisionLike> {
   if (exec.name !== EXIT_PLAN_MODE || isFailedResult(result)) {
     return next();
@@ -325,7 +325,7 @@ export function isSleepPoll(exec: ToolExecutionLike): boolean {
 export async function sleepPollReminderListener(
   exec: ToolExecutionLike,
   result: ToolResultLike,
-  next: () => Promise<PostToolDecisionLike>,
+  next: () => Promise<PostToolDecisionLike>
 ): Promise<PostToolDecisionLike> {
   try {
     if (isFailedResult(result) || !isSleepPoll(exec)) {
@@ -370,7 +370,7 @@ export const BASH_DIAGNOSTIC_HINT =
  */
 export function isReadonlyDbFailure(result: ToolResultLike): boolean {
   return result.content.some(
-    (block) => block.type === 'text' && block.text.includes(READONLY_DB_SYMPTOM),
+    (block) => block.type === 'text' && block.text.includes(READONLY_DB_SYMPTOM)
   );
 }
 
@@ -383,7 +383,7 @@ export function isReadonlyDbFailure(result: ToolResultLike): boolean {
 export async function readonlyDbHintListener(
   _exec: ToolExecutionLike,
   result: ToolResultLike,
-  next: () => Promise<PostToolDecisionLike>,
+  next: () => Promise<PostToolDecisionLike>
 ): Promise<PostToolDecisionLike> {
   try {
     if (!isReadonlyDbFailure(result)) {

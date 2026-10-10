@@ -134,7 +134,13 @@ export function dagLayers(
 }
 
 export function dagCounts(doc: DagDoc): DagCounts {
-  const counts: DagCounts = { nodes: doc.nodes.length, edges: doc.edges.length, pending: 0, running: 0, done: 0 };
+  const counts: DagCounts = {
+    nodes: doc.nodes.length,
+    edges: doc.edges.length,
+    pending: 0,
+    running: 0,
+    done: 0,
+  };
   for (const node of doc.nodes) counts[node.status] += 1;
   return counts;
 }

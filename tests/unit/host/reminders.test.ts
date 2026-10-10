@@ -25,7 +25,12 @@ import {
   todoSyncChanged,
   todoSyncReminderListener,
 } from '../../../src/host/reminders.js';
-import { notePlanModeExit, recordMintWrite, resetSessionLedger, takeRecordGapNotice } from '../../../src/host/session-ledger.js';
+import {
+  notePlanModeExit,
+  recordMintWrite,
+  resetSessionLedger,
+  takeRecordGapNotice,
+} from '../../../src/host/session-ledger.js';
 import type { DshContext, ToolExecutionLike, ToolResultLike } from '../../../src/shared/types.js';
 
 function makeCtx(): {
@@ -47,24 +52,24 @@ const successResult: ToolResultLike = { isError: false, content: [{ type: 'text'
 describe('isGitCommit', () => {
   it('matches git commit commands', () => {
     expect(isGitCommit({ name: 'bash', arguments: { command: 'git commit -m "x"' } })).toBe(true);
-    expect(isGitCommit({ name: 'bash', arguments: { command: 'cd repo && git commit --amend' } })).toBe(
-      true,
-    );
-    expect(isGitCommit({ name: 'bash', arguments: { command: 'git -c user.name=x commit -m y' } })).toBe(
-      true,
-    );
+    expect(
+      isGitCommit({ name: 'bash', arguments: { command: 'cd repo && git commit --amend' } })
+    ).toBe(true);
+    expect(
+      isGitCommit({ name: 'bash', arguments: { command: 'git -c user.name=x commit -m y' } })
+    ).toBe(true);
   });
 
   it('matches a git commit run through an argv tool', () => {
     // The uv tool strips a leading `uv`, so `uv run git commit -m x` arrives so.
-    expect(isGitCommit({ name: 'uv', arguments: { args: ['run', 'git', 'commit', '-m', 'x'] } })).toBe(
-      true,
-    );
-    expect(isGitCommit({ name: 'uv', arguments: { args: ['run', '--no-project', 'git', 'commit'] } })).toBe(
-      true,
-    );
     expect(
-      isGitCommit({ name: 'uv', arguments: { args: ['run', 'git', '-C', '/repo', 'commit'] } }),
+      isGitCommit({ name: 'uv', arguments: { args: ['run', 'git', 'commit', '-m', 'x'] } })
+    ).toBe(true);
+    expect(
+      isGitCommit({ name: 'uv', arguments: { args: ['run', '--no-project', 'git', 'commit'] } })
+    ).toBe(true);
+    expect(
+      isGitCommit({ name: 'uv', arguments: { args: ['run', 'git', '-C', '/repo', 'commit'] } })
     ).toBe(true);
   });
 
@@ -81,7 +86,10 @@ describe('isGitCommit', () => {
   it('does not match prose that merely mentions a commit', () => {
     // argv matching is on exact tokens, so a title carrying the words cannot hit.
     expect(
-      isGitCommit({ name: 'mint', arguments: { args: ['issue', 'add', 'uv run git commit 不提醒'] } }),
+      isGitCommit({
+        name: 'mint',
+        arguments: { args: ['issue', 'add', 'uv run git commit 不提醒'] },
+      })
     ).toBe(false);
     expect(isCommitArgv(['git', 'commit'])).toBe(true);
     expect(isCommitArgv(['git', 'commits'])).toBe(false);
@@ -91,7 +99,10 @@ describe('isGitCommit', () => {
 
 describe('commitReminderListener', () => {
   it('appends a reminder after a git commit', async () => {
-    const exec: ToolExecutionLike = { name: 'bash', arguments: { command: 'git commit -m "feat: x"' } };
+    const exec: ToolExecutionLike = {
+      name: 'bash',
+      arguments: { command: 'git commit -m "feat: x"' },
+    };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     const decision = await commitReminderListener(exec, successResult, next);
 
@@ -104,7 +115,10 @@ describe('commitReminderListener', () => {
   });
 
   it('appends the reminder for an argv commit', async () => {
-    const exec: ToolExecutionLike = { name: 'uv', arguments: { args: ['run', 'git', 'commit', '-m', 'x'] } };
+    const exec: ToolExecutionLike = {
+      name: 'uv',
+      arguments: { args: ['run', 'git', 'commit', '-m', 'x'] },
+    };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     const decision = await commitReminderListener(exec, successResult, next);
 
@@ -213,9 +227,9 @@ describe('todoSyncChanged', () => {
   });
 
   it('matches a recognised bash fallback call', () => {
-    expect(todoSyncChanged({ name: 'bash', arguments: { command: 'mint issue state start 7' } })).toBe(
-      true
-    );
+    expect(
+      todoSyncChanged({ name: 'bash', arguments: { command: 'mint issue state start 7' } })
+    ).toBe(true);
   });
 
   it('ignores reads and unrelated tools', () => {
@@ -242,7 +256,12 @@ describe('todoSyncReminderListener', () => {
   ): ToolExecutionLike => ({
     name: 'mint',
     arguments: { args },
-    agent: { session: { id: 'sess-1', header: { cwd: '/proj', ...(delegationDepth === undefined ? {} : { delegationDepth }) } } },
+    agent: {
+      session: {
+        id: 'sess-1',
+        header: { cwd: '/proj', ...(delegationDepth === undefined ? {} : { delegationDepth }) },
+      },
+    },
   });
 
   it('appends the todo reminder after a state change', async () => {
@@ -309,11 +328,7 @@ describe('sessionRecordReminderListener', () => {
 
   it('appends the notice when the session recorded nothing', async () => {
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
-    const decision = await sessionRecordReminderListener(
-      exitExec('sess-1'),
-      successResult,
-      next
-    );
+    const decision = await sessionRecordReminderListener(exitExec('sess-1'), successResult, next);
 
     expect(next).not.toHaveBeenCalled();
     expect(decision.content?.[1]?.text).toBe(SESSION_RECORD_REMINDER);
@@ -330,7 +345,10 @@ describe('sessionRecordReminderListener', () => {
   });
 
   it('leaves a rejected exit alone', async () => {
-    const failed: ToolResultLike = { isError: true, content: [{ type: 'text', text: 'keep planning' }] };
+    const failed: ToolResultLike = {
+      isError: true,
+      content: [{ type: 'text', text: 'keep planning' }],
+    };
     const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
     await sessionRecordReminderListener(exitExec('sess-1'), failed, next);
 
@@ -398,9 +416,12 @@ describe('installFailureSignal', () => {
 
     const listener = listeners['tools/result'] as (
       exec: ToolExecutionLike,
-      result: ToolResultLike,
+      result: ToolResultLike
     ) => void;
-    listener({ name: 'bash', arguments: {} }, { isError: true, error: { message: 'boom' }, content: [] });
+    listener(
+      { name: 'bash', arguments: {} },
+      { isError: true, error: { message: 'boom' }, content: [] }
+    );
 
     expect(write).toHaveBeenCalledWith(expect.stringContaining('[mint] tool bash failed'));
     expect(write).toHaveBeenCalledWith(expect.stringContaining('mint({args:["issue","add"'));
@@ -413,7 +434,7 @@ describe('installFailureSignal', () => {
 
     const listener = listeners['tools/result'] as (
       exec: ToolExecutionLike,
-      result: ToolResultLike,
+      result: ToolResultLike
     ) => void;
     listener({ name: 'bash', arguments: {} }, successResult);
 
@@ -424,16 +445,20 @@ describe('installFailureSignal', () => {
 describe('isSleepPoll', () => {
   it('matches a sleep or a list_agents poll in a bash command line', () => {
     expect(isSleepPoll({ name: 'bash', arguments: { command: 'sleep 120' } })).toBe(true);
-    expect(isSleepPoll({ name: 'tool:bash', arguments: { command: '  sleep 30 && echo done' } })).toBe(
+    expect(
+      isSleepPoll({ name: 'tool:bash', arguments: { command: '  sleep 30 && echo done' } })
+    ).toBe(true);
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'list_agents' } })).toBe(true);
+    expect(isSleepPoll({ name: 'bash', arguments: { command: 'echo list_agents | head' } })).toBe(
       true
     );
-    expect(isSleepPoll({ name: 'bash', arguments: { command: 'list_agents' } })).toBe(true);
-    expect(isSleepPoll({ name: 'bash', arguments: { command: 'echo list_agents | head' } })).toBe(true);
   });
 
   it('matches the argv shapes a foreign tool spawns without a shell', () => {
     expect(isSleepPoll({ name: 'uv', arguments: { args: ['sleep', '30'] } })).toBe(true);
-    expect(isSleepPoll({ name: 'uv', arguments: { args: ['bash', '-c', 'list_agents'] } })).toBe(true);
+    expect(isSleepPoll({ name: 'uv', arguments: { args: ['bash', '-c', 'list_agents'] } })).toBe(
+      true
+    );
     expect(isSleepPoll({ name: 'uv', arguments: { args: ['sh', '-c', 'sleep 5'] } })).toBe(true);
     expect(isSleepPoll({ name: 'uv', arguments: { args: ['run', 'list_agents'] } })).toBe(true);
   });

@@ -12,7 +12,13 @@ import { doc, node } from './helpers.js';
 describe('graph helpers', () => {
   it('lists every unknown dependency once, sorted', () => {
     const nodes = [node({ id: 'a', depends_on: ['z'] }), node({ id: 'b', depends_on: [] })];
-    expect(unknownDependencies(nodes, [['a', 'missing'], ['ghost', 'a'], ['z', 'z']])).toEqual(['ghost', 'missing', 'z']);
+    expect(
+      unknownDependencies(nodes, [
+        ['a', 'missing'],
+        ['ghost', 'a'],
+        ['z', 'z'],
+      ])
+    ).toEqual(['ghost', 'missing', 'z']);
     expect(unknownDependencies(nodes, [])).toEqual(['z']);
     expect(unknownDependencies([node({ id: 'a', depends_on: [] })], [])).toEqual([]);
   });
@@ -20,9 +26,15 @@ describe('graph helpers', () => {
   // 无环判定：真环要给出闭环序列，普通 DAG 必须返回 undefined 而不是空数组。
   // 用 `node`/`doc` 夹具造三节点链加一条回边，断言环首尾都是 `a` 且长度为 4。
   it('finds one cycle and reports none for a DAG', () => {
-    expect(findCycle([node({ id: 'a' }), node({ id: 'b', depends_on: ['a'] })], [])).toBeUndefined();
+    expect(
+      findCycle([node({ id: 'a' }), node({ id: 'b', depends_on: ['a'] })], [])
+    ).toBeUndefined();
     const cycle = findCycle(
-      [node({ id: 'a' }), node({ id: 'b', depends_on: ['a'] }), node({ id: 'c', depends_on: ['b'] })],
+      [
+        node({ id: 'a' }),
+        node({ id: 'b', depends_on: ['a'] }),
+        node({ id: 'c', depends_on: ['b'] }),
+      ],
       [['c', 'a']]
     );
     expect(cycle?.[0]).toBe('a');
@@ -43,7 +55,10 @@ describe('graph helpers', () => {
     // An edge is a dependency like any other.
     expect(dagLayers([node({ id: 'a' }), node({ id: 'b' })], [['a', 'b']])).toEqual([['a'], ['b']]);
     // A cycle contributes nothing to the depth instead of recursing forever.
-    const cyclic = dagLayers([node({ id: 'a', depends_on: ['b'] }), node({ id: 'b', depends_on: ['a'] })], []);
+    const cyclic = dagLayers(
+      [node({ id: 'a', depends_on: ['b'] }), node({ id: 'b', depends_on: ['a'] })],
+      []
+    );
     expect(cyclic.flat().sort()).toEqual(['a', 'b']);
   });
 
@@ -60,7 +75,9 @@ describe('graph helpers', () => {
     expect(dagCounts(doc())).toEqual({ nodes: 0, edges: 0, pending: 0, running: 0, done: 0 });
     expect(dagSummary(undefined)).toBe('本会话暂无 DAG');
     expect(dagSummary(doc())).toBe('节点 0，边 0：pending 0 / running 0 / done 0');
-    expect(dagSummary(subject)).toBe('节点 3，边 1：pending 1 / running 1 / done 1\nrunning: 分①(b)');
+    expect(dagSummary(subject)).toBe(
+      '节点 3，边 1：pending 1 / running 1 / done 1\nrunning: 分①(b)'
+    );
 
     const many = doc({
       nodes: Array.from({ length: 9 }, (_, index) =>

@@ -3,16 +3,16 @@
 // 入口会 MODULE_NOT_FOUND 使安装失败。本守卫只在入口存在时 import 它，
 // 任何失败都只告警并退出 0：skill 安装是 best-effort，插件加载时的运行时
 // 同步才是保证路径。顶层 await 保证 import 的拒绝回调有机会执行。
-import { existsSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath, pathToFileURL } from 'node:url'
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'install-skill.js')
+const entry = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'install-skill.js');
 
 if (existsSync(entry)) {
   try {
-    await import(pathToFileURL(entry).href)
+    await import(pathToFileURL(entry).href);
   } catch (error) {
-    process.stderr.write(`[dsh-mint] skill install failed: ${error?.message ?? String(error)}\n`)
+    process.stderr.write(`[dsh-mint] skill install failed: ${error?.message ?? String(error)}\n`);
   }
 }

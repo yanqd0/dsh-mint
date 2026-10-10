@@ -38,6 +38,7 @@ dsh --profile web --dump-config 2>&1 | grep -A3 'id: mint'    # 组合树确认
 ```
 
 坑（历史教训，别再踩）：
+
 - 挂载行由**包自带的 bundle patch** 提供（包根 `cordis.patch.yml` + `package.json` 的
   `dsh.bundle.patch`）：`dsh plugin add` 成功即把本包写进 profile 的 `dsh.profile.bundles`，
   **不需要**手写 `insert:`；手写 insert 与 bundle 并存会**重复挂载**。
@@ -59,6 +60,7 @@ node /home/user/yanqd0/dsh-mint/dist/install-skill.js --status
 `copy … (in-sync)`。形态定义、所有权守卫与卸载见 `mounting.md` §3。
 
 坑：
+
 - `exports: { ".": "./dist/index.js" }` —— **dist 不构建则加载即失败**。先 `pnpm build`。
 - **新增 `dsh.client` 后必须重启 harness**：client 行只在启动扫描时入图；此后改 bundle 只需
   重新 `pnpm build` + 刷新页面（revision 由 mtime/ctime/size 推导）。
@@ -125,6 +127,7 @@ zstdcat ~/.dsh/sessions/**/session.jsonl.zstd | grep -c '"mint"'       # 预期 
 > telemetry 默认 DISABLED，不能作为证据；session JSONL 才是真相源（`notes/dsh/0.1.0/07,28`）。
 
 **bash 兜底（B-v2 gate，仅例外路径）**：若工具不可用而必须 bash 跑 mint：
+
 - 默认 `autoApprove: false`：**每会话首条 mint bash 命令**被沙箱拒后，按常规提权重试一次
   （`sandbox_permissions: danger-full-access` + justification `mint`），用户批准后该 agent
   同会话后续裸 `mint ...` 命令自动放行（gate 记忆，见 `notes/mint-sandbox.md`）。

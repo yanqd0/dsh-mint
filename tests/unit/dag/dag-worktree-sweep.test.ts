@@ -13,7 +13,12 @@ import {
   worktreeSweepReminder,
 } from '../../../src/dag/dag-worktree-sweep.js';
 import type { DagNodeView } from '../../../src/shared/records.js';
-import type { DshContext, PostToolDecisionLike, ToolExecutionLike, ToolResultLike } from '../../../src/shared/types.js';
+import type {
+  DshContext,
+  PostToolDecisionLike,
+  ToolExecutionLike,
+  ToolResultLike,
+} from '../../../src/shared/types.js';
 
 /**
  * The plan-close worktree sweep.
@@ -37,7 +42,10 @@ const successResult: ToolResultLike = { isError: false, content: [{ type: 'text'
 const next = (): Promise<PostToolDecisionLike> => Promise.resolve({ kind: 'accept' });
 
 /** Write one node carrying a worktree state into the session's document. */
-async function seed(session: string, state: 'active' | 'merged' | 'conflict' | 'removed'): Promise<void> {
+async function seed(
+  session: string,
+  state: 'active' | 'merged' | 'conflict' | 'removed'
+): Promise<void> {
   const now = '2026-01-01T00:00:00.000Z';
   const withNode = applyDagWrite(
     {
@@ -173,12 +181,19 @@ describe('worktreeSweepListener', () => {
       agent: { session: { id: 'sess-1', header: { cwd: '/proj' } } },
     };
     const spyOther = vi.fn(next);
-    expect(await worktreeSweepListener(other, successResult, spyOther, dagDir)).toEqual({ kind: 'accept' });
+    expect(await worktreeSweepListener(other, successResult, spyOther, dagDir)).toEqual({
+      kind: 'accept',
+    });
     expect(spyOther).toHaveBeenCalled();
 
     const spyFailed = vi.fn(next);
-    const failed: ToolResultLike = { isError: false, content: [{ type: 'text', text: 'boom\n[exit code: 1]' }] };
-    expect(await worktreeSweepListener(closeExec(), failed, spyFailed, dagDir)).toEqual({ kind: 'accept' });
+    const failed: ToolResultLike = {
+      isError: false,
+      content: [{ type: 'text', text: 'boom\n[exit code: 1]' }],
+    };
+    expect(await worktreeSweepListener(closeExec(), failed, spyFailed, dagDir)).toEqual({
+      kind: 'accept',
+    });
     expect(spyFailed).toHaveBeenCalled();
 
     const child: ToolExecutionLike = {
@@ -186,7 +201,9 @@ describe('worktreeSweepListener', () => {
       agent: { session: { id: 'sess-1', header: { cwd: '/proj', delegationDepth: 1 } } },
     };
     const spyChild = vi.fn(next);
-    expect(await worktreeSweepListener(child, successResult, spyChild, dagDir)).toEqual({ kind: 'accept' });
+    expect(await worktreeSweepListener(child, successResult, spyChild, dagDir)).toEqual({
+      kind: 'accept',
+    });
     expect(spyChild).toHaveBeenCalled();
   });
 
@@ -194,15 +211,22 @@ describe('worktreeSweepListener', () => {
   // 先查一个没写过文档的会话，再用不带 agent 的调用，断言两次都不附加内容。
   it('stays quiet without a DAG or a session id', async () => {
     const spyNoDag = vi.fn(next);
-    expect(await worktreeSweepListener(closeExec('sess-none'), successResult, spyNoDag, dagDir)).toEqual({
+    expect(
+      await worktreeSweepListener(closeExec('sess-none'), successResult, spyNoDag, dagDir)
+    ).toEqual({
       kind: 'accept',
     });
     expect(spyNoDag).toHaveBeenCalled();
 
     await seed('sess-1', 'active');
-    const anonymous: ToolExecutionLike = { name: 'mint', arguments: { args: ['plan', 'close', '36'] } };
+    const anonymous: ToolExecutionLike = {
+      name: 'mint',
+      arguments: { args: ['plan', 'close', '36'] },
+    };
     const spy = vi.fn(next);
-    expect(await worktreeSweepListener(anonymous, successResult, spy, dagDir)).toEqual({ kind: 'accept' });
+    expect(await worktreeSweepListener(anonymous, successResult, spy, dagDir)).toEqual({
+      kind: 'accept',
+    });
     expect(spy).toHaveBeenCalled();
   });
 });
