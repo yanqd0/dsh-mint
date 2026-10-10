@@ -145,7 +145,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // node pair — one edge only, `test 依赖 dev`; the sanctioned exception for a
   // plan whose subject *is* the isolation mechanism; and the one channel a
   // subagent may use for a user decision (write it into the final reply —
-  // `ask_user_question` is refused for a delegated caller).
+  // `ask_user_question` is refused for a delegated caller). The four-line reply
+  // is the only hand-back shape: pinning its labels keeps a refactor from
+  // silently inventing a new contract for the dispatch prompt.
   [
     'references/parallel-exec.md',
     [
@@ -158,6 +160,10 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '被改特性本身就是隔离机制',
       '遇用户决策写进最终回复',
       '不要调用 `ask_user_question`',
+      '节点: ',
+      '变更: ',
+      '验收: ',
+      '未决: ',
     ],
   ],
   // A dev/test pair shares **one** tree: `create`/`merge`/`remove` all name the
