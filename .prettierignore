@@ -6,3 +6,6 @@ dist/
 node_modules/
 coverage/
 pnpm-lock.yaml
+# skill/**/*.md 的表格对齐会撑破 skill/SKILL.md 的 3200 B 预算，且该预算由 tests/guard/skill-doc.test.ts 守
+# 用前导斜杠锚定到仓根：裸 `skill/` 在 prettier 的忽略引擎里会匹配任意深度，连 src/skill/ 一起排除
+/skill/

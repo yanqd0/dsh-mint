@@ -11,7 +11,15 @@ describe('parseDagDoc', () => {
   it('round-trips a well-formed document', () => {
     const subject = doc({
       nodes: [
-        node({ id: 'a', status: 'done', verdict: 'fail', note: 'n', tokens: 3, agent: 'child-1', issue: 150 }),
+        node({
+          id: 'a',
+          status: 'done',
+          verdict: 'fail',
+          note: 'n',
+          tokens: 3,
+          agent: 'child-1',
+          issue: 150,
+        }),
       ],
       edges: [['a', 'a']],
     });
@@ -41,7 +49,16 @@ describe('parseDagDoc', () => {
       [{ ...doc(), nodes: [{ ...node(), agent: 7 }] }, 'agent'],
       [{ ...doc(), nodes: [{ ...node(), note: 7 }] }, 'note'],
       [{ ...doc(), nodes: [{ ...node(), id: 'a1#1' }] }, '只允许'],
-      [{ ...doc(), nodes: [{ ...node(), id: 'a' }, { ...node(), id: 'a' }] }, 'duplicate'],
+      [
+        {
+          ...doc(),
+          nodes: [
+            { ...node(), id: 'a' },
+            { ...node(), id: 'a' },
+          ],
+        },
+        'duplicate',
+      ],
       [{ ...doc(), nodes: ['x'] }, 'object'],
       [{ ...doc(), edges: [['a']] }, 'edges'],
     ];

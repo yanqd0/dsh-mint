@@ -36,31 +36,33 @@ export const inject = ['tools'];
  * 故少了这里的默认值整条挂载行会因 `invalid config: - Required (at )` 失效。`.default({})`
  * 让每个字段各回自己的默认值，推断类型仍是普通对象（`apply` 不会见到 `undefined`）。
  */
-export const Config = z.object({
-  /** 预留给挂载行配置：暂无消费方，等对应特性落地才起作用。 */
-  debug: z.boolean().default(false),
-  /**
-   * 自动放行 mint 的沙箱提权、不再弹窗（B-v2）。默认 false：每会话首次提权仍走组合起来的
-   * 审批应答者；打开它等于显式信任 mint。
-   */
-  autoApprove: z.boolean().default(false),
-  /**
-   * 插件加载时把随包 mint skill 同步进 DSH skill 目录。默认 true：`pnpm add -g` 下构建脚本
-   * 可能被拦、postinstall 不跑，这条同步是保证装上的安装路径。
-   */
-  autoInstallSkill: z.boolean().default(true),
-  /**
-   * `mint` 工具执行的 mint 入口：`run-mint.js` 路径、原生 mint 二进制、`~` 前缀路径、`PATH` 里的
-   * 裸命令，或 `dependency` 哨兵（即使设了 `MINT_ENTRY` 也强制走 `mint-faa` 链）。默认用 `mint-faa`
-   * 依赖（范围 `>=0.8.0 <1.0.0`，任意 pre-1.0 版本免插件更新即可生效）；指向本地构建的 mint 可 dogfood。
-   */
-  mintEntry: z.string().optional(),
-  /**
-   * 自动打开 plan DAG tab：浏览器半边每 5s 探一次 `GET /dsh-mint/dag`，本会话有 DAG 且该 tab
-   * 未开就打开（页类型每会话唯一，重复探测不会叠 tab）；false = 交给 add 控件。
-   */
-  openDagTab: z.boolean().default(true),
-}).default({});
+export const Config = z
+  .object({
+    /** 预留给挂载行配置：暂无消费方，等对应特性落地才起作用。 */
+    debug: z.boolean().default(false),
+    /**
+     * 自动放行 mint 的沙箱提权、不再弹窗（B-v2）。默认 false：每会话首次提权仍走组合起来的
+     * 审批应答者；打开它等于显式信任 mint。
+     */
+    autoApprove: z.boolean().default(false),
+    /**
+     * 插件加载时把随包 mint skill 同步进 DSH skill 目录。默认 true：`pnpm add -g` 下构建脚本
+     * 可能被拦、postinstall 不跑，这条同步是保证装上的安装路径。
+     */
+    autoInstallSkill: z.boolean().default(true),
+    /**
+     * `mint` 工具执行的 mint 入口：`run-mint.js` 路径、原生 mint 二进制、`~` 前缀路径、`PATH` 里的
+     * 裸命令，或 `dependency` 哨兵（即使设了 `MINT_ENTRY` 也强制走 `mint-faa` 链）。默认用 `mint-faa`
+     * 依赖（范围 `>=0.8.0 <1.0.0`，任意 pre-1.0 版本免插件更新即可生效）；指向本地构建的 mint 可 dogfood。
+     */
+    mintEntry: z.string().optional(),
+    /**
+     * 自动打开 plan DAG tab：浏览器半边每 5s 探一次 `GET /dsh-mint/dag`，本会话有 DAG 且该 tab
+     * 未开就打开（页类型每会话唯一，重复探测不会叠 tab）；false = 交给 add 控件。
+     */
+    openDagTab: z.boolean().default(true),
+  })
+  .default({});
 
 export type Config = z.infer<typeof Config>;
 

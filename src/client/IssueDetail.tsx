@@ -21,7 +21,13 @@ export interface IssueDetailProps {
   onBack: () => void;
 }
 
-export function IssueDetail({ copy, item, meta, truncated, onBack }: IssueDetailProps): ReactElement {
+export function IssueDetail({
+  copy,
+  item,
+  meta,
+  truncated,
+  onBack,
+}: IssueDetailProps): ReactElement {
   const links = item.links
     .map((link) => describeLink(link))
     .filter((line): line is NonNullable<typeof line> => line !== undefined);

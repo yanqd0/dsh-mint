@@ -68,11 +68,18 @@ function parseStoredNode(raw: unknown): DagNode | { error: string } {
   if (!Array.isArray(raw.depends_on) || raw.depends_on.some((dep) => typeof dep !== 'string')) {
     return { error: `node ${id}: depends_on must be a string array` };
   }
-  if (typeof raw.updated_at !== 'string') return { error: `node ${id}: updated_at must be a string` };
-  if (raw.issue !== undefined && (typeof raw.issue !== 'number' || !Number.isSafeInteger(raw.issue))) {
+  if (typeof raw.updated_at !== 'string')
+    return { error: `node ${id}: updated_at must be a string` };
+  if (
+    raw.issue !== undefined &&
+    (typeof raw.issue !== 'number' || !Number.isSafeInteger(raw.issue))
+  ) {
     return { error: `node ${id}: issue must be an integer` };
   }
-  if (raw.tokens !== undefined && (typeof raw.tokens !== 'number' || !Number.isSafeInteger(raw.tokens))) {
+  if (
+    raw.tokens !== undefined &&
+    (typeof raw.tokens !== 'number' || !Number.isSafeInteger(raw.tokens))
+  ) {
     return { error: `node ${id}: tokens must be an integer` };
   }
   if (raw.agent !== undefined && typeof raw.agent !== 'string') {

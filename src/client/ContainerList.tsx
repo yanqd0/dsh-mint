@@ -90,7 +90,13 @@ export function ContainerList<T>({
               );
             })}
           </div>
-          <div style={{ ...TOOLBAR, borderTop: '1px solid var(--dsw-alias-border-l1)', borderBottom: 'none' }}>
+          <div
+            style={{
+              ...TOOLBAR,
+              borderTop: '1px solid var(--dsw-alias-border-l1)',
+              borderBottom: 'none',
+            }}
+          >
             <button
               type="button"
               style={BUTTON}

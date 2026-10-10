@@ -106,7 +106,9 @@ export function parseDagAction(raw: unknown): DagAction | { error: string } {
     if (raw.verdict !== undefined) {
       const checked = raw.verdict;
       if (!isDagVerdict(checked)) {
-        return { error: `verdict 必须是 ${DAG_VERDICTS.join(' | ')}：${JSON.stringify(raw.verdict)}` };
+        return {
+          error: `verdict 必须是 ${DAG_VERDICTS.join(' | ')}：${JSON.stringify(raw.verdict)}`,
+        };
       }
       if (status !== 'done') {
         return { error: 'verdict 只在 status="done"（终态）时合法；请先完成该节点' };
@@ -130,7 +132,8 @@ export function parseDagAction(raw: unknown): DagAction | { error: string } {
       if (typeof raw.agent !== 'string' || raw.agent.length === 0) {
         return { error: 'agent 必须是非空字符串' };
       }
-      if (raw.agent.length > AGENT_ID_MAX) return { error: `agent 过长（>${String(AGENT_ID_MAX)} 字）` };
+      if (raw.agent.length > AGENT_ID_MAX)
+        return { error: `agent 过长（>${String(AGENT_ID_MAX)} 字）` };
       agent = raw.agent;
     }
     let worktree: DagWorktree | undefined;

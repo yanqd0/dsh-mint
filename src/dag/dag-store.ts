@@ -80,7 +80,11 @@ export async function readDag(sessionId: string, dir: string = DAG_DIR): Promise
   const parsed = parseDagDoc(raw);
   if ('error' in parsed) return { state: 'unreadable', file, error: parsed.error };
   if (parsed.doc.session !== sessionId) {
-    return { state: 'unreadable', file, error: `document belongs to session ${parsed.doc.session}` };
+    return {
+      state: 'unreadable',
+      file,
+      error: `document belongs to session ${parsed.doc.session}`,
+    };
   }
   return { state: 'ok', file, doc: parsed.doc };
 }
@@ -95,9 +99,7 @@ export async function readDag(sessionId: string, dir: string = DAG_DIR): Promise
 export type DagMutation = (state: DagRead) => { doc: DagDoc } | { skip: true } | { error: string };
 
 export type DagUpdate =
-  | { ok: true; doc: DagDoc }
-  | { ok: true; skipped: true }
-  | { ok: false; error: string };
+  { ok: true; doc: DagDoc } | { ok: true; skipped: true } | { ok: false; error: string };
 
 /** In-flight writes per session, so a second one starts after the first lands. */
 const locks = new Map<string, Promise<unknown>>();
@@ -124,7 +126,10 @@ async function writeAtomic(file: string, doc: DagDoc): Promise<void> {
   await mkdir(dirname(file), { recursive: true });
   const temporary = `${file}.${String(process.pid)}.${randomUUID()}.tmp`;
   try {
-    await writeFile(temporary, `${JSON.stringify(doc, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+    await writeFile(temporary, `${JSON.stringify(doc, null, 2)}\n`, {
+      encoding: 'utf8',
+      mode: 0o600,
+    });
     await rename(temporary, file);
   } catch (error) {
     await unlink(temporary).catch(() => undefined);

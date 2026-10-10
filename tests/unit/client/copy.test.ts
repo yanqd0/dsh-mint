@@ -129,7 +129,9 @@ describe('panel copy', () => {
   // 用 TS AST 只扫字符串/模板字面量（注释里的中文合法），逐文件断言命中为空。
   it('is the only file the panel text lives in', () => {
     for (const { file, text } of callSites()) {
-      expect(literalWideText(text, file), `${file} must not carry hard-coded Chinese copy`).toEqual([]);
+      expect(literalWideText(text, file), `${file} must not carry hard-coded Chinese copy`).toEqual(
+        []
+      );
     }
   });
 

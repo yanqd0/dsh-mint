@@ -18,7 +18,13 @@ export interface StateNoticeProps {
   onRetry?: (() => void) | undefined;
 }
 
-export function StateNotice({ copy, state, message, stderr, onRetry }: StateNoticeProps): ReactElement {
+export function StateNotice({
+  copy,
+  state,
+  message,
+  stderr,
+  onRetry,
+}: StateNoticeProps): ReactElement {
   // A failure the panel can name in its own words is localized; any other text
   // (mint's stderr, a shape warning) is diagnostic and shows verbatim.
   const key = message === undefined ? undefined : routeErrorKey(message);

@@ -432,13 +432,7 @@ export async function mergeWorktree(
   }
   // subject 只写节点 id：上库内容（含 commit message）不得出现 mint ID，issue ↔ commit
   // 的关联由 `mint issue state commit --sha` 登记，不靠 message。
-  const merged = await deps.git(deps.repo, [
-    'merge',
-    '--no-ff',
-    '-m',
-    `merge ${node.id}`,
-    branch,
-  ]);
+  const merged = await deps.git(deps.repo, ['merge', '--no-ff', '-m', `merge ${node.id}`, branch]);
   if (!merged.ok) {
     const files = await conflictedFiles(deps);
     const detail = files.length === 0 ? stderrOf(merged) : files.join(', ');

@@ -51,6 +51,7 @@ human runs by hand — nothing in the plugin or CI decides a version.
 
    The tarball must contain `dist/index.js`, `dist/client.js`, the whole
    `dist/skill/` tree, `cordis.patch.yml` and `scripts/install-skill-postinstall.mjs`.
+
 6. Close the milestone in mint (`milestone set <id> --status done`) and move the
    remaining work to the next one.
 

@@ -12,17 +12,20 @@
 
 ```js
 ctx.sidebarRightTabs.register({
-  id: '@yanqd0/dsh-mint',        // 实现身份，唯一；也是 body/title seat 的 key
-  kind: 'mint',                  // 类型判别符，openTab(kind) 用它
-  priority: 'builtin',           // 'extension' | 'builtin' | 'fallback'（只影响地址认领）
-  title: () => t('type.label'),  // tab chip 文本，开 tab 时定稿
-  guide: [{                      // 「新建侧边栏 tab」选项；省略则不上 guide
-    id: 'mint',
-    order: 30,                   // files=10, terminal=20
-    title: () => t('guide.title'),
-    description: () => t('guide.description'),
-    icon: IconChecklistOutlineRegular,
-  }],
+  id: '@yanqd0/dsh-mint', // 实现身份，唯一；也是 body/title seat 的 key
+  kind: 'mint', // 类型判别符，openTab(kind) 用它
+  priority: 'builtin', // 'extension' | 'builtin' | 'fallback'（只影响地址认领）
+  title: () => t('type.label'), // tab chip 文本，开 tab 时定稿
+  guide: [
+    {
+      // 「新建侧边栏 tab」选项；省略则不上 guide
+      id: 'mint',
+      order: 30, // files=10, terminal=20
+      title: () => t('guide.title'),
+      description: () => t('guide.description'),
+      icon: IconChecklistOutlineRegular,
+    },
+  ],
 });
 ```
 
@@ -35,10 +38,14 @@ ctx.sidebarRightTabs.register({
 ```js
 ctx.slots.inject('sidebar.right.pane.tab', () =>
   ctx.slots.register(
-    { name: 'sidebar.right.pane.tab', key: '@yanqd0/dsh-mint', locale: 'mint',
-      inject: (sessionId) => ({ api: createApi(sessionId) }) },
-    MintBody,
-  ),
+    {
+      name: 'sidebar.right.pane.tab',
+      key: '@yanqd0/dsh-mint',
+      locale: 'mint',
+      inject: (sessionId) => ({ api: createApi(sessionId) }),
+    },
+    MintBody
+  )
 );
 ```
 
@@ -66,13 +73,16 @@ ctx.slots.inject('sidebar.right.pane.tab', () =>
 - 产物必须是 loader 工厂（`scripts/build-client.mjs` 用 esbuild + banner/footer 生成）：
 
   ```js
-  window.__ModuleLoader__.load({ id: '@yanqd0/dsh-mint', factory: (require) => {
-  "use strict";
-  var module = { exports: {} };
-  var exports = module.exports;
-  /* esbuild 的 CJS 输出 */
-  return module.exports;
-  } });
+  window.__ModuleLoader__.load({
+    id: '@yanqd0/dsh-mint',
+    factory: (require) => {
+      'use strict';
+      var module = { exports: {} };
+      var exports = module.exports;
+      /* esbuild 的 CJS 输出 */
+      return module.exports;
+    },
+  });
   ```
 
   `id` 与包名一致；`factory` 每次物化只跑一次（惰性：只有注册，没有副作用，副作用在 `apply` 里）。
@@ -97,7 +107,10 @@ ctx.slots.inject('sidebar.right.pane.tab', () =>
 
 ```js
 ctx.inject(['webServer'], (scoped) => {
-  scoped.effect(() => scoped.webServer.register({ kind: 'prefix', path: '/dsh-mint', handler }), 'label');
+  scoped.effect(
+    () => scoped.webServer.register({ kind: 'prefix', path: '/dsh-mint', handler }),
+    'label'
+  );
 });
 ```
 
@@ -223,15 +236,15 @@ milestone + 是否直连）。
 
 ### 4.3 术语口径
 
-| 类别 | 口径 |
-| --- | --- |
-| 标签页/概念 | `Issue` / `Plan` / `Milestone` 两语言都英文（`view.*`、`container.*`，即 `KEPT_IN_ENGLISH`） |
-| mint 数据 | issue 状态（`open`/`planned`/`dev`/`test`/`done`/`dropped`）、容器派生状态、kind（`problem`/`requirement`/`task`）、`P0`–`P3`、版本号、时间戳：**原样镜像 CLI**，不进词典（便于与 `mint` 输出逐字对账） |
-| 面板自有词 | 按钮/字段名/提示/计数单位/已知错误码：走词典，中英各一份 |
-| 失败与诊断 | 只有稳定错误码本地化（当前仅 `session-not-live` → `error.sessionNotLive`）；mint stderr、`mint-json` 形状告警、畸形请求文本**原样透传** |
-| 计数 | `count.issue.one\|other` + `model.countKey(n)`：英文分单复数，中文两条同文 |
-| 分隔符 | ` · `、`#`、`↳`、分数页码 `1/3` 等语言中立，不进词典（容器列表页脚保留分数，避免英文整句挤占工具条） |
-| 宿主面文案 | 面向模型的注入/提醒/工具描述仍是中文，不在客户端词典范围；审批提示走宿主自有 `displayReason {en,zh}` |
+| 类别        | 口径                                                                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 标签页/概念 | `Issue` / `Plan` / `Milestone` 两语言都英文（`view.*`、`container.*`，即 `KEPT_IN_ENGLISH`）                                                                                                            |
+| mint 数据   | issue 状态（`open`/`planned`/`dev`/`test`/`done`/`dropped`）、容器派生状态、kind（`problem`/`requirement`/`task`）、`P0`–`P3`、版本号、时间戳：**原样镜像 CLI**，不进词典（便于与 `mint` 输出逐字对账） |
+| 面板自有词  | 按钮/字段名/提示/计数单位/已知错误码：走词典，中英各一份                                                                                                                                                |
+| 失败与诊断  | 只有稳定错误码本地化（当前仅 `session-not-live` → `error.sessionNotLive`）；mint stderr、`mint-json` 形状告警、畸形请求文本**原样透传**                                                                 |
+| 计数        | `count.issue.one\|other` + `model.countKey(n)`：英文分单复数，中文两条同文                                                                                                                              |
+| 分隔符      | `·`、`#`、`↳`、分数页码 `1/3` 等语言中立，不进词典（容器列表页脚保留分数，避免英文整句挤占工具条）                                                                                                      |
+| 宿主面文案  | 面向模型的注入/提醒/工具描述仍是中文，不在客户端词典范围；审批提示走宿主自有 `displayReason {en,zh}`                                                                                                    |
 
 ## 5. 主题
 
@@ -280,9 +293,18 @@ console.log(JSON.stringify(readPluginMeta('@yanqd0/dsh-mint', 'file://$HOME/.dsh
 判据（在出问题的那个页面上跑，浏览器自带登录态）：
 
 ```js
-await fetch('/api/pluginManager/listBundles',{method:'POST',headers:{'content-type':'application/json'},
-  body:JSON.stringify({type:'client-request',rpcId:'p',method:'pluginManager/listBundles',payload:{args:{}}})})
-  .then(r=>r.json()).then(d=>console.log(d.result.value.find(b=>b.name==='<包名>')))
+await fetch('/api/pluginManager/listBundles', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json' },
+  body: JSON.stringify({
+    type: 'client-request',
+    rpcId: 'p',
+    method: 'pluginManager/listBundles',
+    payload: { args: {} },
+  }),
+})
+  .then((r) => r.json())
+  .then((d) => console.log(d.result.value.find((b) => b.name === '<包名>')));
 ```
 
 console 里已经带新 meta、页面却还是旧的 ⇒ 页面快照陈旧，刷新即可；
@@ -332,4 +354,3 @@ console 里也是旧值 ⇒ 服务端未生效，按上一段查 resolver 缓存
   resolver 规则，无需安装 harness，即可在 CI 抓住门禁回归。
 - **生效路径**：改了 `package.json`（exports / files / description）⇒ **重启 harness** 才生效（resolver 缓存，
   见 §6.5）；只改已导出字典的文本 ⇒ 刷新页面。**headless 自检通过不代表运行中的 harness 已更新**。
-

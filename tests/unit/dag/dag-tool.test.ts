@@ -140,19 +140,25 @@ describe('installDagTool', () => {
 
     // The child's own session is not the owner: the write lands on the root's
     // file, which is the graph the main session's panel draws.
-    const added = (await execute?.({ action: 'init', title: '计划' }, {
-      name: TOOL_NAME,
-      arguments: {},
-      agent: { session: { id: 'child', header: { parentSession: 'root' } } },
-    })) as DagToolOutcome;
+    const added = (await execute?.(
+      { action: 'init', title: '计划' },
+      {
+        name: TOOL_NAME,
+        arguments: {},
+        agent: { session: { id: 'child', header: { parentSession: 'root' } } },
+      }
+    )) as DagToolOutcome;
     expect(added.ok).toBe(true);
     expect(added.summary).toContain('session root');
 
-    const fetched = (await execute?.({ action: 'get' }, {
-      name: TOOL_NAME,
-      arguments: {},
-      agent: { session: { id: 'mid', header: { parentSession: 'root' } } },
-    })) as DagToolOutcome;
+    const fetched = (await execute?.(
+      { action: 'get' },
+      {
+        name: TOOL_NAME,
+        arguments: {},
+        agent: { session: { id: 'mid', header: { parentSession: 'root' } } },
+      }
+    )) as DagToolOutcome;
     expect(fetched.ok).toBe(true);
     expect(fetched.summary).toContain('节点 0');
   });
@@ -160,10 +166,13 @@ describe('installDagTool', () => {
   it('refuses a call it cannot attribute to a session', async () => {
     const { ctx, registered } = toolContext();
     installDagTool(ctx, dir);
-    const outcome = (await registered[0]?.execute({ action: 'get' }, {
-      name: TOOL_NAME,
-      arguments: {},
-    })) as DagToolOutcome;
+    const outcome = (await registered[0]?.execute(
+      { action: 'get' },
+      {
+        name: TOOL_NAME,
+        arguments: {},
+      }
+    )) as DagToolOutcome;
     expect(outcome.ok).toBe(false);
     expect(outcome.summary).toContain('无法确定会话');
   });
@@ -173,17 +182,18 @@ describe('installDagTool', () => {
     // 所以工具必须拒绝并**点名**那个查不到的会话，而不是猜一个归属。
     const agents: AgentsLike = {
       get: (id) =>
-        id === 'child'
-          ? { session: { id: 'child', header: { parentSession: 'mid' } } }
-          : undefined,
+        id === 'child' ? { session: { id: 'child', header: { parentSession: 'mid' } } } : undefined,
     };
     const { ctx, registered } = toolContext({ agents });
     installDagTool(ctx, dir);
-    const outcome = (await registered[0]?.execute({ action: 'init', title: 'x' }, {
-      name: TOOL_NAME,
-      arguments: {},
-      agent: { session: { id: 'child', header: { parentSession: 'mid' } } },
-    })) as DagToolOutcome;
+    const outcome = (await registered[0]?.execute(
+      { action: 'init', title: 'x' },
+      {
+        name: TOOL_NAME,
+        arguments: {},
+        agent: { session: { id: 'child', header: { parentSession: 'mid' } } },
+      }
+    )) as DagToolOutcome;
     expect(outcome.ok).toBe(false);
     expect(outcome.summary).toContain('查不到链上会话 mid');
     // 归属不定的调用不碰文档：链上那个会话的图一张都没建。
@@ -198,9 +208,7 @@ describe('installDagTool 的委派降级提示', () => {
   };
 
   /** 装好工具，返回「以 `s1` 身份调一次」的执行面；`service` 缺省即没有该服务。 */
-  function installer(
-    service?: unknown
-  ): (args: unknown) => Promise<DagToolOutcome> {
+  function installer(service?: unknown): (args: unknown) => Promise<DagToolOutcome> {
     const { ctx, registered } = toolContext({
       agents: ROOT_AGENTS,
       ...(service === undefined ? {} : { subagents: service }),
@@ -291,7 +299,10 @@ describe('rootSession', () => {
   };
 
   it('walks a delegation chain up to its root, and marks it resolved', () => {
-    expect(rootSession({ session: { id: 'child' } }, agents)).toEqual({ id: 'root', resolved: true });
+    expect(rootSession({ session: { id: 'child' } }, agents)).toEqual({
+      id: 'root',
+      resolved: true,
+    });
     // A middle session is not the root: the graph belongs to the top.
     expect(rootSession({ session: { id: 'mid' } }, agents)).toEqual({ id: 'root', resolved: true });
     expect(rootSession({ session: { id: 'root' } }, agents)).toEqual({
@@ -303,7 +314,8 @@ describe('rootSession', () => {
   it('stops at a session the registry no longer knows, and says so', () => {
     // 断在中途**不是**「到根」：调用方必须能分辨「真的是根」与「走不下去停在中间」。
     const missing: AgentsLike = {
-      get: (id) => (id === 'child' ? { session: { id: 'child', header: { parentSession: 'mid' } } } : undefined),
+      get: (id) =>
+        id === 'child' ? { session: { id: 'child', header: { parentSession: 'mid' } } } : undefined,
     };
     expect(rootSession({ session: { id: 'child' } }, missing)).toEqual({
       id: 'mid',
@@ -658,7 +670,10 @@ describe('executeDagTool', () => {
     const refused: Array<[label: string, args: unknown, reason: string]> = [
       [
         'unknown dependency',
-        { action: 'add', nodes: [{ id: 'b', label: '总②', title: 't', phase: 'exec', depends_on: ['ghost'] }] },
+        {
+          action: 'add',
+          nodes: [{ id: 'b', label: '总②', title: 't', phase: 'exec', depends_on: ['ghost'] }],
+        },
         '未知依赖',
       ],
       [
@@ -686,7 +701,11 @@ describe('executeDagTool', () => {
         'label',
       ],
       ['unknown node', { action: 'set', id: 'ghost', status: 'done' }, '节点不存在'],
-      ['verdict on a non-terminal node', { action: 'set', id: 'a', status: 'running', verdict: 'pass' }, 'verdict'],
+      [
+        'verdict on a non-terminal node',
+        { action: 'set', id: 'a', status: 'running', verdict: 'pass' },
+        'verdict',
+      ],
       ['unknown verdict', { action: 'set', id: 'a', status: 'done', verdict: 'maybe' }, 'verdict'],
     ];
     const accepted: string[] = [];
@@ -735,7 +754,10 @@ describe('executeDagTool', () => {
     expect(badShape.ok).toBe(false);
     expect(badShape.summary).toContain('对象');
 
-    const noSession = await executeDagTool({ sessionId: undefined, dagDir: dir }, { action: 'get' });
+    const noSession = await executeDagTool(
+      { sessionId: undefined, dagDir: dir },
+      { action: 'get' }
+    );
     expect(noSession.ok).toBe(false);
     expect(noSession.summary).toContain('无法确定会话');
 
@@ -813,18 +835,22 @@ describe('installDagLifecycle', () => {
     session: string,
     node: Omit<DagNodeView, 'depends_on' | 'updated_at'>
   ): Promise<void> {
-    const update = await updateDag(session, () => ({
-      doc: {
-        version: 1 as const,
-        session,
-        title: 'DAG',
-        revision: 1,
-        created_at: 'T',
-        updated_at: 'T',
-        nodes: [{ depends_on: [], updated_at: 'T', ...node }],
-        edges: [],
-      },
-    }), dir);
+    const update = await updateDag(
+      session,
+      () => ({
+        doc: {
+          version: 1 as const,
+          session,
+          title: 'DAG',
+          revision: 1,
+          created_at: 'T',
+          updated_at: 'T',
+          nodes: [{ depends_on: [], updated_at: 'T', ...node }],
+          edges: [],
+        },
+      }),
+      dir
+    );
     expect(update.ok).toBe(true);
   }
 
@@ -843,7 +869,14 @@ describe('installDagLifecycle', () => {
   });
 
   it('never creates a node, and skips a node that already has an agent', async () => {
-    await seedNode('root', { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running', agent: 'other' });
+    await seedNode('root', {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+      agent: 'other',
+    });
     const lifecycleEvents = lifecycle('root');
     const before = readFileSync(dagFilePath('root', dir), 'utf8');
     lifecycleEvents.start({ runId: 'r1', id: 'child' });
@@ -859,7 +892,14 @@ describe('installDagLifecycle', () => {
   });
 
   it('settles a paired node as failed with the stop reason and last message', async () => {
-    await seedNode('root', { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running', agent: 'child' });
+    await seedNode('root', {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+      agent: 'child',
+    });
     const lifecycleEvents = lifecycle('root');
     lifecycleEvents.start({ runId: 'r1', id: 'child' });
     lifecycleEvents.end({
@@ -885,7 +925,14 @@ describe('installDagLifecycle', () => {
   });
 
   it('names a silent end and leaves an already-settled node alone', async () => {
-    await seedNode('root', { id: 'a', label: '总①', title: 't', phase: 'exec', status: 'running', agent: 'child' });
+    await seedNode('root', {
+      id: 'a',
+      label: '总①',
+      title: 't',
+      phase: 'exec',
+      status: 'running',
+      agent: 'child',
+    });
     const lifecycleEvents = lifecycle('root');
     lifecycleEvents.end({ runId: 'unknown-run', id: 'child' });
     await tick();

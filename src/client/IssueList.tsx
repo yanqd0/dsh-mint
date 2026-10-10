@@ -26,8 +26,18 @@ export interface IssueListProps {
 }
 
 export function IssueList(props: IssueListProps): ReactElement {
-  const { copy, state, meta, search, allStates, onSearch, onAllStates, onRefresh, onPage, onSelect } =
-    props;
+  const {
+    copy,
+    state,
+    meta,
+    search,
+    allStates,
+    onSearch,
+    onAllStates,
+    onRefresh,
+    onPage,
+    onSelect,
+  } = props;
 
   if (state.status !== 'ready') {
     return (
@@ -85,7 +95,13 @@ export function IssueList(props: IssueListProps): ReactElement {
               <IssueRow key={item.id} copy={copy} item={item} meta={meta} onSelect={onSelect} />
             ))}
           </div>
-          <div style={{ ...TOOLBAR, borderTop: '1px solid var(--dsw-alias-border-l1)', borderBottom: 'none' }}>
+          <div
+            style={{
+              ...TOOLBAR,
+              borderTop: '1px solid var(--dsw-alias-border-l1)',
+              borderBottom: 'none',
+            }}
+          >
             <button
               type="button"
               style={BUTTON}

@@ -2,7 +2,11 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 
 import { runMint } from '../../../src/mint/mint.js';
 import { resetProjectCache } from '../../../src/mint/cross-project.js';
-import { noteOwnProject, ownProjectOf, resetOwnProjectCache } from '../../../src/mint/own-project.js';
+import {
+  noteOwnProject,
+  ownProjectOf,
+  resetOwnProjectCache,
+} from '../../../src/mint/own-project.js';
 import {
   ALLOWED_ROOT_FLAGS,
   ALLOWED_SUBCOMMANDS,
@@ -14,7 +18,11 @@ import {
   validateMintArgs,
 } from '../../../src/mint/mint-tool.js';
 import type { MintToolOutcome } from '../../../src/mint/mint-tool.js';
-import type { DshContext, ToolDefinitionLike, ToolExecutionLike } from '../../../src/shared/types.js';
+import type {
+  DshContext,
+  ToolDefinitionLike,
+  ToolExecutionLike,
+} from '../../../src/shared/types.js';
 
 vi.mock('../../../src/mint/mint.js', () => ({ runMint: vi.fn() }));
 const runMintMock = vi.mocked(runMint);

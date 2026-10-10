@@ -6,7 +6,12 @@
  */
 import type { ReactElement } from 'react';
 
-import type { ContainerDetail, IssueItem, MintListPayload, MintMetaPayload } from '../shared/records.js';
+import type {
+  ContainerDetail,
+  IssueItem,
+  MintListPayload,
+  MintMetaPayload,
+} from '../shared/records.js';
 import { BodyView } from './Body.js';
 import { ContainerRowView, IssueRow } from './Rows.js';
 import { StateNotice } from './StateNotice.js';

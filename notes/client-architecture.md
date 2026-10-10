@@ -110,11 +110,11 @@ sequenceDiagram
 
 三条通道，只有一条是「网络」：
 
-| 通道 | 方向 | 载体 | 用途 |
-| --- | --- | --- | --- |
-| slot 注册 | 插件 → 页面 | `ctx.sidebarRightTabs` / `ctx.slots` | 让 tab 类型与 body 出现在右侧边栏（**页面内调用，不过网**） |
-| HTTP 路由 | 页面 → 宿主 | `fetch('/dsh-mint/*')` ↔ `ctx.webServer` | 取数（唯一跨进程通道） |
-| locale / theme | 插件 → 页面 | `ctx.locale.register` / `--dsw-*` token | 文案与配色，宿主提供 |
+| 通道           | 方向        | 载体                                     | 用途                                                        |
+| -------------- | ----------- | ---------------------------------------- | ----------------------------------------------------------- |
+| slot 注册      | 插件 → 页面 | `ctx.sidebarRightTabs` / `ctx.slots`     | 让 tab 类型与 body 出现在右侧边栏（**页面内调用，不过网**） |
+| HTTP 路由      | 页面 → 宿主 | `fetch('/dsh-mint/*')` ↔ `ctx.webServer` | 取数（唯一跨进程通道）                                      |
+| locale / theme | 插件 → 页面 | `ctx.locale.register` / `--dsw-*` token  | 文案与配色，宿主提供                                        |
 
 **为什么不是别的通道**（结论记录，避免重走）：静态插件的 client 半边拿不到 Typert `remote`
 （`dsh-api-remotes` 的能力集在构建期固定，仓外无法 join）；`harness.handle`/`host.call` 只属于
@@ -148,15 +148,15 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 
 ## 5. 状态归属
 
-| 状态 | 归属 | 生命周期 |
-| --- | --- | --- |
-| 打开了哪些 tab、在哪个 pane、是否浮动、呈现模式 | 右侧边栏 layout store | 按 session 持久化到 localStorage（刷新仍在） |
-| tab 记录与 `tab.signal` | 侧边栏 Tab 域 | tab 关闭或插件卸载时 abort |
-| 当前视图（Issue/Plan/Milestone）、筛选、页码、选中的条目 | **MintBody 组件内 `useState`** | 组件卸载即丢；不落盘（0.2.0 刻意如此） |
-| 打开的是哪个容器（`{kind,id}`）与它所在 tab | MintBody 组件内 | kind 随目标存，故切 tab 不会用对方的 id 取表；切回仍保留各自详情 |
-| 字典（plans/milestones/labels/placement） | MintBody 组件内 | 挂载与刷新时各读一次；失败即降级显示 |
-| 一次读取的 loading/failed/ready | MintBody 组件内 | 每次输入变化重新请求（旧请求 abort） |
-| 文案词典 | client locale 注册表 | 插件生命周期 |
+| 状态                                                     | 归属                           | 生命周期                                                         |
+| -------------------------------------------------------- | ------------------------------ | ---------------------------------------------------------------- |
+| 打开了哪些 tab、在哪个 pane、是否浮动、呈现模式          | 右侧边栏 layout store          | 按 session 持久化到 localStorage（刷新仍在）                     |
+| tab 记录与 `tab.signal`                                  | 侧边栏 Tab 域                  | tab 关闭或插件卸载时 abort                                       |
+| 当前视图（Issue/Plan/Milestone）、筛选、页码、选中的条目 | **MintBody 组件内 `useState`** | 组件卸载即丢；不落盘（0.2.0 刻意如此）                           |
+| 打开的是哪个容器（`{kind,id}`）与它所在 tab              | MintBody 组件内                | kind 随目标存，故切 tab 不会用对方的 id 取表；切回仍保留各自详情 |
+| 字典（plans/milestones/labels/placement）                | MintBody 组件内                | 挂载与刷新时各读一次；失败即降级显示                             |
+| 一次读取的 loading/failed/ready                          | MintBody 组件内                | 每次输入变化重新请求（旧请求 abort）                             |
+| 文案词典                                                 | client locale 注册表           | 插件生命周期                                                     |
 
 推论：**刷新页面会回到 Issue 视图第一页**——列表筛选不做持久化；只有「打开了哪些 tab」是持久的。
 `tab.signal` 从 `useTabInfo()` 一路传到 `fetch`，因此关闭 tab 会取消在途请求。
@@ -173,13 +173,13 @@ mint CLI --json  →  宿主守卫（isIssueItem / isContainerDetail …）  →
 
 ## 7. 验证阶梯（按成本从低到高）
 
-| 层 | 手段 | 能证明什么 |
-| --- | --- | --- |
-| 纯逻辑 | `pnpm test`（model / routes / api / copy） | 参数映射、守卫、状态映射、URL 拼接 |
-| 产物契约 | `tests/guard/client-bundle.test.ts` | bundle 是合法 loader 工厂、只 require 基线模块 |
-| 注册面 | `cordis_inspect_query` client `Slots.listSubTree` | tab 类型与 body 是否真的注册进了座位 |
-| 端到端（宿主） | `curl http://127.0.0.1:<port>/dsh-mint/...` | 路由匹配、session→cwd、CLI、守卫、错误分支（**实测可用**） |
-| 端到端（界面） | 人眼看 GUI | 渲染、主题、交互 —— **agent 侧没有浏览器控制，只能由人确认** |
+| 层             | 手段                                              | 能证明什么                                                   |
+| -------------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| 纯逻辑         | `pnpm test`（model / routes / api / copy）        | 参数映射、守卫、状态映射、URL 拼接                           |
+| 产物契约       | `tests/guard/client-bundle.test.ts`               | bundle 是合法 loader 工厂、只 require 基线模块               |
+| 注册面         | `cordis_inspect_query` client `Slots.listSubTree` | tab 类型与 body 是否真的注册进了座位                         |
+| 端到端（宿主） | `curl http://127.0.0.1:<port>/dsh-mint/...`       | 路由匹配、session→cwd、CLI、守卫、错误分支（**实测可用**）   |
+| 端到端（界面） | 人眼看 GUI                                        | 渲染、主题、交互 —— **agent 侧没有浏览器控制，只能由人确认** |
 
 ## 8. 0.2.0 的已知边界（有意留白）
 

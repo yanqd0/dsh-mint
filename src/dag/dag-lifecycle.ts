@@ -182,7 +182,12 @@ function settleNode(doc: DagDoc, agentId: string, note: string, now: string): Da
  * 仍是**认领过的**那个节点——所以它能自证「发生过兜底」，但**不修错位**；③ 调用方
  * 必须给带 {@link FALLBACK_MARK} 前缀的 note，这是兜底唯一的可见面。
  */
-function settleNodeById(doc: DagDoc, nodeId: string, note: string, now: string): DagDoc | undefined {
+function settleNodeById(
+  doc: DagDoc,
+  nodeId: string,
+  note: string,
+  now: string
+): DagDoc | undefined {
   const index = doc.nodes.findIndex((node) => node.id === nodeId && node.status === 'running');
   if (index < 0) return undefined;
   const node = doc.nodes[index] as DagNode;

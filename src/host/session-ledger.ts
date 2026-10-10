@@ -103,7 +103,9 @@ export function notePlanModeExit(sessionId: string | undefined): void {
  */
 export function notePlanModeState(sessionId: string | undefined, active: boolean): void {
   if (sessionId === undefined) return;
-  const [add, drop] = active ? [planModeActive, planModeInactive] : [planModeInactive, planModeActive];
+  const [add, drop] = active
+    ? [planModeActive, planModeInactive]
+    : [planModeInactive, planModeActive];
   remember(add, sessionId);
   drop.delete(sessionId);
 }

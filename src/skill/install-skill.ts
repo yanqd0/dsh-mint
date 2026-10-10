@@ -201,7 +201,7 @@ export function installSkill(opts: InstallOptions = {}): InstallResult {
             return { ok: true, reason: 'symlink' };
           }
           log(
-            `[dsh-mint] skill target is a dangling symlink (${target}) — repoint or remove it, then reload`,
+            `[dsh-mint] skill target is a dangling symlink (${target}) — repoint or remove it, then reload`
           );
           return { ok: false, reason: 'dangling symlink' };
         }
@@ -211,7 +211,7 @@ export function installSkill(opts: InstallOptions = {}): InstallResult {
         if (!force) {
           if (!looksLikeOurSkill(target)) {
             log(
-              `[dsh-mint] skill target is not this plugin's copy, left alone (${target}) — use --force to replace it`,
+              `[dsh-mint] skill target is not this plugin's copy, left alone (${target}) — use --force to replace it`
             );
             return { ok: false, reason: 'foreign skill' };
           }

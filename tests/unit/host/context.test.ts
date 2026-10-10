@@ -12,7 +12,11 @@ import {
 } from '../../../src/host/context.js';
 import { MINT_ENTRY_WARNING, resolveMintEntry, runMint } from '../../../src/mint/mint.js';
 import { ownProjectOf, resetOwnProjectCache } from '../../../src/mint/own-project.js';
-import { notePlanModeExit, recordMintWrite, resetSessionLedger } from '../../../src/host/session-ledger.js';
+import {
+  notePlanModeExit,
+  recordMintWrite,
+  resetSessionLedger,
+} from '../../../src/host/session-ledger.js';
 import type { DshContext } from '../../../src/shared/types.js';
 
 vi.mock('../../../src/mint/mint.js', () => ({

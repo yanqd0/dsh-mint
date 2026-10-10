@@ -111,10 +111,10 @@ dsh --profile web --dump-config | grep -c "id: mint"   # 必须是 1
 > `dist/skill`，再由落盘同步写到 `~/.dsh/skills/mint`（rank 400，遮蔽 rank 500 的
 > `~/.agents/skills`）。**机制只有一种，形态按场景分两种**：
 
-| 形态 | 谁创建 | 目标 | 生效方式 | 场景 |
-| --- | --- | --- | --- | --- |
-| **symlink** | 显式命令（`scripts/install-dsh.sh` / `pnpm skill --link`） | `~/.dsh/skills/mint -> <repo>/dist/skill` | 改仓库 + `pnpm build` 即被读到，**无需重启**（provider 每次 `get()` 重读；watcher 默认 `followSymlinks`） | 本机 dev / dogfood |
-| **复制** | 插件加载时的 content-sync（默认）与 `postinstall` | `~/.dsh/skills/mint`（真实目录） | 插件**下次加载**时整树比对重同步 → 要重启 harness | 打包安装（离线、自包含、与 profile 无关） |
+| 形态        | 谁创建                                                     | 目标                                      | 生效方式                                                                                                  | 场景                                      |
+| ----------- | ---------------------------------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------- |
+| **symlink** | 显式命令（`scripts/install-dsh.sh` / `pnpm skill --link`） | `~/.dsh/skills/mint -> <repo>/dist/skill` | 改仓库 + `pnpm build` 即被读到，**无需重启**（provider 每次 `get()` 重读；watcher 默认 `followSymlinks`） | 本机 dev / dogfood                        |
+| **复制**    | 插件加载时的 content-sync（默认）与 `postinstall`          | `~/.dsh/skills/mint`（真实目录）          | 插件**下次加载**时整树比对重同步 → 要重启 harness                                                         | 打包安装（离线、自包含、与 profile 无关） |
 
 - **symlink 只由显式命令创建**：运行时**永不覆盖 symlink**（dev 所有权）；悬挂或异主的只告警一行。
 - **复制的所有权**：写入前先落标记 `.dsh-mint-skill`；「是不是本插件那份」= 有标记，或
@@ -203,10 +203,10 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 插件有两种入口，用一个旋钮二选一：挂载行 `config: { mintEntry: <值> }`（优先）或环境变量
 `MINT_ENTRY`；两者都在启动时读取。
 
-| 模式 | 写法 | 实际跑什么 |
-| --- | --- | --- |
-| 依赖链（默认） | 不写，或 `mintEntry: dependency` | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 按需下载——见下方冷启动口径） |
-| 本地构建 | `mintEntry: ~/bin/mint`、绝对路径、或裸名 `mint`（走 `PATH`） | 直接 spawn 该可执行程序 |
+| 模式           | 写法                                                          | 实际跑什么                                                                                                                    |
+| -------------- | ------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| 依赖链（默认） | 不写，或 `mintEntry: dependency`                              | 插件包内 `node_modules/mint-faa/run-mint.js`（postinstall 下载的**已发布**二进制；缺失时 `run()` 按需下载——见下方冷启动口径） |
+| 本地构建       | `mintEntry: ~/bin/mint`、绝对路径、或裸名 `mint`（走 `PATH`） | 直接 spawn 该可执行程序                                                                                                       |
 
 - `dependency` 是哨兵：任一旋钮写了它都强制走依赖链，即使另一个旋钮有路径（开发 profile 钉在本地构建、
   仍要验证用户链时用）。
@@ -224,7 +224,7 @@ justification `mint`），用户批准后，同会话后续 mint bash 命令预�
 ```yaml
 - id: mint
   config:
-    mintEntry: ~/bin/mint      # 本地构建 dogfood
+    mintEntry: ~/bin/mint # 本地构建 dogfood
     # mintEntry: dependency    # 反例：强制已发布的 mint-faa 链路
 ```
 

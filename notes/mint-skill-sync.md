@@ -27,16 +27,16 @@
 
 ## 本轮（0.8/0.9.0-alpha.1）核实到的坑
 
-| 事实 | 证据 |
-|---|---|
-| `issue link` 取值是 kebab `blocked-by`；`blocked_by` 只在 JSON `rel` 输出出现 | 实测 exit 2 `invalid value`；`ValueEnum` 派生 |
-| 分页页脚 `# Page x/y (N per page, M total)` 在 **stdout**（0.8 起；旧说法 stderr + `--- Page … ---` 作废） | `src/cli/list_common.rs` `print_page_footer`；`help_llm/notes.rs` |
-| `issue state commit --sha` 可省（默认 HEAD，非 git 目录必填），`--test-cmd` 仅记录 | `issue state commit --help` |
-| 去重只合并 `plan_id=null` 的活跃候选，合并不可逆，`--force-new` 逃生 | `src/cli/issue/add.rs` |
-| `issue set`/`plan set` 支持 `--body-append`/`--body-file`/`--body-section`（三选一；section 需配 body/file；标题不存在报 `section not found`） | `src/cli/body_edit.rs` |
-| `milestone set --status` 只有 done/dropped 是手动终态（派生短路），open/running 会被重算 | `src/container/sync.rs` |
-| 读命令可见 `mint: hint: found unmerged data from machine(s)` → 本地视图不完整，先 `sync pull` | `src/cli/run.rs` |
-| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效） | `src/skill/install-skill.ts`（已修复） |
+| 事实                                                                                                                                           | 证据                                                              |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
+| `issue link` 取值是 kebab `blocked-by`；`blocked_by` 只在 JSON `rel` 输出出现                                                                  | 实测 exit 2 `invalid value`；`ValueEnum` 派生                     |
+| 分页页脚 `# Page x/y (N per page, M total)` 在 **stdout**（0.8 起；旧说法 stderr + `--- Page … ---` 作废）                                     | `src/cli/list_common.rs` `print_page_footer`；`help_llm/notes.rs` |
+| `issue state commit --sha` 可省（默认 HEAD，非 git 目录必填），`--test-cmd` 仅记录                                                             | `issue state commit --help`                                       |
+| 去重只合并 `plan_id=null` 的活跃候选，合并不可逆，`--force-new` 逃生                                                                           | `src/cli/issue/add.rs`                                            |
+| `issue set`/`plan set` 支持 `--body-append`/`--body-file`/`--body-section`（三选一；section 需配 body/file；标题不存在报 `section not found`） | `src/cli/body_edit.rs`                                            |
+| `milestone set --status` 只有 done/dropped 是手动终态（派生短路），open/running 会被重算                                                       | `src/container/sync.rs`                                           |
+| 读命令可见 `mint: hint: found unmerged data from machine(s)` → 本地视图不完整，先 `sync pull`                                                  | `src/cli/run.rs`                                                  |
+| 安装同步必须按**整树**比对（曾只比 SKILL.md，references-only 变更静默失效）                                                                    | `src/skill/install-skill.ts`（已修复）                            |
 
 ## 本轮覆盖
 
