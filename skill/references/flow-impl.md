@@ -46,7 +46,7 @@
 
 ## 2.5 并行批次执行
 
-批次判据与派发协议见 `references/parallel-exec.md`（含 §1.1 重划与 §3.1 dev/test 节点对）；plan 阶段在这里已经产出 `## 并行批次`。
+批次判据与派发协议见 `references/parallel-exec.md`（含 §3.1 dev/test 节点对；触红/降级见 `references/exec-fallback.md`）；plan 阶段在这里已经产出 `## 并行批次`。
 **分派边界**（哪些给子代理、哪些留主 agent）与全景 DAG 的分层见 `references/dag-exec.md`：
 测试/验证/远程与命令调用类低 context 任务派子代理（更省 token、判定更客观），
 总体评估、决策、流程控制与高 context 复杂任务留主 agent。
