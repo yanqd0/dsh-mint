@@ -19,6 +19,7 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 │   ├── reminders.ts                       # 工具调用后的事件提醒
 │   ├── planbind.ts / plan-mode.ts         # 计划模式退出/开工门禁 + 会话计划状态
 │   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀）
+│   ├── routes/internal/                   # 按职责拆分：只读 CLI 面常量（cli-surface）
 │   └── ...                                # session-ledger.ts：会话内 mint 写台账
 ├── dag/                                   # 依赖 shared + mint，并反向接 host
 │   ├── dag.ts                             # DAG 数据层公开面（只再导出 dag/ 的实现）
