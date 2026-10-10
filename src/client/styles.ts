@@ -76,6 +76,15 @@ export const BODY: CSSProperties = {
   padding: 10,
 };
 
+/** 正文区的首行：左侧「正文」标签，右侧预览 / 代码模式切换控件。 */
+export const BODY_HEADER: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 8,
+  marginTop: 12,
+};
+
 export const NOTE: CSSProperties = {
   margin: 0,
   color: 'var(--dsw-alias-label-secondary)',

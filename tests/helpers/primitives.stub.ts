@@ -31,3 +31,43 @@ export interface CodeBlockProps {
 
 /** Highlighted source block; the stub only has to be importable in Node. */
 export const CodeBlock: ComponentType<CodeBlockProps> = () => null;
+
+/** One segment of a {@link SegmentedControl}, mirroring the declaration file. */
+export interface SegmentedControlOption<Value extends string> {
+  value: Value;
+  label: string;
+  disabled?: boolean;
+  title?: string;
+}
+
+/** What the panel passes to the mode switch it renders. */
+export interface SegmentedControlProps<Value extends string> {
+  id: string;
+  value: Value;
+  options: readonly SegmentedControlOption<Value>[];
+  onChange: (next: Value) => void;
+  label: string;
+  disabled?: boolean;
+  className?: string | undefined;
+}
+
+/** Mode switch; the stub only has to be importable in Node. */
+export function SegmentedControl<Value extends string>(_props: SegmentedControlProps<Value>): null {
+  return null;
+}
+
+/** Localized chrome a rendered Markdown document carries. */
+export interface MarkdownLabels {
+  code: { copyLabel: string; copiedLabel: string };
+  footnotes: string;
+}
+
+/** What the panel passes to the document renderer it renders. */
+export interface MarkdownTextProps {
+  text: string;
+  labels: MarkdownLabels;
+  variant?: 'body' | 'compact' | undefined;
+}
+
+/** Markdown document renderer; the stub only has to be importable in Node. */
+export const MarkdownText: ComponentType<MarkdownTextProps> = () => null;

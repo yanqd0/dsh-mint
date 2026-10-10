@@ -36,6 +36,7 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 ├── client/                                # 浏览器半边：只 import shared 与现成纯模块
 │   ├── index.tsx                          # esbuild 预构建入口（dsh.client 产物）
 │   ├── api.ts / model.ts / dag-model.ts   # fetch 通道 / 视图纯逻辑 / DAG 分层
+│   ├── body-view.ts                       # 正文模式（预览 / 原文代码块）与两模式的词条
 │   ├── dag-open.ts                        # DAG tab 自动打开探测
 │   └── ...                                # 面板组件：MintBody / Issue* / Container* / DagBody / Rows / styles / types
 └── index.ts                               # 宿主入口（tsup key index），装配全部 install*

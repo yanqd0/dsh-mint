@@ -69,7 +69,6 @@ export function IssueDetail({
           <span>{copy('detail.updated', { at: item.updated_at })}</span>
         </div>
 
-        <div style={{ ...NOTE, marginTop: 12 }}>{copy('detail.body')}</div>
         <BodyView copy={copy} body={item.body} />
         {truncated && <p style={NOTE}>{copy('panel.truncated')}</p>}
       </div>

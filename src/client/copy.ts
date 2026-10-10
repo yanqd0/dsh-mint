@@ -62,6 +62,11 @@ export const ZH = {
 
   'body.copy': '复制',
   'body.copied': '已复制',
+  // 正文区两个模式的名称与切换控件的无障碍名；`footnotes` 是渲染出的脚注小节标题。
+  'body.mode.preview': '预览',
+  'body.mode.code': '代码',
+  'body.mode.label': '正文显示方式',
+  'body.footnotes': '脚注',
 
   'link.related': '相关',
   'link.solves': '解决',
@@ -160,6 +165,10 @@ export const EN = {
 
   'body.copy': 'Copy',
   'body.copied': 'Copied',
+  'body.mode.preview': 'Preview',
+  'body.mode.code': 'Code',
+  'body.mode.label': 'Body display',
+  'body.footnotes': 'Footnotes',
 
   'link.related': 'Related',
   'link.solves': 'Solves',

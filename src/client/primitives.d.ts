@@ -10,7 +10,7 @@
  * platform table would need a `dsh.client.external` declaration instead.
  */
 declare module '@deepseek-ai/dsh-client-ui-primitives' {
-  import type { ComponentType } from 'react';
+  import type { ComponentType, ReactElement } from 'react';
 
   /** Props every icon component accepts. */
   export interface IconProps {
@@ -39,4 +39,63 @@ declare module '@deepseek-ai/dsh-client-ui-primitives' {
 
   /** One fenced block of source, syntax-highlighted and copyable. */
   export const CodeBlock: ComponentType<CodeBlockProps>;
+
+  /** One segment of a {@link SegmentedControl}. */
+  export interface SegmentedControlOption<Value extends string> {
+    /** The value the owner receives when this segment is chosen. */
+    value: Value;
+    /** Localized segment text. */
+    label: string;
+    /** Whether the segment refuses selection. */
+    disabled?: boolean;
+    /** Localized hover text, typically why the segment is locked. */
+    title?: string;
+  }
+
+  /** What the panel passes to the mode switch it renders. */
+  export interface SegmentedControlProps<Value extends string> {
+    /**
+     * The owner's base DOM id: each tab is `<id>-<value>` and names
+     * `<id>-<value>-panel` as the panel it controls, so one page may not reuse it.
+     */
+    id: string;
+    /** The selected option's value; the control is fully controlled. */
+    value: Value;
+    /** The segments in display order; at least two. */
+    options: readonly SegmentedControlOption<Value>[];
+    /** Called with the value a click or a walk key asks for. */
+    onChange: (next: Value) => void;
+    /** Localized accessible name of the tablist. */
+    label: string;
+    /** Lock every segment. */
+    disabled?: boolean;
+    /** Extra class for layout placement. */
+    className?: string | undefined;
+  }
+
+  /** Two-way mode switch over a base id the caller owns. */
+  export function SegmentedControl<Value extends string>(
+    props: SegmentedControlProps<Value>
+  ): ReactElement;
+
+  /** Localized chrome a rendered Markdown document carries. */
+  export interface MarkdownLabels {
+    /** Copy-button labels forwarded to every fence's code block. */
+    code: { copyLabel: string; copiedLabel: string };
+    /** The footnote section's heading. */
+    footnotes: string;
+  }
+
+  /** What the panel passes to the document renderer it renders. */
+  export interface MarkdownTextProps {
+    /** The markdown source, rendered as a GFM document. */
+    text: string;
+    /** Localized fence and footnote chrome. */
+    labels: MarkdownLabels;
+    /** `compact` uses secondary sizing; the default `body` is document typography. */
+    variant?: 'body' | 'compact' | undefined;
+  }
+
+  /** Untrusted-markdown document renderer (GFM and KaTeX; raw HTML off). */
+  export const MarkdownText: ComponentType<MarkdownTextProps>;
 }
