@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { dagFilePath, readDag, updateDag } from '../../../src/dag/dag-store.js';
 import { clearMeasurements, lastMeasurement } from '../../../src/dag/dag-metrics.js';
-import type { DagNodeView } from '../../../src/shared/records.js';
+import type { DagNodeView, DagStatus } from '../../../src/shared/records.js';
 import { installDagLifecycle } from '../../../src/dag/dag-lifecycle.js';
 import {
   DAG_TOOL_DESCRIPTION,
@@ -229,16 +229,31 @@ describe('installDagTool 的委派降级提示', () => {
     expect(get.summary).toContain('委派降级：宿主 subagent.maxDepth=1');
   });
 
-  it('leaves set without the downgrade line, since it cannot change the dispatch shape', async () => {
+  /** 降级宿主（maxDepth=1）上建一个节点，再把它 `set` 成 `status`，回这次回答的摘要。 */
+  async function setStatusOnDowngradedHost(status: DagStatus): Promise<string> {
     const run = installer(subagents(1));
     await run({ action: 'init', title: 'x' });
     await run({
       action: 'add',
       nodes: [{ id: 'a', label: '总①', title: 't', phase: 'exec' }],
     });
-    const set = await run({ action: 'set', id: 'a', status: 'running' });
-    expect(set.ok).toBe(true);
-    expect(set.summary).not.toContain('委派降级');
+    const outcome = await run({ action: 'set', id: 'a', status });
+    expect(outcome.ok).toBe(true);
+    return outcome.summary;
+  }
+
+  // 目的：`set running` 是「即将派发」那一刻，降级行必须带上两个可行动信息（怎么开 + 何时生效）。
+  // 手法：maxDepth=1 的宿主上 init+add 后 `set running`，断言摘要含 GUI 路径与「下一次委派」。
+  it('set running 时带降级行', async () => {
+    const summary = await setStatusOnDowngradedHost('running');
+    expect(summary).toContain('设置 → 插件 → 子智能体 → 最大递归深度');
+    expect(summary).toContain('下一次委派');
+  });
+
+  // 目的：`pending`/`done` 改的是记录（排队、收尾）而不是派发形态，不得带降级行。
+  // 手法：同一台降级宿主上把节点分别 `set` 成 pending 与 done，断言两份摘要都不含「委派降级」。
+  it.each(['pending', 'done'] as const)('set %s 不带降级行', async (status) => {
+    expect(await setStatusOnDowngradedHost(status)).not.toContain('委派降级');
   });
 
   // 误报门禁：两级深度、方法缺失/抛错、根本没有服务，五种形状都不许出现降级提示。
