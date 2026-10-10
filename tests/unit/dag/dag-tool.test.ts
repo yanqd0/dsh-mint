@@ -124,10 +124,9 @@ describe('installDagTool', () => {
   });
 
   it('writes the DAG of the root session a subagent was delegated from', async () => {
-    // 真实宿主 entry 也带 `session.id`（`AgentsLike` 只声明本仓消费的那部分，故这里补上
-    // 交叉类型而不是手改结构面类型）。
-    type RegistryEntry = AgentCwdLike & { session: { id: string } };
-    const agents = new Map<string, RegistryEntry>([
+    // 夹具按真实宿主 entry 的形状写（`id` + `session.id`），结构面类型已声明这两处，
+    // 无需交叉类型补洞。
+    const agents = new Map<string, AgentCwdLike>([
       ['child', { id: 'child', session: { id: 'child', header: { parentSession: 'root' } } }],
       ['mid', { id: 'mid', session: { id: 'mid', header: { parentSession: 'root' } } }],
       ['root', { id: 'root', session: { id: 'root', header: {} } }],

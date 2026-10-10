@@ -240,6 +240,11 @@ export interface DshContext {
 export interface AgentCwdLike {
   id?: string;
   session: {
+    /**
+     * 会话身份稳定键（`sessionIdOf` 读的就是它）：宿主每次派发都可能换一个 Agent
+     * 对象，只有 session id 稳定，故一切会话级决策都以它为键。
+     */
+    id?: string;
     header: {
       cwd?: string;
       parentSession?: string;
