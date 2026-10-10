@@ -30,15 +30,16 @@
    批量锁定（open → planned）——开工点 = 计划模式退出口（且本次确实要开工），或非计划模式开始改码前；
    只登记/待用户拍板时 plan 与 issue **都保持 `open`**。
    注意 `plan plan` 批量锁本 plan 名下**全部** open 子项，所以 plan 里不要混别处的建议 issue。
-4. **判并行批次**：按 `references/parallel-exec.md` §1 的判据（文件集两两不相交等五轴）给 issue 分批，
-   **触红先按文件归属试重划节点**（相交的 issue 先合并成一个节点再看能否并行，§1.1），批次表要能说明
-   「为什么无法重划」，或写明「被改特性本身就是隔离机制」的例外；
-   **≥3 条文件不相交 issue 时 worktree 模式是默认**（不是例外）。
+4. **写并行批次**：默认形态 = **节点级 worktree 并行**（`references/parallel-exec.md` §1、
+   `worktree-exec.md` §3），批次表默认只写 `并行批次` / `依赖批次` / `串行独占` 三行。
+   **偏离默认时才补三列**——`相交文件` → `合成哪个节点` → `为什么合并不了`
+   （`references/exec-fallback.md` §2；缺任一列即视为**没做**这一步）；判据是**事后定位**，
+   不做事前预检分流。无并行机会也写「单批串行」+ 一句理由。
    把批次表写进 plan body 的 `## 并行批次` 段 —— `plan create --body` 时**就带该段**；
    细化用 `mint({ args: ["plan","set","<PLAN>","--body-section","并行批次","--body-file","<文件>"] })`
    （标题不存在报 `section not found`；以 `- ` 开头的值**必须经 `--body-file`**，
    直接 `--body "- …"` 会被 CLI 当成参数）；宿主 plan 正文同步该表。
-   无并行机会写「单批串行」+ 一句理由；执行侧见 `flow-impl.md` 并行批次小节。
+   执行侧见 `flow-impl.md` 并行批次小节。
 5. **方案定稿后出 DAG 全景**：正文定稿即**分界节点** —— 定稿**前**的调研 DAG 已按 `references/plan-dag.md` 动态生长
    （进计划模式即启动、每轮 `add` 节点），本步骤只是把那张动态图转成**静态全景**：节点=本 plan 的 issue、
    边=依赖，分层后写进同一 `## 并行批次` 段（不另立格式），低 context 任务派子代理、高 context/决策留 main
