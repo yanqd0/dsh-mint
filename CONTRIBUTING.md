@@ -46,12 +46,14 @@ pnpm build         # tsup + client bundle + skill copy → dist/
 pnpm test          # vitest
 pnpm test:coverage # vitest + v8 thresholds (80/80/70/80)
 pnpm lint          # ESLint
+pnpm format:check  # prettier --check . (skill/ excluded via .prettierignore)
 pnpm check-types   # tsc --noEmit
 pnpm pack:check    # pnpm pack --dry-run
 ```
 
-CI (Node 22, pnpm 11) runs `lint`, `check-types`, `test:coverage`, `build` and
-`pack:check`. Keep one logical change per commit, with an Angular-style prefix.
+CI (Node 22, pnpm 11) runs `format:check`, `lint`, `check-types`, `test:coverage`,
+`build` and `pack:check`. Keep one logical change per commit, with an
+Angular-style prefix.
 **Do not run prettier over `skill/**/*.md`**: table padding blows the SKILL.md
 byte budget that `tests/guard/skill-doc.test.ts` guards.
 
@@ -73,10 +75,10 @@ The single source of the skill is [`skill/`](skill/) in this repository;
 `pnpm build` copies it to `dist/skill`. The **installed form depends on the
 install**:
 
-| Form | Created by | Effect |
-| --- | --- | --- |
+| Form                  | Created by                                     | Effect                                                                        |
+| --------------------- | ---------------------------------------------- | ----------------------------------------------------------------------------- |
 | symlink (dev/dogfood) | `scripts/install-dsh.sh` / `pnpm skill --link` | `~/.dsh/skills/mint -> <repo>/dist/skill`; `pnpm build` is enough, no restart |
-| copy (packaged) | the plugin's load-time sync and postinstall | a real directory; re-synced on the next plugin load, so a restart is needed |
+| copy (packaged)       | the plugin's load-time sync and postinstall    | a real directory; re-synced on the next plugin load, so a restart is needed   |
 
 Both land on `$DSH_HOME/skills/mint` (rank 400 `user-dsh`), which is what
 shadows the same-named `~/.agents/skills/mint` (rank 500) — an in-plugin skill
@@ -115,13 +117,13 @@ keep their defaults:
     mintEntry: ~/bin/mint
 ```
 
-| Option | Default | Effect |
-| --- | --- | --- |
-| `autoApprove` | `false` | Auto-allow mint sandbox escalations on the bash fallback path without any prompt — an explicit trust of the mint CLI. |
-| `autoInstallSkill` | `true` | Install the bundled skill into `$DSH_HOME/skills/mint` on plugin load. A symlink target is left alone (the dev form owns it). |
-| `debug` | `false` | Reserved for verbose plugin diagnostics. |
-| `mintEntry` | mint-faa's `run-mint.js` | Mint CLI to run: a `run-mint.js` path, a native mint binary, a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel. |
-| `openDagTab` | `true` | Auto-open the plan DAG sidebar tab once the session has a DAG. The browser half probes `GET /dsh-mint/dag` every 5s and stops after the host answers `autoOpen: false`; set it to `false` to leave the tab manual (the tab strip's add control still opens it). |
+| Option             | Default                  | Effect                                                                                                                                                                                                                                                          |
+| ------------------ | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `autoApprove`      | `false`                  | Auto-allow mint sandbox escalations on the bash fallback path without any prompt — an explicit trust of the mint CLI.                                                                                                                                           |
+| `autoInstallSkill` | `true`                   | Install the bundled skill into `$DSH_HOME/skills/mint` on plugin load. A symlink target is left alone (the dev form owns it).                                                                                                                                   |
+| `debug`            | `false`                  | Reserved for verbose plugin diagnostics.                                                                                                                                                                                                                        |
+| `mintEntry`        | mint-faa's `run-mint.js` | Mint CLI to run: a `run-mint.js` path, a native mint binary, a `~`-prefixed path, a bare `PATH` command, or the `dependency` sentinel.                                                                                                                          |
+| `openDagTab`       | `true`                   | Auto-open the plan DAG sidebar tab once the session has a DAG. The browser half probes `GET /dsh-mint/dag` every 5s and stops after the host answers `autoOpen: false`; set it to `false` to leave the tab manual (the tab strip's add control still opens it). |
 
 ## Plan DAG (`mint_plan_dag`)
 
@@ -150,10 +152,10 @@ default) or a locally built mint. One knob selects either one — the mount-line
 `mintEntry` option, or the `MINT_ENTRY` environment variable; the mount line
 wins when both are set, and both are read at boot (restart after changing one).
 
-| Mode | How to select | What runs |
-| --- | --- | --- |
-| Dependency (default) | nothing, or `mintEntry: dependency` | `mint-faa`'s `run-mint.js` inside the installed plugin package, which executes the binary downloaded from the mint release that the installed `mint-faa` pins |
-| Local build | `mintEntry: ~/bin/mint`, an absolute path such as `/path/to/mint/target/release/mint`, or a bare `mint` looked up through `PATH` | that executable directly |
+| Mode                 | How to select                                                                                                                    | What runs                                                                                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dependency (default) | nothing, or `mintEntry: dependency`                                                                                              | `mint-faa`'s `run-mint.js` inside the installed plugin package, which executes the binary downloaded from the mint release that the installed `mint-faa` pins |
+| Local build          | `mintEntry: ~/bin/mint`, an absolute path such as `/path/to/mint/target/release/mint`, or a bare `mint` looked up through `PATH` | that executable directly                                                                                                                                      |
 
 `dependency` at either knob is a sentinel: it forces the dependency chain even
 when the other knob carries a path — useful while a development profile is

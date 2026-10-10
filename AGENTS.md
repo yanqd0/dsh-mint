@@ -10,7 +10,7 @@ DSH 插件：把 mint 接入 DSH 会话。宿主面 0.1.0：上下文注入、�
 - **skill 单一真源 = 本仓 `skill/`**：构建时拷入 `dist/skill`，再由**落盘同步**写到 `~/.dsh/skills/mint`（按**整树**比对，改任一 reference 都会重同步）。**本仓与 mint 上游仓已 git 层解耦**（无子模块），skill 在本仓独立演进。
 - **skill 两形态**：**dev/dogfood = 符号链接**（`scripts/install-dsh.sh` / `pnpm skill --link` 建 `~/.dsh/skills/mint -> <repo>/dist/skill`，改完 `pnpm build` 即生效、无需重启）；**打包安装 = 整树复制**（默认；加载时同步，故要重启）。运行时**永不覆盖 symlink**；复制写入前落所有权标记 `.dsh-mint-skill`，异主目录/普通文件保留 + 告警（`--force` 才接管）。**不迁随包 provider**：它落 global 层，赢不了 preset 层同层的 `~/.agents/skills`（400/500 的 rank 只在同层裁决）。
 - **卸载必须显式收尾**：dsh 没有插件卸载钩子、pnpm 不跑 `preuninstall`（该宿主缺口已跨项目登记在 dsh-dev-dsh），`dsh plugin remove` 之后 skill 会残留。先 `scripts/install-dsh.sh --uninstall`（守卫式：自家副本删目录、自家 symlink 只摘链、异主保留 + `--force`）再 remove；包已删则确认 `head -2 …/SKILL.md` 后手动 `rm -rf`。形态与一致性用 `--status` 判定（勿用 `diff -rq`：标记文件是正常差异）。
-- **skill 拆分原则**：`skill/SKILL.md` 只保留「常驻机制 + 意图路由 + 不可延迟的硬门禁」。按触发条件才生效的**分支内容**（接管模式、实现流程详解、宿主专属、同步、收口、模板/body 纪律等）一律拆到 `skill/references/`，SKILL.md 只留一行指针；**较大的独立主题同样拆出**。新增内容默认先落 reference，只有确需每轮都生效的才进 SKILL.md。SKILL.md 字节上限与 reference 孤儿检查由 `tests/guard/skill-doc.test.ts` 守（当前 ≤3200 B）。**勿对 `skill/**/*.md` 跑 prettier**：表格填充（对齐空格/长破折号）会撑破 3200 B 预算。
+- **skill 拆分原则**：`skill/SKILL.md` 只保留「常驻机制 + 意图路由 + 不可延迟的硬门禁」。按触发条件才生效的**分支内容**（接管模式、实现流程详解、宿主专属、同步、收口、模板/body 纪律等）一律拆到 `skill/references/`，SKILL.md 只留一行指针；**较大的独立主题同样拆出**。新增内容默认先落 reference，只有确需每轮都生效的才进 SKILL.md。SKILL.md 字节上限与 reference 孤儿检查由 `tests/guard/skill-doc.test.ts` 守（当前 ≤3200 B）。**勿对 `skill/**/*.md` 跑 prettier**：表格填充（对齐空格/长破折号）会撑破 3200 B 预算，已由 `.prettierignore` 强制。
 - **npm 同名双注册表发布**：`@yanqd0/dsh-mint` 同发 npmjs 与 GitHub Packages（scoped 名，GH Packages 天然要求 scope，无需发布时改名；见 docs/RELEASING.md）。
 - **本仓本地安装进 DSH profile 用 dsh/pnpm 命令放行构建脚本**：`dsh plugin --profile web add ./` 会在 `~/.dsh/profiles/web` 下跑 pnpm，pnpm 11 默认报 `ERR_PNPM_IGNORED_BUILDS`。不要要求用户手工改 `pnpm-workspace.yaml`；应先用 `dsh plugin --profile web approve-builds --all`，再重跑 add；或直接 `dsh plugin --profile web add ./ --config.dangerouslyAllowAllBuilds=true`。
 - **自带 `dsh.bundle` 挂载声明**：包根 `cordis.patch.yml`（`insert` 语义）+ `package.json` 的 `dsh.bundle.patch`，且该文件须列入 `files` 随包发布——`dsh plugin --profile <p> add` 装完即按已装状态把本包写进 `dsh.profile.bundles`，**无需手改 profile 的 `cordis.patch.yml`**；手写 `insert:` 是遗留做法，与 bundle 并存会重复挂载。契约由 `tests/guard/package-manifest.test.ts` 守住。
@@ -71,5 +71,6 @@ pnpm dev           # 开发运行（tsx）
 pnpm build         # 构建 → dist/
 pnpm test          # 测试（vitest）
 pnpm lint          # ESLint
+pnpm format:check  # prettier --check .（skill/ 经 .prettierignore 排除）
 pnpm check-types   # tsc --noEmit
 ```
