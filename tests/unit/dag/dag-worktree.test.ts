@@ -503,8 +503,8 @@ describe('removeWorktree', () => {
  * 都走假 runner——真 git 装不出老版本那个局面。
  */
 describe('worktree 降级指引', () => {
-  // 降级指引：建树失败后要补上本机 git 版本与「共享工作区串行」这条可行动替代。
-  // 用假 runner 模拟 git 1.9（没有 `worktree` 子命令），断言失败文案同时含版本与替代动作。
+  // 降级指引：建树失败后要补上本机 git 版本与「共享工作区串行」这条可行动替代，并指向降级 reference。
+  // 用假 runner 模拟 git 1.9（没有 `worktree` 子命令），断言失败文案同时含版本、替代动作与指针。
   it('appends the local version and the shared-workspace fallback to a failed add', async () => {
     const withFake = deps({ git: fakeGit() });
     const outcome = await createWorktree(withFake, { id: 'a1' });
@@ -512,6 +512,7 @@ describe('worktree 降级指引', () => {
     if (outcome.ok) return;
     expect(outcome.error).toContain('git version 1.9.0');
     expect(outcome.error).toContain('共享工作区串行');
+    expect(outcome.error).toContain('exec-fallback.md');
     // 失败不得落到主工作树：目标路径根本没被创建（隔离没丢，也没假装成功）。
     const path = await worktreePath(withFake, { id: 'a1' });
     expect(typeof path).toBe('string');
@@ -526,9 +527,10 @@ describe('worktree 降级指引', () => {
     const outcome = await createWorktree(withFake, { id: 'a1' });
     expect(outcome.ok).toBe(false);
     if (outcome.ok) return;
-    // 版本读不到不是二次失败：文案必须照旧成形，且仍指向降级动作。
+    // 版本读不到不是二次失败：文案必须照旧成形，且仍指向降级动作与降级 reference。
     expect(outcome.error).toContain('git 版本未知');
     expect(outcome.error).toContain('共享工作区串行');
+    expect(outcome.error).toContain('exec-fallback.md');
   });
 
   it('appends the same hint to a failed remove', async () => {
@@ -543,6 +545,7 @@ describe('worktree 降级指引', () => {
     if (outcome.ok) return;
     expect(outcome.error).toContain('git version 1.9.0');
     expect(outcome.error).toContain('共享工作区串行');
+    expect(outcome.error).toContain('exec-fallback.md');
   });
 });
 

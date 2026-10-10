@@ -142,10 +142,13 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   ['references/state-machine.md', ['全 `open` 的 plan 派生 `open`', 'partial', 'derive.rs']],
   // the parallel-execution contract (batch table, subagent dispatch, no
   // sleeps, state commit) lives in its own reference. It also owns the dev/test
-  // node pair — one edge only, `test 依赖 dev`; the sanctioned exception for a
-  // plan whose subject *is* the isolation mechanism; and the one channel a
-  // subagent may use for a user decision (write it into the final reply —
-  // `ask_user_question` is refused for a delegated caller).
+  // node pair — one edge only, `test 依赖 dev`; and the one channel a subagent
+  // may use for a user decision (write it into the final reply —
+  // `ask_user_question` is refused for a delegated caller). The four-line reply
+  // is the only hand-back shape: pinning its labels keeps a refactor from
+  // silently inventing a new contract for the dispatch prompt. The deviation
+  // route (redo-the-split, the isolation-mechanism exception) moved to
+  // `exec-fallback.md`, so parallel-exec keeps only the default shape.
   [
     'references/parallel-exec.md',
     [
@@ -155,9 +158,30 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       'state commit',
       'dev/test 节点对',
       'test 依赖 dev',
-      '被改特性本身就是隔离机制',
       '遇用户决策写进最终回复',
       '不要调用 `ask_user_question`',
+      '节点: ',
+      '变更: ',
+      '验收: ',
+      '未决: ',
+    ],
+  ],
+  // The fallback is deliberately **not** on the default path: it holds what to
+  // do once worktree parallelism is blocked. `相交文件`/`合成哪个节点`/
+  // `为什么合并不了` are the three columns a deviation must add to the batch
+  // table — the only mechanically checkable part of the "parallel by default"
+  // change; without them a "files intersect → serial" one-liner would pass as
+  // if the re-split had been attempted. The named exception must stay spelled
+  // out, since it is the one sanctioned way to switch worktree off.
+  [
+    'references/exec-fallback.md',
+    [
+      '相交文件',
+      '合成哪个节点',
+      '为什么合并不了',
+      '共享工作区',
+      '被改特性本身就是隔离机制',
+      'maxDepth',
     ],
   ],
   // A dev/test pair shares **one** tree: `create`/`merge`/`remove` all name the

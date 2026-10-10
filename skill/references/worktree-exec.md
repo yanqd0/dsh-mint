@@ -1,12 +1,14 @@
 # worktree 隔离并行执行（worktree-exec）
 
-> 触发：并行批次需要「每条 issue 一个**独立可验证的 commit**」，或共享工作区已被证明互相污染。
+> 触发：执行阶段的**默认并行形态**——一批无依赖节点各一棵树。**降级**（树建不起来 / 白名单相交 /
+> `maxDepth < 2` / merge 冲突）见 `exec-fallback.md`。
 > 命令全部走 `worktree` 工具（`action:"create"|"merge"|"list"|"remove"|"prune"`）；批次判据见 `parallel-exec.md` §1，
 > 派发与等待纪律见 `parallel-exec.md` §3、§5；收口见 `flow-impl.md` §4；保留现场与开工点清理见本文件 §7。
 
-默认的并行批次是**共享工作区**：子代理只改自己白名单内的文件，git 提交与一切 mint 写由主 agent
-逐 issue 串行做（`parallel-exec.md` §4）。本文件是它的**例外口径**——把每个节点放进自己的 git
-worktree，子代理**在自己的 worktree 内** commit，主 agent 收齐后**按 issue 顺序** merge。
+默认的并行形态**就是本文**：每个节点放进自己的 git worktree，dev 子代理**在自己的 worktree 内**
+commit 并在树内跑该节点 UT，主 agent 收齐后**按 issue 顺序** merge。共享工作区（子代理只改白名单内的
+文件，git 提交与一切 mint 写由主 agent 逐 issue 串行做，`parallel-exec.md` §4）是**降级形态**——触发
+与流程见 `exec-fallback.md`。
 
 **merge 目标 = 开工（建树）时所在的分支**，通常就是你正在开发的**功能分支**，不一定是 `main`/`master`：
 plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，merge 也合回那里。工具在 `create` 时把
@@ -17,29 +19,12 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 
 ## 1. 何时用
 
-满足其一即可（不需要全满足）；其中**第一条是默认路径，不是例外**：
-
-| 判据 | 共享模式下为什么不行 |
-|---|---|
-| 并行批次 **≥3 条文件不相交 issue**（**默认**） | 主 agent 要逐条 `git add -- <白名单>` 拆提交，条数一多极易夹带 |
-| 需要**每条 issue 一个可独立验证的 commit** | 共享工作区的中间态混在一起，单个 commit 验不出单条 issue 的绿 |
-| 共享工作区**已被证明会互相污染** | 宿主不串行化保护兄弟子代理（`parallel-exec.md` §6），污染只能事后发现 |
-
-- **≥3 条文件不相交 issue 时 worktree 是默认执行方式**（`parallel-exec.md` §1.1）：不预检、也不因为
-  「可能失败」提前退缩（失败才按 §8 降级）；只有命中 §2 的例外才走共享工作区。
-- **提交不变量**（最硬的判据）：每个 commit **单独**跑 `check-types` / `test` 都绿。
-  共享模式下这条不变量要靠主 agent 手工拆分才成立，worktree 模式下天然成立。
-- 白名单不相交仍是前提：worktree 只隔离工作目录，**不隔离语义**（接口依赖照旧串行，见 §4）。
+**默认执行形态就是它**：一批无依赖节点各进自己的 worktree（≥3 条文件不相交 issue 时更是默认，不是
+例外）。判据、提交不变量与「何时不用」见 `exec-fallback.md` §1。
 
 ## 2. 何时不用
 
-| 情形 | 为什么 |
-|---|---|
-| 单点改 / 只派一个子代理 | 建 worktree + merge 的成本高于收益 |
-| 同文件串行链（白名单相交） | 串行判据与 worktree 无关，见 `parallel-exec.md` §1 |
-| 本 plan 改的正是 worktree 能力本体（工具面 / `prune` 策略） | 「特性即隔离机制」：隔离手段自身不可用/不该用，共享工作区 + 一步一节点是**预期而非缺陷**（`parallel-exec.md` §1.1） |
-| 非 git 仓 / worktree 不可用 | 回退共享模式，本节不成立 |
-| 子代理需要 `build` / 全量 `lint` / `check-types` / `test:coverage` / 重启 harness | 全仓重命令、资源竞争源，仍归主 agent（**装依赖与节点内 UT 不在此列**，见下） |
+**默认执行形态就是它；何时不用的判据见 `exec-fallback.md`。** 树内的操作口径：
 
 - **worktree 里不跑重命令**：`build` / `test:coverage` / 全量 `lint` / `check-types` / 重启 harness
   是全仓级资源竞争源，一律归主 agent 在主工作树、**merge 之后**串行跑。
@@ -57,7 +42,6 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
   不会出现在 `git status` 里）。
   **为什么现在允许**：UT 贴着本次改动，成本低（只跑指定文件、秒级），能在 merge **之前**挡住红；
   真正吃资源的是上面那批重命令，它们与收口全量仍归主 agent。
-- 无 git 仓或 worktree 不可用 → **回退现有共享模式**，不是放弃并行。
 
 ## 3. 全流程（工具形态）
 
@@ -135,12 +119,12 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 
 ## 6. 与共享模式对照
 
-| | 共享工作区（默认） | worktree 隔离（本文件） |
+| | 共享工作区（降级后，见 `exec-fallback.md`） | worktree 隔离（**默认**，本文件） |
 |---|---|---|
 | 子代理改文件 | 主工作树 | 自己的 worktree |
 | commit | 主 agent 逐 issue `git add -- <白名单>` | dev 子代理在共用的树内 commit（Angular 前缀 + 中文描述，**不带 mint ID**） |
 | 主 agent | 直接 commit → `state commit` | `merge` → `state commit --sha <目标分支 sha>` |
-| 适用 | 任意可并行批次 | ≥3 条独立 issue / 强要求一 issue 一 commit |
+| 适用 | 撞到降级阻塞（`exec-fallback.md` §1） | 任意可并行批次（默认形态） |
 | 测试命令 | 主 agent | 节点内 UT 归子代理（用主仓 vitest，§2/§3）；`build` / 全量 `lint` / `test:coverage` 归主 agent |
 | 装依赖 | 主 agent 直接跑 | 需要时主 agent 用宿主 `pnpm` 工具、`cwd` 指向该树（§2，秒级；bash 仍必失败） |
 
@@ -172,17 +156,6 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 `本仓没有可清理的 dsh-mint worktree`（空仓不是错误）。**`prune` 是仓库级动作**：它扫命名空间内的树，
 不读 DAG、不需要节点、也不限于本会话；要立刻丢掉某一棵仍然用 `remove(node)`（可 `force:true`）。
 
-## 8. 降级：worktree 不可用
+## 8. 降级
 
-- **判据**：`git --version` < 2.5，或 `git worktree …` 报 `unknown subcommand` / `is not a git command`，
-  或沙箱直接拒绝该命令。**默认路径仍是 worktree**：不预检、也不因为「可能不行」提前退缩，**失败才降级**
-  （工具在 `worktree add` / `worktree remove` 的失败文案里带上本机版本与本节指针，老 git 上
-  `worktree({action:"list"})` 返回空表属正常——真正的失败在 `create` 那步暴露）。
-- **动作**：回退共享工作区——子代理照旧执行，但 main **逐个派发**（一步一节点，不并行）；或 main 亲自依次
-  执行（伪 DAG）。批次表（`parallel-exec.md` §1）**仍然有效**：谁和谁可以并行的判据没变，变的只是执行方式；
-  子代理照旧只改白名单内的文件。
-- **收口**：`state commit --sha` 取**主工作树（目标分支）**merge 后的 sha（降级时 = main 直接在该分支上
-  为每个 issue 提交的 sha）；与 worktree 模式的差别只有「没有隔离目录」，两层测试（节点内 UT + 收口全量）
-  与 `plan close` 照 `flow-impl.md` §4。
-- **禁止**：目录不可解析时**不许**静默落到主工作树（丢掉隔离却不告诉任何人）；降级时**不许**并行派发
-  （失去隔离后并行会互相污染，正是本文件要避免的事）。
+降级（worktree 不可用 / 白名单相交 / `maxDepth < 2` / merge 冲突 / 生成物竞争）：见 `exec-fallback.md`。

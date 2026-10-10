@@ -46,15 +46,15 @@
 
 ## 2.5 并行批次执行
 
-批次判据与派发协议见 `references/parallel-exec.md`（含 §1.1 重划与 §3.1 dev/test 节点对）；plan 阶段在这里已经产出 `## 并行批次`。
+批次判据与派发协议见 `references/parallel-exec.md`（含 §3.1 dev/test 节点对；触红/降级见 `references/exec-fallback.md`）；plan 阶段在这里已经产出 `## 并行批次`。
 **分派边界**（哪些给子代理、哪些留主 agent）与全景 DAG 的分层见 `references/dag-exec.md`：
 测试/验证/远程与命令调用类低 context 任务派子代理（更省 token、判定更客观），
 总体评估、决策、流程控制与高 context 复杂任务留主 agent。
 
-- 一 issue 一子代理（**dev/test 节点对** = 一级 dev 子代理 + 它的二级 test 子代理，`parallel-exec.md` §3.1）；
-  一批在**同一条 assistant message** 里批量派 `subagent`：并行启动，不要一条条等；
-  提示词禁令必须写全（子代理看不到本对话）。**派发纪律见 `parallel-exec.md` §3：一步一节点**
-  （同批多路派发会让 `agent` 配对整体错位）。
+- 一 issue 一子代理（**dev/test 节点对** = 一级 dev 子代理 + 它的二级 test 子代理，`parallel-exec.md` §3.1）：
+  **并行批次与串行/单批一样都派子代理**——前者在**同一条 assistant message** 里批量派（并行启动，不要
+  一条条等），后者**逐个派发**；两者的派发纪律都是**一步一节点**（`parallel-exec.md` §3：同批多路派发会让
+  `agent` 配对整体错位），提示词禁令必须写全（子代理看不到本对话）。
 - 子代理**只改自己白名单内的文件**；一切 mint 写与**主工作树**的 git 由主 agent **逐 issue 串行**做
   （避免 git index 竞态与互相夹带）；worktree 模式下由 dev 子代理在自己的树内 commit（`worktree-exec.md` §3）。
 - 等待**不 `sleep`**、不轮询 `list_agents`：默认继续自己的独立工作，结算通知会自动到；

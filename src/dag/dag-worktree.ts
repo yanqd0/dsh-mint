@@ -263,7 +263,7 @@ async function degradationHint(deps: WorktreeDeps): Promise<string> {
   return (
     `（本机 ${version === '' ? 'git 版本未知' : version}；worktree 需要 git ≥ 2.5 —— ` +
     `若不支持，改走共享工作区串行：main 逐个派发子代理（一步一节点）或亲自依次执行，` +
-    `见 skill references/worktree-exec.md 的「降级」节）`
+    `见 skill references/exec-fallback.md 的降级流程）`
   );
 }
 

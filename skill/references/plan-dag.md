@@ -125,3 +125,5 @@
 - 不 `sleep`、不轮询 `list_agents`：派发后继续做独立工作，结算通知会自动到。
 - 真被阻塞才 `job_output(<id>, wait: true)`，且只用于一次性后台 job，不用于子代理（见 `parallel-exec.md` §5）。
 - 收串行/独占：git 与一切 mint 写、重命令（build / test:coverage / 装依赖）一律归 main。
+- **调研同样派独立子代理**：可并行的分支各一个**只读**调研子代理，main 只收结论与做流程控制，
+  不亲自跑调研；判据与例外见 §1（`parallel-exec.md` §1 末条同口径）。
