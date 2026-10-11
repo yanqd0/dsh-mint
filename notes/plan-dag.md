@@ -675,7 +675,7 @@ mint，HEAD 是节点分支头；在会话当前 checkout 的工作树里跑，H
 3. 一个 issue 多个 commit：merge 把它们收进一个 merge commit → 「只登记最后一个 sha」天然满足；
    不要在 merge 前逐个登记（那会在 merge 前从目标分支看触发上面的 NotAncestor 警告，merge 后还得重登记）。
 
-节点分支名是 `dsh-mint/wt/<session前8位>/<node>`，merge 由工具固定执行
+节点分支名是 `dsh-mint/wt/<session 短标识>/<node>`（会话 id 去掉 `session-` 前缀后的前 8 位），merge 由工具固定执行
 `git merge --no-ff -m 'merge <node id>'`（subject 只写节点 id，不带 mint ID）；落点与其余动作见
 [worktree-tool.md](worktree-tool.md)。
 

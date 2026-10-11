@@ -61,6 +61,9 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
   （`create`/`merge`/`remove`）失联——写侧按新 slug 拼路径，认不出它们；`list`/`prune` 仍
   看得见、也清得掉（只读视图按路径父目录名判定，不看 slug 规则）。它们的分支
   （`dsh-mint/wt/session-/*`）由 main 手工处理（删树不删分支，分支本就是回退凭据）。
+  收口实测：`git branch -d` 删掉 9 条**已并入 HEAD 且没有对应树**的旧分支
+  （`e199`/`ehub`/`pnpm-doc`/`w1d`…`w6d`）；仍挂着树的 9 条（`n1d`…`n5d` 与本次
+  `w1`…`w4`）保留——树归下一次开工点 `prune` 收，分支按回退凭据保留。
 - 每个动作成功后把完整的 `DagWorktree` 记录写回该节点：`updateDag` + `revision + 1`
   （沿用既有 `persist` 手法——先做 git、再落盘，git 被拒时文档里不会留下半个声明）。
   字段：`path` / `branch` / `base` / `state`（`active`|`merged`|`conflict`|`removed`）/
