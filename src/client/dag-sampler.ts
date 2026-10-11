@@ -34,6 +34,26 @@ export function sameSample(previous: DagSample | undefined, next: DagSample): bo
   return sameMetrics(previous.metrics, next.metrics);
 }
 
+/**
+ * 一张读数表里参与比较的字段：四桶、步数、时长与落库戳。
+ *
+ * 逐字段收齐是刻意的——漏一个字段就等于「那一项变了也不重画」，面板会一直画旧值。
+ */
+const METRIC_FIELDS = [
+  'tokens',
+  'uncached_input',
+  'cache_read',
+  'cache_write',
+  'output',
+  'steps',
+  'elapsed_ms',
+  'at',
+] as const satisfies readonly (keyof DagNodeMetrics)[];
+
+function sameEntry(before: DagNodeMetrics, after: DagNodeMetrics): boolean {
+  return METRIC_FIELDS.every((field) => before[field] === after[field]);
+}
+
 function sameMetrics(
   before: Record<string, DagNodeMetrics> | undefined,
   after: Record<string, DagNodeMetrics> | undefined
@@ -42,10 +62,11 @@ function sameMetrics(
   if (before === undefined || after === undefined) return false;
   const ids = Object.keys(before);
   if (ids.length !== Object.keys(after).length) return false;
-  return ids.every(
-    (id) =>
-      before[id]?.tokens === after[id]?.tokens && before[id]?.elapsed_ms === after[id]?.elapsed_ms
-  );
+  return ids.every((id) => {
+    const first = before[id];
+    const second = after[id];
+    return first !== undefined && second !== undefined && sameEntry(first, second);
+  });
 }
 
 /**

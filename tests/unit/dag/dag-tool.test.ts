@@ -414,6 +414,7 @@ describe('executeDagTool', () => {
                 cacheWriteTokens: 0,
               },
             },
+            sessionStats: { steps: 4 },
             subagentTiming: { settledMs: 1200, active: null },
           },
         ],
@@ -470,6 +471,7 @@ describe('executeDagTool', () => {
                 cacheWriteTokens: 50,
               },
             },
+            sessionStats: { steps: 9 },
             // 调用者的 turn 还在进行：计时按 running 对采样钟算，所以至少拿到 settledMs。
             subagentTiming: { settledMs: 500, active: { since: Date.now() - 1000 } },
           },
@@ -496,6 +498,14 @@ describe('executeDagTool', () => {
       if (read.state !== 'ok') return;
       const sample = read.doc.samples?.['a'];
       expect(sample?.tokens).toBe(8);
+      // `persistNodeSample` 与生命周期共用同一条读数：四桶与步数一起落，供面板拆分。
+      expect(sample).toMatchObject({
+        uncached_input: 3,
+        cache_read: 0,
+        cache_write: 0,
+        output: 5,
+        steps: 4,
+      });
       // A settled node's timing is the projection's own `settledMs`.
       expect(sample?.elapsed_ms).toBe(1200);
       expect(typeof sample?.at).toBe('number');
@@ -529,6 +539,14 @@ describe('executeDagTool', () => {
       if (read.state !== 'ok') return;
       const sample = read.doc.samples?.['a'];
       expect(sample?.tokens).toBe(host.tokens);
+      // 拆分与步数跟着同一条读数走（own 路径也一样，不因覆盖 tokens 而少落）。
+      expect(sample).toMatchObject({
+        uncached_input: 100,
+        cache_read: 50,
+        cache_write: 50,
+        output: 200,
+        steps: 9,
+      });
       // 实测优先：节点字段里的自报 999 被同一份读数覆盖。
       expect(read.doc.nodes[0]?.tokens).toBe(host.tokens);
       expect(typeof sample?.elapsed_ms).toBe('number');

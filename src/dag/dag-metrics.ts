@@ -28,16 +28,55 @@ import type { DagDoc, DagSample } from './dag.js';
 import type { DagNodeMetrics, DagNodeView, DagStatus } from '../shared/records.js';
 import type { AgentsLike, SessionProjectionsLike } from '../shared/types.js';
 
-/** The four durable buckets `@deepseek-ai/dsh-token-meter` keeps per session. */
-const TOKEN_BUCKETS = [
-  'uncachedInputTokens',
-  'outputTokens',
-  'cacheReadTokens',
-  'cacheWriteTokens',
-] as const;
+/** 一次读到的四桶：`tokens` 只是它们的和，命中与未命中的单价却差约 50 倍。 */
+export interface DagTokenBuckets {
+  uncached_input: number;
+  cache_read: number;
+  cache_write: number;
+  output: number;
+}
 
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+/**
+ * 宿主投影 state 的 `totals` 里四个 durable 桶，逐个显式读取。
+ *
+ * 字段对应关系只写在这里一次：`uncachedInputTokens` → `uncached_input`（未命中）、
+ * `cacheReadTokens` → `cache_read`（命中）、`cacheWriteTokens` → `cache_write`、
+ * `outputTokens` → `output`（reasoning ⊆ output）。
+ */
+function readTotals(totals: Record<string, unknown>): DagTokenBuckets | undefined {
+  const uncached = totals['uncachedInputTokens'];
+  const cacheRead = totals['cacheReadTokens'];
+  const cacheWrite = totals['cacheWriteTokens'];
+  const output = totals['outputTokens'];
+  if (!isCount(uncached) || !isCount(cacheRead) || !isCount(cacheWrite) || !isCount(output)) {
+    return undefined;
+  }
+  return { uncached_input: uncached, cache_read: cacheRead, cache_write: cacheWrite, output };
+}
+
+/**
+ * 读一次 `tokenUsage` 投影 state 的四桶，逐桶校验。
+ *
+ * 四桶**要么同在要么同缺**：任一桶缺失或不是非负安全整数就整组不发布——半组合法值会
+ * 让求和静默少算，而分开落盘时更会被读成「这一桶就是 0」。
+ *
+ * @param usage - the `tokenUsage` projection **state** (not its wire view).
+ * @returns 四桶，或读不到/形状不对时的 `undefined`。
+ */
+export function tokenBuckets(usage: unknown): DagTokenBuckets | undefined {
+  if (!isRecord(usage)) return undefined;
+  const totals = usage['totals'];
+  if (!isRecord(totals)) return undefined;
+  return readTotals(totals);
+}
+
+/** 四桶之和：`tokens` 的语义（四桶不相交，求和即该会话用掉的 token 总数）。 */
+function sumBuckets(buckets: DagTokenBuckets): number {
+  return buckets.uncached_input + buckets.cache_read + buckets.cache_write + buckets.output;
 }
 
 /**
@@ -48,16 +87,21 @@ function isCount(value: unknown): value is number {
  *   non-negative safe integer — a partial total would silently understate usage.
  */
 export function tokenTotal(usage: unknown): number | undefined {
-  if (!isRecord(usage)) return undefined;
-  const totals = usage['totals'];
-  if (!isRecord(totals)) return undefined;
-  let sum = 0;
-  for (const bucket of TOKEN_BUCKETS) {
-    const value = totals[bucket];
-    if (!isCount(value)) return undefined;
-    sum += value;
-  }
-  return sum;
+  const buckets = tokenBuckets(usage);
+  return buckets === undefined ? undefined : sumBuckets(buckets);
+}
+
+/**
+ * 该会话已结算的步数（`sessionStats.steps`，`step/end` 计数）。
+ *
+ * @param stats - the `sessionStats` projection state.
+ * @returns 步数；`sessionStats` 未注册或形状不对时 `undefined`（步数缺失只影响它自己，
+ *   不连累四桶）。
+ */
+export function sessionSteps(stats: unknown): number | undefined {
+  if (!isRecord(stats)) return undefined;
+  const steps = stats['steps'];
+  return isCount(steps) ? steps : undefined;
 }
 
 /**
@@ -107,8 +151,18 @@ export function nodeMetrics(input: {
 }): DagNodeMetrics {
   try {
     const metrics: DagNodeMetrics = {};
-    const tokens = tokenTotal(input.projections.stateOf(input.session, 'tokenUsage'));
-    if (tokens !== undefined) metrics.tokens = tokens;
+    const buckets = tokenBuckets(input.projections.stateOf(input.session, 'tokenUsage'));
+    if (buckets !== undefined) {
+      // 四桶同在：求和与拆分是同一次读数的两副面孔，面板既有 `tokens` 可读，也能分开看成本。
+      metrics.tokens = sumBuckets(buckets);
+      metrics.uncached_input = buckets.uncached_input;
+      metrics.cache_read = buckets.cache_read;
+      metrics.cache_write = buckets.cache_write;
+      metrics.output = buckets.output;
+    }
+    // 步数独立于四桶：`sessionStats` 读不到只是不发布它，四桶照旧。
+    const steps = sessionSteps(input.projections.stateOf(input.session, 'sessionStats'));
+    if (steps !== undefined) metrics.steps = steps;
     const elapsed = activeElapsedMs(
       input.projections.stateOf(input.session, 'subagentTiming'),
       input.status,
@@ -180,6 +234,40 @@ export function mergeMetrics(input: {
     if (remembered !== undefined) merged[node.id] = { ...remembered };
   }
   return merged;
+}
+
+/**
+ * 落在样本里的计数字段（`at` 是落库戳，不在其中）。
+ *
+ * 字段集只在这里定义一次：落盘节流（`routes.ts`）与重建校验都照着同一份清单走，
+ * 新增字段不会被某一处漏掉。顺序即字段在 JSON 里的书写顺序。
+ */
+const SAMPLE_NUMBERS = [
+  'tokens',
+  'uncached_input',
+  'cache_read',
+  'cache_write',
+  'output',
+  'steps',
+  'elapsed_ms',
+] as const satisfies readonly (keyof DagSample)[];
+
+/** 两份样本的计数字段是否全等（`at` 不参与）：任一字段不同就是一份新读数。 */
+export function sameSampleNumbers(before: DagSample, after: DagSample): boolean {
+  return SAMPLE_NUMBERS.every((field) => before[field] === after[field]);
+}
+
+/**
+ * 除时长外，读数里还有没有一个计数动了（四桶、求和或步数）。
+ *
+ * 时长本身由调用方按写节流阈值把关，故这里刻意把它排除；`undefined` 不算「动」——
+ * 那次读数压根没测到那一项。
+ */
+export function sampleNumbersMoved(before: DagSample, after: DagSample): boolean {
+  return SAMPLE_NUMBERS.some(
+    (field) =>
+      field !== 'elapsed_ms' && after[field] !== undefined && after[field] !== before[field]
+  );
 }
 
 /**
@@ -280,6 +368,11 @@ export function rememberMeasurement(
   entries.delete(nodeId);
   const entry: DagNodeMetrics = { at: kept.at };
   if (kept.tokens !== undefined) entry.tokens = kept.tokens;
+  if (kept.uncached_input !== undefined) entry.uncached_input = kept.uncached_input;
+  if (kept.cache_read !== undefined) entry.cache_read = kept.cache_read;
+  if (kept.cache_write !== undefined) entry.cache_write = kept.cache_write;
+  if (kept.output !== undefined) entry.output = kept.output;
+  if (kept.steps !== undefined) entry.steps = kept.steps;
   if (kept.elapsed_ms !== undefined) entry.elapsed_ms = kept.elapsed_ms;
   entries.set(nodeId, entry);
   while (entries.size > MEASUREMENT_MAX) {

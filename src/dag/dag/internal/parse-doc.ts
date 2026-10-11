@@ -5,7 +5,7 @@
  * 由路由转成面板告警而不是崩溃。
  */
 import { isRecord } from '../../../mint/mint-json.js';
-import type { DagWorktree } from '../../../shared/records.js';
+import type { DagNodeMetrics, DagWorktree } from '../../../shared/records.js';
 import { DAG_VERSION, isValidDagSession } from './model.js';
 import type { DagDoc, DagNode, DagSample, DagVerdict } from './model.js';
 import {
@@ -22,26 +22,31 @@ import {
 
 /**
  * One node's sample, built from a raw reading: `at` must be a usable stamp, and
- * the two numbers are validated field by field so that a malformed one is
- * dropped — but at least one must survive for the reading to be worth storing.
+ * every count field is validated **one by one**, so a malformed one is dropped —
+ * but at least one count must survive for the reading to be worth storing.
  *
  * Field-wise on purpose: a live reading is the one source where a single number
- * can be junk while the other was really measured, and throwing the good one away
- * would be the same guess this module refuses to make. (Reading a *stored* entry
- * is stricter — see {@link parseDagDoc}.)
+ * can be junk while another was really measured, and throwing the good one away
+ * would be the same guess this module refuses to make. A *stored* entry is
+ * stricter — see {@link parseDagDoc}.
  */
-export function sampleOf(
-  metrics: { tokens?: number; elapsed_ms?: number },
-  at: number
-): DagSample | undefined {
+export function sampleOf(metrics: DagNodeMetrics, at: number): DagSample | undefined {
   if (!isCount(at)) return undefined;
-  const kept: { tokens?: number; elapsed_ms?: number } = {};
+  const kept: DagNodeMetrics = {};
+  // 逐字段：坏值只丢它自己（例如 `tokens` 坏了不该连累好的 `cache_read`）。
   if (isCount(metrics.tokens)) kept.tokens = metrics.tokens;
+  if (isCount(metrics.uncached_input)) kept.uncached_input = metrics.uncached_input;
+  if (isCount(metrics.cache_read)) kept.cache_read = metrics.cache_read;
+  if (isCount(metrics.cache_write)) kept.cache_write = metrics.cache_write;
+  if (isCount(metrics.output)) kept.output = metrics.output;
+  if (isCount(metrics.steps)) kept.steps = metrics.steps;
   if (isCount(metrics.elapsed_ms)) kept.elapsed_ms = metrics.elapsed_ms;
-  if (kept.tokens === undefined && kept.elapsed_ms === undefined) return undefined;
+  // 一个数都没活下来就不是一次读数：绝不落一条只有 `at` 的空样本。
+  if (Object.keys(kept).length === 0) return undefined;
   return { ...kept, at };
 }
 
+/** A stored field is either absent or a usable count; nothing is coerced. */
 function isSampleField(value: unknown): boolean {
   return value === undefined || isCount(value);
 }
@@ -163,7 +168,16 @@ export function parseDagDoc(raw: unknown): { doc: DagDoc } | { error: string } {
       // A stored entry is trusted whole: a field that is present but unusable
       // means the writer and this reader disagree, so none of it is kept. An
       // entry with no number at all is not a measurement either.
-      if (!isSampleField(entry.tokens) || !isSampleField(entry.elapsed_ms)) continue;
+      if (
+        !isSampleField(entry.tokens) ||
+        !isSampleField(entry.uncached_input) ||
+        !isSampleField(entry.cache_read) ||
+        !isSampleField(entry.cache_write) ||
+        !isSampleField(entry.output) ||
+        !isSampleField(entry.steps) ||
+        !isSampleField(entry.elapsed_ms)
+      )
+        continue;
       const sample = sampleOf(entry, at);
       if (sample !== undefined) kept[id] = sample;
     }

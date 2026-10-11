@@ -7,6 +7,7 @@
  */
 import { dagLayers } from '../dag/dag.js';
 import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../shared/records.js';
+import type { CopyKey, CopyTranslate } from './copy.js';
 import type { StatusTone } from './model.js';
 
 /** 节点框：宽度容得下六码点标签；高度要放两行（标签 + 实测指标），故为 44。 */
@@ -212,7 +213,7 @@ export function dagCounts(view: DagView): {
 }
 
 /**
- * 节点实测行所用 copy key 的集中命名处：唯一调用方 `DagBody` 是 `.tsx`，本模块无法
+ * 节点实测行所用 copy key 的集中命名处：调用方是 `.tsx`（NodeCard），本模块无法
  * import；面板的 copy 守卫又只读源码文本——字典里有、源码里却无人引用的 key 会被判成
  * 死键，故这些 key 必须在这份源码里出现。
  */
@@ -220,6 +221,11 @@ export const DAG_COPY_KEYS = {
   liveTokens: 'dag.liveTokens',
   seconds: 'dag.seconds',
   measuredAt: 'dag.measuredAt',
+  bucketUncached: 'dag.bucket.uncachedInput',
+  bucketCacheRead: 'dag.bucket.cacheRead',
+  bucketCacheWrite: 'dag.bucket.cacheWrite',
+  bucketOutput: 'dag.bucket.output',
+  steps: 'dag.steps',
 } as const;
 
 function measuredInt(value: unknown): number | undefined {
@@ -229,25 +235,40 @@ function measuredInt(value: unknown): number | undefined {
 }
 
 /**
- * 逐字段收下一个节点的实测：坏的 `tokens` 不该连累好的 `elapsed_ms`。
+ * 逐字段收下一个节点的实测：坏的一个数不该连累好的四桶与时长。
+ *
+ * 白名单式：**只收这里点名的字段**，新增字段漏一处就静默丢掉——这正是本函数存在的理由
+ * （面板宁可少画一项，也不画一个形状没核对过的数）。
  *
  * `at` 有独立含义——只有**已落库**的采样带它，故它区分「这是上一轮的读数」与「宿主此刻
  * 正在测」；缺失即现场，保持缺失；一旦出现就必须是可用的时间戳：坏时间宁可整条丢掉，
  * 也不能改标成一次从未发生的测量。
  */
 function keepMetrics(raw: unknown): DagNodeMetrics | undefined {
+  // `as`：路由过界的是 JSON，这里只当索引表看；每个字段都要再过一个类型谓词才收。
   const entry = (typeof raw === 'object' && raw !== null ? raw : {}) as Record<string, unknown>;
-  const tokens = measuredInt(entry['tokens']);
-  const elapsedMs = measuredInt(entry['elapsed_ms']);
   const kept: DagNodeMetrics = {};
+  const tokens = measuredInt(entry['tokens']);
   if (tokens !== undefined) kept.tokens = tokens;
+  const uncachedInput = measuredInt(entry['uncached_input']);
+  if (uncachedInput !== undefined) kept.uncached_input = uncachedInput;
+  const cacheRead = measuredInt(entry['cache_read']);
+  if (cacheRead !== undefined) kept.cache_read = cacheRead;
+  const cacheWrite = measuredInt(entry['cache_write']);
+  if (cacheWrite !== undefined) kept.cache_write = cacheWrite;
+  const output = measuredInt(entry['output']);
+  if (output !== undefined) kept.output = output;
+  const steps = measuredInt(entry['steps']);
+  if (steps !== undefined) kept.steps = steps;
+  const elapsedMs = measuredInt(entry['elapsed_ms']);
   if (elapsedMs !== undefined) kept.elapsed_ms = elapsedMs;
+  // 一个数都没活下来就不是读数：绝不用 0 去猜。
+  if (Object.keys(kept).length === 0) return undefined;
   if (entry['at'] !== undefined) {
     const at = measuredInt(entry['at']);
     if (at === undefined) return undefined;
     kept.at = at;
   }
-  if (kept.tokens === undefined && kept.elapsed_ms === undefined) return undefined;
   return kept;
 }
 
@@ -286,6 +307,35 @@ export function formatCount(tokens: number): string {
   if (tokens < 1e3) return String(tokens);
   if (tokens < 1e6) return `${scaled(tokens / 1e3)}k`;
   return `${scaled(tokens / 1e6)}M`;
+}
+
+/** 拆分项之间的分隔符：与节点盒子那一行同一个记号。 */
+const BREAKDOWN_SEPARATOR = ' · ';
+
+/**
+ * 节点实测的成本构成行：`未命中 3.4k · 命中 12k · 缓存写 5k · 输出 900 · 12 步`。
+ *
+ * 只列宿主真的测到的项——缺项就是不画那一项，绝不当 0 补齐；一项都没有时返回
+ * `undefined`，调用方据此不画这一行。**刻意不做阈值着色**：在没有实测分布之前，
+ * 任何红黄绿都只是猜，而猜出来的告警会教读者忽略真实的那一个。
+ */
+export function metricsBreakdown(
+  metrics: DagNodeMetrics | undefined,
+  copy: CopyTranslate
+): string | undefined {
+  if (metrics === undefined) return undefined;
+  const parts: string[] = [];
+  const bucket = (key: CopyKey, value: number | undefined): void => {
+    if (value !== undefined) parts.push(`${copy(key)} ${formatCount(value)}`);
+  };
+  bucket(DAG_COPY_KEYS.bucketUncached, metrics.uncached_input);
+  bucket(DAG_COPY_KEYS.bucketCacheRead, metrics.cache_read);
+  bucket(DAG_COPY_KEYS.bucketCacheWrite, metrics.cache_write);
+  bucket(DAG_COPY_KEYS.bucketOutput, metrics.output);
+  if (metrics.steps !== undefined) {
+    parts.push(copy(DAG_COPY_KEYS.steps, { steps: metrics.steps }));
+  }
+  return parts.length === 0 ? undefined : parts.join(BREAKDOWN_SEPARATOR);
 }
 
 /**

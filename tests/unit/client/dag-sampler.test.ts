@@ -75,6 +75,31 @@ describe('sampleOf / sameSample', () => {
     expect(sameSample(sampleOf(payload()), sampleOf(payload()))).toBe(true);
     expect(sameSample(sampleOf(payload()), one)).toBe(false);
   });
+
+  // 重绘判据覆盖新字段：四桶、步数与落库戳任一变了都要重画，漏一个就是「数字变了面板不动」。
+  it('treats a bucket, a step count or a stamp change as a new reading', () => {
+    const base = sampleOf(payload({ metrics: { a: { tokens: 10, cache_read: 3, steps: 1 } } }));
+    const same = sampleOf(payload({ metrics: { a: { tokens: 10, cache_read: 3, steps: 1 } } }));
+    expect(sameSample(base, same)).toBe(true);
+    expect(
+      sameSample(
+        base,
+        sampleOf(payload({ metrics: { a: { tokens: 10, cache_read: 4, steps: 1 } } }))
+      )
+    ).toBe(false);
+    expect(
+      sameSample(
+        base,
+        sampleOf(payload({ metrics: { a: { tokens: 10, cache_read: 3, steps: 2 } } }))
+      )
+    ).toBe(false);
+    expect(
+      sameSample(
+        base,
+        sampleOf(payload({ metrics: { a: { tokens: 10, cache_read: 3, steps: 1, at: 5 } } }))
+      )
+    ).toBe(false);
+  });
 });
 
 describe('sampleMetrics', () => {
@@ -97,6 +122,40 @@ describe('sampleMetrics', () => {
     expect(sampleMetrics(undefined)).toEqual({});
     expect(sampleMetrics(payload())).toEqual({});
     expect(sampleMetrics(payload({ metrics: { a: { tokens: 1 } } }))).toEqual({});
+  });
+
+  // 白名单同步：四桶与步数必须与 `tokens` 一起被收下，坏的那一个只丢自己。
+  it('keeps the four buckets and the step count, dropping only a bad one', () => {
+    const dag = {
+      title: '',
+      revision: 1,
+      created_at: '',
+      updated_at: '',
+      nodes: [node('a', 'running')],
+      edges: [],
+    };
+    expect(
+      sampleMetrics(
+        payload({
+          dag,
+          metrics: {
+            a: {
+              tokens: 10,
+              uncached_input: 1,
+              cache_read: 3,
+              cache_write: 4,
+              output: 2,
+              steps: 7,
+            },
+          },
+        })
+      )
+    ).toEqual({
+      a: { tokens: 10, uncached_input: 1, cache_read: 3, cache_write: 4, output: 2, steps: 7 },
+    });
+    expect(
+      sampleMetrics(payload({ dag, metrics: { a: { cache_read: 1.5, steps: -1, output: 2 } } }))
+    ).toEqual({ a: { output: 2 } });
   });
 });
 

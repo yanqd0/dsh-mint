@@ -117,7 +117,7 @@ function harness(): Harness {
   };
 }
 
-/** The two projection states the measurement really reads, under one child. */
+/** The projection states the measurement really reads, under one child. */
 function measurable(events: Harness, id = AGENT): void {
   events.states.set(id, {
     // The registry is keyed by the projection's own name, not by ours.
@@ -129,6 +129,7 @@ function measurable(events: Harness, id = AGENT): void {
         cacheWriteTokens: 1,
       },
     },
+    sessionStats: { steps: 7 },
     subagentTiming: { settledMs: 0, active: { since: 0, through: 0 } },
   });
 }
@@ -235,6 +236,14 @@ describe('subagent/end persists a sample', () => {
     expect(typeof sample?.at).toBe('number');
     // The four buckets of the fixture, summed by the host's own reader.
     expect(sample?.tokens).toBe(124);
+    // 拆分与步数一起落盘：面板要分开读命中/未命中（单价差约 50 倍），也要看步数。
+    expect(sample).toMatchObject({
+      uncached_input: 100,
+      cache_read: 3,
+      cache_write: 1,
+      output: 20,
+      steps: 7,
+    });
     expect(sample?.elapsed_ms).toBeGreaterThanOrEqual(0);
     // `at` is the sample clock the reading was taken at, not the write's time.
     expect(sample?.at).toBeGreaterThanOrEqual(before);
@@ -294,6 +303,36 @@ describe('subagent/end persists a sample', () => {
     const remembered = lastMeasurement(SESSION, 'a');
     expect(remembered?.tokens).toBe(124);
     expect(typeof remembered?.elapsed_ms).toBe('number');
+  });
+
+  // 缺失不猜：`sessionStats` 未注册时样本照落四桶，只是 `steps` 缺席——不写 0、
+  // 也不因此丢掉 tokens。
+  it('writes the buckets without a step count when sessionStats is missing', async () => {
+    await seedNode(SESSION, PAIRED_NODE);
+    const events = harness();
+    measurable(events);
+    events.states.set(AGENT, {
+      tokenUsage: {
+        totals: {
+          uncachedInputTokens: 100,
+          outputTokens: 20,
+          cacheReadTokens: 3,
+          cacheWriteTokens: 1,
+        },
+      },
+    });
+    events.parents.set(AGENT, SESSION);
+
+    events.end({ runId: 'r1', id: AGENT, stopReason: 'error' });
+    await drain();
+
+    const read = await stored();
+    expect(read.state).toBe('ok');
+    if (read.state !== 'ok') return;
+    const sample = read.doc.samples?.['a'];
+    expect(sample?.tokens).toBe(124);
+    expect(sample?.cache_read).toBe(3);
+    expect(sample?.steps).toBeUndefined();
   });
 
   it('writes nothing when the host cannot measure the child', async () => {

@@ -17,7 +17,12 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { isValidDagSession, sampleOf } from '../dag/dag.js';
 import type { DagSample } from '../dag/dag.js';
 import { withSample } from '../dag/dag-lifecycle.js';
-import { lastMeasurement, readDagMetrics } from '../dag/dag-metrics.js';
+import {
+  lastMeasurement,
+  readDagMetrics,
+  sameSampleNumbers,
+  sampleNumbersMoved,
+} from '../dag/dag-metrics.js';
 import { DAG_DIR, readDag, updateDag } from '../dag/dag-store.js';
 import type { DagRead } from '../dag/dag-store.js';
 import {
@@ -404,17 +409,18 @@ async function flushRememberedSample(sessionId: string, read: DagRead, dir: stri
  * 已结算节点的读数是终局：已存采样就是同一次测量，所以只有数字尚不相同时才替换。运行中的
  * 节点每秒都在动，所以只有实测时间前进至少 {@link SAMPLE_WRITE_MS} 才重写——文件很小且在
  * `/tmp`，但每次轮询都写仍是面板已有实时数字的无谓抖动。
+ *
+ * 逐字段比较（含四桶与步数）由 `dag-metrics.ts` 的清单负责，字段集只有那一处定义，新增
+ * 字段不会在这里被漏掉。
  */
 function outgrewStored(stored: DagSample, fresh: DagSample, status: DagStatus): boolean {
-  if (status !== 'running') {
-    return stored.tokens !== fresh.tokens || stored.elapsed_ms !== fresh.elapsed_ms;
-  }
+  if (status !== 'running') return !sameSampleNumbers(stored, fresh);
   const grown =
     fresh.elapsed_ms !== undefined &&
     stored.elapsed_ms !== undefined &&
     fresh.elapsed_ms - stored.elapsed_ms >= SAMPLE_WRITE_MS;
-  const tokensMoved = fresh.tokens !== undefined && fresh.tokens !== stored.tokens;
-  return grown && tokensMoved;
+  // 时长本身由 `grown` 把关节流，这里只看四桶/步数/求和有没有动。
+  return grown && sampleNumbersMoved(stored, fresh);
 }
 
 /**

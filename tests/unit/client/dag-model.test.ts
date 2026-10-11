@@ -20,6 +20,7 @@ import {
   isRunning,
   layoutDag,
   liveElapsedMs,
+  metricsBreakdown,
   nodeMetricsMap,
 } from '../../../src/client/dag-model.js';
 import type { DagLayout } from '../../../src/client/dag-model.js';
@@ -331,6 +332,29 @@ describe('nodeMetricsMap', () => {
     ).toEqual({ a: { elapsed_ms: 3200 }, b: { elapsed_ms: 900 } });
   });
 
+  // 白名单同步守卫：四桶与步数也是宿主实测，漏收一个面板就静默少一项。
+  it('keeps the four buckets and the step count alongside their sum', () => {
+    expect(
+      nodeMetricsMap({
+        dag: doc,
+        metrics: {
+          a: { tokens: 10, uncached_input: 1, cache_read: 3, cache_write: 4, output: 2, steps: 7 },
+        },
+      })
+    ).toEqual({
+      a: { tokens: 10, uncached_input: 1, cache_read: 3, cache_write: 4, output: 2, steps: 7 },
+    });
+  });
+
+  it('drops a bad bucket without losing its neighbours', () => {
+    expect(
+      nodeMetricsMap({
+        dag: doc,
+        metrics: asMetrics({ a: { cache_read: 1.5, steps: -1, output: 2 } }),
+      })
+    ).toEqual({ a: { output: 2 } });
+  });
+
   it('drops an entry whose every field is bad, keeping its neighbours', () => {
     expect(
       nodeMetricsMap({ dag: doc, metrics: { a: { tokens: -1 }, b: { elapsed_ms: 10 } } })
@@ -491,15 +515,58 @@ describe('liveElapsedMs', () => {
 });
 
 describe('DAG_COPY_KEYS', () => {
-  // `DagBody` is the caller; these literals are also what tells the copy
-  // guard that the dictionary's new keys have a use in the panel. `measuredAt`
-  // joined them with the stored-sample display.
+  // `NodeCard`（.tsx）是调用方；这些字面量同时告诉 copy 守卫「词典里的新键有人用」。
+  // 成本拆分那一族（四桶 + 步数）随实测构成行一起加入。
   it('names the live-metrics copy keys once', () => {
     expect(DAG_COPY_KEYS).toEqual({
       liveTokens: 'dag.liveTokens',
       seconds: 'dag.seconds',
       measuredAt: 'dag.measuredAt',
+      bucketUncached: 'dag.bucket.uncachedInput',
+      bucketCacheRead: 'dag.bucket.cacheRead',
+      bucketCacheWrite: 'dag.bucket.cacheWrite',
+      bucketOutput: 'dag.bucket.output',
+      steps: 'dag.steps',
     });
+  });
+});
+
+/** 一份最小词典：这里测的是拼装顺序与分隔符，词典与占位符由 copy 守卫负责。 */
+const BREAKDOWN_COPY: Record<string, string> = {
+  'dag.bucket.uncachedInput': '未命中',
+  'dag.bucket.cacheRead': '命中',
+  'dag.bucket.cacheWrite': '缓存写',
+  'dag.bucket.output': '输出',
+  'dag.steps': '{steps} 步',
+};
+
+function translate(key: string, params?: Record<string, string | number>): string {
+  const text = BREAKDOWN_COPY[key] ?? key;
+  if (params === undefined) return text;
+  return text.replace(/\{(\w+)\}/g, (_match, name: string) => String(params[name] ?? ''));
+}
+
+describe('metricsBreakdown', () => {
+  // 顺序契约：未命中 → 命中 → 缓存写 → 输出 → 步数，与 `DagNodeMetrics` 的字段顺序一致。
+  it('assembles the measured items in a fixed order', () => {
+    expect(
+      metricsBreakdown(
+        { tokens: 16_300, uncached_input: 3400, cache_read: 12_000, output: 900, steps: 12 },
+        translate
+      )
+    ).toBe('未命中 3.4k · 命中 12k · 输出 900 · 12 步');
+  });
+
+  // 缺失不猜：没测到的项不画（不是画 0），一项都没有就整行不画。
+  it('lists only what the host measured, and nothing at all when it measured none', () => {
+    expect(metricsBreakdown({ tokens: 10, cache_write: 5 }, translate)).toBe('缓存写 5');
+    expect(metricsBreakdown({ tokens: 10 }, translate)).toBeUndefined();
+    expect(metricsBreakdown({ elapsed_ms: 100 }, translate)).toBeUndefined();
+    expect(metricsBreakdown(undefined, translate)).toBeUndefined();
+  });
+
+  it('keeps a zero bucket, which is a measurement and not an absence', () => {
+    expect(metricsBreakdown({ cache_read: 0 }, translate)).toBe('命中 0');
   });
 });
 
