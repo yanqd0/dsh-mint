@@ -2,9 +2,9 @@
  * plan DAG 视图（第一个视图）：一个文档一张 SVG——节点是 `dag-model` 的盒子、边是它的折线、
  * 状态配色用与模型测试同一套 tone 函数。
  *
- * 从 `DagBody.tsx` 拆出后它只负责**画**：读那一半（可见性 + 2s 轮询 + 整份读数守卫）与两个视图
- * 之间的切换都归 `DagBody.tsx`（面板容器）。组件仍然自己管三件事：hover 是谁、1s 走秒的本地
- * 时钟、以及挂/卸那个 `running` 脉动 class 的 keyframes。
+ * 从 `DagBody.tsx` 拆出后它只负责**画**：读那一半（可见性 + 2s 轮询 + 整份读数守卫）、两个视图
+ * 之间的切换、以及图层推进方向都归 `DagBody.tsx`（面板容器）。组件仍然自己管三件事：hover 是谁、
+ * 1s 走秒的本地时钟、以及挂/卸那个 `running` 脉动 class 的 keyframes。
  */
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
@@ -12,6 +12,7 @@ import type { ReactElement } from 'react';
 import type { MintDagPayload } from '../shared/records.js';
 import { NodeMetricsLine, NodeTooltip } from './NodeCard.js';
 import { StateNotice } from './StateNotice.js';
+import type { DagDirection } from './dag-model.js';
 import { dagCounts, dagTone, isRunning, layoutDag } from './dag-model.js';
 import { sampleMetrics } from './dag-sampler.js';
 import type { LoadState } from './model.js';
@@ -43,9 +44,11 @@ export interface DagGraphViewProps extends MintBodyProps {
   state: LoadState<MintDagPayload>;
   /** 面板此刻是否正画着这个视图：隐藏的视图不起走秒定时器。 */
   active: boolean;
+  /** 图层推进方向：由容器持有并下传，视图只照它画。 */
+  direction: DagDirection;
 }
 
-export function DagGraphView({ copy, state, active }: DagGraphViewProps): ReactElement {
+export function DagGraphView({ copy, state, active, direction }: DagGraphViewProps): ReactElement {
   const [hovered, setHovered] = useState<string | undefined>(undefined);
   const [nowMs, setNowMs] = useState(() => Date.now());
 
@@ -102,7 +105,7 @@ export function DagGraphView({ copy, state, active }: DagGraphViewProps): ReactE
     );
   }
 
-  const layout = layoutDag(dag);
+  const layout = layoutDag(dag, direction);
   const counts = dagCounts(dag);
   const hoveredNode = dag.nodes.find((node) => node.id === hovered);
 

@@ -121,6 +121,10 @@ export const ZH = {
   'dag.worktree.state.conflict': 'conflict',
   'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
+  'dag.dir.label': 'DAG 方向',
+  // 方向词与箭头是语言中立的：两个 locale 读起来一样（见 `KEPT_IN_ENGLISH`）。
+  'dag.dir.vertical': '↓ 上下',
+  'dag.dir.horizontal': '→ 左右',
 
   // 子代理树：与 DAG 是同一面板里的第二个视图，故沿用 `agents.` 前缀而不是另起命名空间。
   // 两个视图名与宿主自己的 `main` 都是术语，两侧保持英文（见 `KEPT_IN_ENGLISH`）。
@@ -236,6 +240,9 @@ export const EN = {
   'dag.worktree.state.conflict': 'conflict',
   'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
+  'dag.dir.label': 'DAG direction',
+  'dag.dir.vertical': '↓ 上下',
+  'dag.dir.horizontal': '→ 左右',
 
   'agents.tab.nodes': 'Nodes',
   'agents.tab.subagents': 'Subagents',
@@ -284,6 +291,9 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'dag.tokens',
   // 节点 id 是不透明标识符，没有任何语言相关的部分。
   'dag.node.id',
+  // 方向词与箭头在两种语言里读起来一样（`↓ 上下` / `→ 左右`）。
+  'dag.dir.vertical',
+  'dag.dir.horizontal',
   // 两个视图名与宿主自己的 `main` 都是术语（`Nodes` / `Subagents` / `main`），保留英文。
   'agents.tab.nodes',
   'agents.tab.subagents',

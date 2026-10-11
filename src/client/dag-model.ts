@@ -21,6 +21,16 @@ export const DAG_V_GAP = 46;
 /** 画布留白，同时也是最小画布：空 DAG 也要有边框。 */
 export const DAG_PAD = 12;
 
+/** 图层推进的方向（横排 = 整张图转 90°）：默认自上而下。 */
+export type DagDirection = 'vertical' | 'horizontal';
+
+export const DAG_DIRECTIONS = ['vertical', 'horizontal'] as const satisfies readonly DagDirection[];
+
+/** 路由过界的方向是 JSON，故按谓词收窄而不是 `as`。 */
+export function isDagDirection(value: unknown): value is DagDirection {
+  return (DAG_DIRECTIONS as readonly string[]).includes(value as string);
+}
+
 /**
  * 节点可取的三种主题状态色：status 与 verdict 在这里合成一轴——`done` 自身没有
  * 颜色，读者要看的是结果，而不是「这个节点停下了」。
@@ -120,12 +130,13 @@ function round(value: number): string {
 }
 
 /**
- * 布局一张 DAG：分层自上而下，层内节点从左到右、整体居中。
+ * 布局一张 DAG。默认自上而下：分层逐层向下、层内节点从左到右并整体居中；`horizontal` 则
+ * 把整张图转 90°——分层逐层向右、层内节点自上而下并整体居中，连线从父节点右中走到子节点左中。
  *
  * 分层复用宿主自己的 `dagLayers`，它容忍环与悬空引用而不抛错——手改坏的文件必须画出
- * 一张错的图，绝不能是空白面板。
+ * 一张错的图，绝不能是空白面板。两个方向共用同一份分组与同一份边集。
  */
-export function layoutDag(view: DagView): DagLayout {
+export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): DagLayout {
   // dagLayers 的层号正好就是行号（层 0 是无依赖者，节点排在最深依赖之后）。
   const layers = dagLayers(view.nodes, view.edges);
   const depth = new Map<string, number>();
@@ -141,39 +152,86 @@ export function layoutDag(view: DagView): DagLayout {
     (groups[level] ??= []).push(node.id);
   }
 
-  let width = 0;
-  for (const group of groups) {
-    if (group === undefined || group.length === 0) continue;
-    width = Math.max(width, group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP);
-  }
-  width = Math.max(width, DAG_NODE_W);
-
   const boxes: DagBox[] = [];
   const at = new Map<string, DagBox>();
-  groups.forEach((group, level) => {
-    if (group.length === 0) return;
-    const rowWidth = group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP;
-    const left = DAG_PAD + (width - rowWidth) / 2;
-    group.forEach((id, column) => {
-      const box: DagBox = {
-        id,
-        x: left + column * (DAG_NODE_W + DAG_H_GAP),
-        y: DAG_PAD + level * (DAG_NODE_H + DAG_V_GAP),
-        w: DAG_NODE_W,
-        h: DAG_NODE_H,
-      };
-      boxes.push(box);
-      at.set(id, box);
+  let width = 0;
+  let height = 0;
+
+  if (direction === 'horizontal') {
+    // 横排：层号→列，层内纵向排。列宽只由本层节点数决定（各列等宽是巧合，不是前提）。
+    const columnHeights = groups.map(
+      (group) => group.length * DAG_NODE_H + Math.max(0, group.length - 1) * DAG_V_GAP
+    );
+    const tallest = Math.max(0, ...columnHeights);
+    let left = DAG_PAD;
+    groups.forEach((group, level) => {
+      if (group.length === 0) return;
+      // 单节点列因此垂直居中，与竖排里「单节点行水平居中」对称。
+      const top = DAG_PAD + (tallest - (columnHeights[level] ?? 0)) / 2;
+      group.forEach((id, column) => {
+        const box: DagBox = {
+          id,
+          x: left,
+          y: top + column * (DAG_NODE_H + DAG_V_GAP),
+          w: DAG_NODE_W,
+          h: DAG_NODE_H,
+        };
+        boxes.push(box);
+        at.set(id, box);
+      });
+      left += group.length * DAG_NODE_W + Math.max(0, group.length - 1) * DAG_H_GAP + DAG_H_GAP;
     });
-  });
+    const span = Math.max(0, left - DAG_PAD - DAG_H_GAP);
+    width = Math.max(span, DAG_NODE_W);
+    height = tallest;
+  } else {
+    // 竖排：层号→行，层内水平排，行整体居中。
+    let widest = 0;
+    for (const group of groups) {
+      if (group === undefined || group.length === 0) continue;
+      widest = Math.max(widest, group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP);
+    }
+    widest = Math.max(widest, DAG_NODE_W);
+    width = widest;
+    height = groups.length * DAG_NODE_H + Math.max(0, groups.length - 1) * DAG_V_GAP;
+
+    groups.forEach((group, level) => {
+      if (group.length === 0) return;
+      const rowWidth = group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP;
+      const left = DAG_PAD + (widest - rowWidth) / 2;
+      group.forEach((id, column) => {
+        const box: DagBox = {
+          id,
+          x: left + column * (DAG_NODE_W + DAG_H_GAP),
+          y: DAG_PAD + level * (DAG_NODE_H + DAG_V_GAP),
+          w: DAG_NODE_W,
+          h: DAG_NODE_H,
+        };
+        boxes.push(box);
+        at.set(id, box);
+      });
+    });
+  }
 
   const edges: DagEdgeLine[] = [];
   for (const [from, to] of parentEdges(view)) {
     const parent = at.get(from);
     const child = at.get(to);
     if (parent === undefined || child === undefined) continue;
-    // 三点折线：出父节点底边、在间隙中部横折、入子节点顶边。只有中段 y 需要挑，间隙
-    // 也够宽，两段横线读起来像一个肘部。
+    // 三点折线：竖排出父底边、横排出父右边，都在间隙中部折一次再进子节点。
+    if (direction === 'horizontal') {
+      const x1 = parent.x + parent.w;
+      const y1 = parent.y + parent.h / 2;
+      const x2 = child.x;
+      const y2 = child.y + child.h / 2;
+      const midX = (x1 + x2) / 2;
+      edges.push({
+        from,
+        to,
+        points: `${round(x1)},${round(y1)} ${round(midX)},${round(y1)} ${round(midX)},${round(y2)} ${round(x2)},${round(y2)}`,
+      });
+      continue;
+    }
     const x1 = parent.x + parent.w / 2;
     const y1 = parent.y + parent.h;
     const x2 = child.x + child.w / 2;
@@ -188,7 +246,7 @@ export function layoutDag(view: DagView): DagLayout {
 
   return {
     width: DAG_PAD * 2 + width,
-    height: DAG_PAD * 2 + groups.length * DAG_NODE_H + Math.max(0, groups.length - 1) * DAG_V_GAP,
+    height: DAG_PAD * 2 + height,
     boxes,
     edges,
   };
@@ -226,6 +284,9 @@ export const DAG_COPY_KEYS = {
   bucketCacheWrite: 'dag.bucket.cacheWrite',
   bucketOutput: 'dag.bucket.output',
   steps: 'dag.steps',
+  dirLabel: 'dag.dir.label',
+  dirVertical: 'dag.dir.vertical',
+  dirHorizontal: 'dag.dir.horizontal',
 } as const;
 
 function measuredInt(value: unknown): number | undefined {
