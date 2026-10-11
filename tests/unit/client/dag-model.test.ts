@@ -6,6 +6,7 @@ import { srcPath } from '../../helpers/repo.js';
 import type { DagNodeView, DagView } from '../../../src/shared/records.js';
 import {
   DAG_COPY_KEYS,
+  DAG_DIRECTIONS,
   DAG_H_GAP,
   DAG_NODE_H,
   DAG_NODE_W,
@@ -17,13 +18,14 @@ import {
   dagWorktreeTone,
   formatCount,
   formatSeconds,
+  isDagDirection,
   isRunning,
   layoutDag,
   liveElapsedMs,
   metricsBreakdown,
   nodeMetricsMap,
 } from '../../../src/client/dag-model.js';
-import type { DagLayout } from '../../../src/client/dag-model.js';
+import type { DagDirection, DagLayout } from '../../../src/client/dag-model.js';
 
 /**
  * 面板两个文件在 Node 里都 import 不了，源码守卫只能读文本。
@@ -226,6 +228,81 @@ describe('layoutDag', () => {
       expect(item.x + item.w).toBeLessThanOrEqual(layout.width - DAG_PAD);
       expect(item.y + item.h).toBeLessThanOrEqual(layout.height - DAG_PAD);
     }
+  });
+});
+
+describe('horizontal layout', () => {
+  // 横排就是竖排转 90°：同一层从「一行」变成「一列」，故层号推的是 x 而不是 y。
+  // 传三层链，断言 y 齐平、x 逐层右移一个「盒宽 + 层间隙」，画幅也照列合成。
+  it('lays a chain left to right, one column per layer', () => {
+    const layout = layoutDag(
+      view([node('a'), node('b', { depends_on: ['a'] }), node('c', { depends_on: ['b'] })]),
+      'horizontal'
+    );
+    const step = DAG_NODE_W + DAG_H_GAP;
+    expect(layout.boxes.map((item) => item.id)).toEqual(['a', 'b', 'c']);
+    expect(box(layout, 'b').y).toBe(box(layout, 'a').y);
+    expect(box(layout, 'b').x).toBe(DAG_PAD + step);
+    expect(box(layout, 'c').x).toBe(DAG_PAD + 2 * step);
+    expect(layout.width).toBe(DAG_PAD * 2 + 3 * DAG_NODE_W + 2 * DAG_H_GAP);
+    // 最高的一列就是画幅的高度：三层各一个节点。
+    expect(layout.height).toBe(DAG_PAD * 2 + DAG_NODE_H);
+  });
+
+  // 竖排里单节点行水平居中；转过来之后它应当垂直居中于画幅，而不是贴顶。
+  // `dagLayers` 把 `a` 与 `a2` 放在同一层（都是无依赖者），单节点的 `b` 因此独居一列，
+  // 而两节点列决定画幅高度——若丢掉居中，`b` 会落在 `DAG_PAD` 上。
+  it('vertically centers a single-node column against a taller one', () => {
+    const layout = layoutDag(
+      view([node('a'), node('b', { depends_on: ['a'] }), node('a2')]),
+      'horizontal'
+    );
+    const center = (item: { y: number; h: number }): number => item.y + item.h / 2;
+    expect(center(box(layout, 'b'))).toBe(layout.height / 2);
+    expect(center(box(layout, 'b'))).not.toBe(center(box(layout, 'a')));
+    // 同层两个节点共处一列：同一 x，纵向依次排开。
+    expect(box(layout, 'a').x).toBe(box(layout, 'a2').x);
+    expect(box(layout, 'a2').y).toBe(box(layout, 'a').y + DAG_NODE_H + DAG_V_GAP);
+    // 高列比它高「一个盒高 + 一个间隙」，它因此下移这差值的一半。
+    expect(box(layout, 'b').y).toBe(DAG_PAD + (DAG_NODE_H + DAG_V_GAP) / 2);
+    expect(layout.height).toBe(DAG_PAD * 2 + 2 * DAG_NODE_H + DAG_V_GAP);
+  });
+
+  // 边也转了：父节点右中 → 中点 x 折两次 → 子节点左中，四个坐标对。
+  // 传两节点依赖，用具体盒子算出期望串并逐字断言（中点取两盒之间的那段水平间隙）。
+  it('draws an elbow from the parent right-center to the child left-center', () => {
+    const layout = layoutDag(view([node('a'), node('b', { depends_on: ['a'] })]), 'horizontal');
+    const parent = box(layout, 'a');
+    const child = box(layout, 'b');
+    const x1 = parent.x + parent.w;
+    const yParentMid = parent.y + parent.h / 2;
+    const x2 = child.x;
+    const yChildMid = child.y + child.h / 2;
+    const midX = (x1 + x2) / 2;
+    expect(layout.edges).toHaveLength(1);
+    expect(layout.edges[0]?.points).toBe(
+      `${String(x1)},${String(yParentMid)} ${String(midX)},${String(yParentMid)} ${String(midX)},${String(yChildMid)} ${String(x2)},${String(yChildMid)}`
+    );
+  });
+
+  it('draws the same nodes in either direction', () => {
+    const doc = view([node('a'), node('b', { depends_on: ['a'] })]);
+    expect(DAG_DIRECTIONS).toEqual(['vertical', 'horizontal']);
+    expect(isDagDirection('vertical')).toBe(true);
+    expect(isDagDirection('horizontal')).toBe(true);
+    expect(isDagDirection('diagonal')).toBe(false);
+    for (const direction of DAG_DIRECTIONS) {
+      const layout = layoutDag(doc, direction);
+      expect(layout.boxes, direction).toHaveLength(2);
+      expect(layout.edges, direction).toHaveLength(1);
+    }
+  });
+
+  // 默认参数是硬契约：既有调用方与几何用例都按竖排读。
+  it('defaults to the vertical direction', () => {
+    const doc = view([node('a'), node('b', { depends_on: ['a'] })]);
+    const explicit: DagDirection = 'vertical';
+    expect(layoutDag(doc)).toEqual(layoutDag(doc, explicit));
   });
 });
 
@@ -527,6 +604,10 @@ describe('DAG_COPY_KEYS', () => {
       bucketCacheWrite: 'dag.bucket.cacheWrite',
       bucketOutput: 'dag.bucket.output',
       steps: 'dag.steps',
+      // 方向控件（`DagBody.tsx`）也从这里取 key，故同样要在这份源码里留下字面量。
+      dirLabel: 'dag.dir.label',
+      dirVertical: 'dag.dir.vertical',
+      dirHorizontal: 'dag.dir.horizontal',
     });
   });
 });
@@ -605,6 +686,23 @@ describe('DAG live-metrics contract', () => {
     const source = clientSource();
     expect(source).toContain('DAG_COPY_KEYS.measuredAt');
     expect(source).toContain('toLocaleTimeString');
+  });
+});
+
+// 旋转控件同样活在 `.tsx` 里：这里的字面量就是「容器收下方向、视图照它画」的接线守卫。
+describe('DAG direction contract', () => {
+  it('forwards the direction the container holds into the drawing model', () => {
+    const source = clientSource();
+    expect(source).toContain('DagDirection');
+    expect(source).toContain('setDirection');
+    expect(source).toContain('layoutDag(dag, direction)');
+  });
+
+  it('names the direction control from the shared copy keys', () => {
+    const source = clientSource();
+    expect(source).toContain('DAG_COPY_KEYS.dirLabel');
+    expect(source).toContain('DAG_COPY_KEYS.dirVertical');
+    expect(source).toContain('DAG_COPY_KEYS.dirHorizontal');
   });
 });
 

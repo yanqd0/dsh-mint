@@ -1,8 +1,8 @@
 /**
  * plan DAG 面板：一个 tab、两个视图（规格见 `notes/plan-dag.md` 与 `notes/agent-tree.md`）。
  *
- * 它是**容器**：视图切换（`SegmentedControl`）、两条必读（DAG 与子代理树）的轮询、跳过重渲的
- * 整份读数守卫、以及一个共用的 1s 走秒时钟都在这里；两个视图（`DagGraphView` /
+ * 它是**容器**：视图切换与方向切换（两个 `SegmentedControl`）、两条必读（DAG 与子代理树）的轮询、
+ * 跳过重渲的整份读数守卫、以及一个共用的 1s 走秒时钟都在这里；两个视图（`DagGraphView` /
  * `AgentTreeBody`）各自只画自己的东西。
  *
  * 两条读各按自己的路由轮询，且**只有当前视图被读**：切到子代理树时 DAG 的那条 2s 请求停掉，
@@ -23,7 +23,8 @@ import { StateNotice } from './StateNotice.js';
 import { AGENT_COPY_KEYS, agentSummary } from './agent-tree-model.js';
 import type { ReadSample } from './dag-sampler.js';
 import { agentSampleOf, sameSample, sampleOf } from './dag-sampler.js';
-import { dagCounts } from './dag-model.js';
+import type { DagDirection } from './dag-model.js';
+import { DAG_COPY_KEYS, dagCounts, isDagDirection } from './dag-model.js';
 import type { LoadState } from './model.js';
 import { toLoadState } from './model.js';
 import { BODY, DAG_SHELL, NOTE, TOOLBAR } from './styles.js';
@@ -39,6 +40,9 @@ export type PlanDagView = 'nodes' | 'subagents';
 /** 打开面板先给 DAG：它是这个 tab 的本来面目，子代理树是第二眼。 */
 export const DEFAULT_PLAN_DAG_VIEW: PlanDagView = 'nodes';
 
+/** 默认方向是自上而下（用户明确要求不变）：旋转只是这一次阅读的临时选择。 */
+export const DEFAULT_DAG_DIRECTION: DagDirection = 'vertical';
+
 /** 切换控件的分段：与「正文预览 / 代码」同一个控件、同一套 id 契约。 */
 export function viewOptions(
   copy: MintBodyProps['copy']
@@ -46,6 +50,16 @@ export function viewOptions(
   return [
     { value: 'nodes', label: copy(AGENT_COPY_KEYS.tabNodes) },
     { value: 'subagents', label: copy(AGENT_COPY_KEYS.tabSubagents) },
+  ];
+}
+
+/** 方向控件的分段：同样两个方向、同一套 id 契约。 */
+export function directionOptions(
+  copy: MintBodyProps['copy']
+): readonly { value: DagDirection; label: string }[] {
+  return [
+    { value: 'vertical', label: copy(DAG_COPY_KEYS.dirVertical) },
+    { value: 'horizontal', label: copy(DAG_COPY_KEYS.dirHorizontal) },
   ];
 }
 
@@ -112,12 +126,15 @@ export function DagBody(props: MintBodyProps): ReactElement {
   const actions = info?.tab.actions;
 
   const [view, setView] = useState<PlanDagView>(DEFAULT_PLAN_DAG_VIEW);
+  // 旋转只活在这个容器里：刷新面板即回默认方向。
+  const [direction, setDirection] = useState<DagDirection>(DEFAULT_DAG_DIRECTION);
   const [reload, setReload] = useState(0);
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [hoveredAgent, setHoveredAgent] = useState<string | undefined>(undefined);
   // 切换控件按基 id 生成 tab 与它认领的面板 id（见 `Body.tsx`）：同一页面可以挂多个会话的
-  // mint tab，故必须唯一。
+  // mint tab，故必须唯一——两个控件各要一个 id。
   const viewId = useId();
+  const directionId = useId();
   const activeRef = useRef(true);
   activeRef.current = visible && view === 'nodes';
   const agentsActiveRef = useRef(true);
@@ -203,7 +220,7 @@ export function DagBody(props: MintBodyProps): ReactElement {
           aria-labelledby={`${viewId}-nodes`}
           style={{ ...BODY, ...panel }}
         >
-          <DagGraphView {...props} state={dagState} active={visible} />
+          <DagGraphView {...props} state={dagState} active={visible} direction={direction} />
         </div>
       );
     }
@@ -261,6 +278,19 @@ export function DagBody(props: MintBodyProps): ReactElement {
           }}
           label={copy(AGENT_COPY_KEYS.tabLabel)}
         />
+        {/* 方向只属于 DAG 视图：子代理树没有方向可言，那一侧不放这个控件。 */}
+        {view === 'nodes' && (
+          <SegmentedControl
+            id={directionId}
+            value={direction}
+            options={directionOptions(copy)}
+            onChange={(next) => {
+              // 只切方向：不 bump `reload`（会重挂两条读的轮询）、不重置 hover。
+              if (isDagDirection(next)) setDirection(next);
+            }}
+            label={copy(DAG_COPY_KEYS.dirLabel)}
+          />
+        )}
         {toolbar !== undefined && <span style={NOTE}>{toolbar}</span>}
       </div>
       {content}
