@@ -250,6 +250,16 @@ export interface DagNodeMetrics {
   /** 输出 token（宿主投影 `outputTokens`；推理 token 含在其中）。 */
   output?: number;
   /**
+   * 当前上下文占用（宿主 `contextPressure.pressureTokens`：最近一次请求的提示词大小，
+   * 即未命中 + 命中 + 缓存写，**不含输出**）。
+   *
+   * 与 {@link tokens} **不是同一把尺子**，故两个字段并存：`tokens` 是整条日志累计用掉的量
+   * （账单口径），`context` 是此刻留在上下文里的量（窗口口径）。provider 没报过 usage 时
+   * 它缺席——那是「读不到」，不是 0。该键没注册时退回 `tokenUsage.last.buckets` 的三桶之和
+   * （同一语义、同一次请求的四桶），两者都读不到就整项不发。
+   */
+  context?: number;
+  /**
    * 该会话已结算的步数（`sessionStats.steps`，即 `step/end` 计数）。
    *
    * 步数×留存上下文才是成本的主项，故它与四桶一起落：`tokens` 只说明「多大」，
@@ -302,5 +312,53 @@ export interface MintDagPayload {
   metrics?: Record<string, DagNodeMetrics>;
   /** The host clock (epoch ms) every metric in this answer was sampled at. */
   sampled_at?: number;
+  warnings?: string[];
+}
+
+/**
+ * 子代理树的一个节点：根会话（`main`）或它下面的某一级子代理。
+ *
+ * 形状是**扁平数组 + `parent`**，不是嵌套树：面板要按类型（行/图）自己排版，而嵌套结构会
+ * 把「父节点缺一条读数」「某个 id 重复出现」这类坏数据的处理塞进序列化里。根节点的
+ * `parent` 缺席——它没有上一层。
+ */
+export interface AgentNodeView {
+  /** 会话 id：根会话的 id，或某个子代理的子会话 id（`DagNodeView.agent` 是同一个键）。 */
+  id: string;
+  kind: 'main' | 'subagent';
+  /** 上一层会话 id；缺席即根。 */
+  parent?: string;
+  /** 0 起算的层号：根是 0，一级子代理是 1。 */
+  depth: number;
+  /** 派发时的 description；子代理可能没带 label，此时宿主退回短 id。 */
+  label: string;
+  /** 宿主的派发形态；读不出来时缺席（`unknown` 的条目根本不进这个数组）。 */
+  mode?: 'one-shot' | 'continuable';
+  /**
+   * 该子会话此刻是否真的有活 agent（`agents.get(id)?.status === 'running'`）。
+   *
+   * 已结束的子代理仍在 catalog 里（catalog 是父会话的持久事实），故 `running: false`
+   * 与「没量到读数」是两件事，面板要分开画。
+   */
+  running: boolean;
+  /** 宿主记下的会话创建时刻（epoch ms）；读不到就缺席。 */
+  seenAt?: number;
+  /** 宿主实测读数；只含真读到的字段（`main` 不含 `tokens`，见 `notes/agent-tree.md`）。 */
+  metrics?: DagNodeMetrics;
+}
+
+/**
+ * `GET /dsh-mint/agents` — 子代理树这一视图的整个答案。
+ *
+ * 与 `/dsh-mint/dag` 的差别：这里没有「文件不可读」这种态——数据全来自活着的宿主服务，
+ * 读不到就是个空数组加一条 `warnings`，没有一份可以命名路径的文档。
+ */
+export interface MintAgentsPayload {
+  ok: true;
+  /** 先序：根在前，子级紧随其父；已按宿主 catalog 的事件顺序排列。 */
+  nodes: AgentNodeView[];
+  counts: { total: number; running: number; unsupported: number };
+  /** The host clock (epoch ms) every metric in this answer was sampled at. */
+  sampled_at: number;
   warnings?: string[];
 }

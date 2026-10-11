@@ -105,6 +105,12 @@ export interface SystemPromptLike {
 export interface AgentLike {
   /** Session id, shared by the agent and its session (the session-scoped key). */
   id?: string;
+  /**
+   * The live lifecycle state the host mirrors on every `agent/status` transition.
+   * Optional so older/leaner hosts (and the unit-test doubles) keep working; a
+   * reader that needs it then degrades to "not running".
+   */
+  status?: AgentStatusLike;
   ctx: DshContext;
   session: {
     id?: string;
@@ -263,6 +269,40 @@ export interface SessionProjectionsLike {
 /** Subset of the host's `ctx.agents` service. */
 export interface AgentsLike {
   get(id: string): AgentCwdLike | undefined;
+  /**
+   * Every live agent, in registration order. Optional: a lean composition (or a
+   * test double) may publish `get` alone, and callers then fall back to it.
+   */
+  list?(): readonly unknown[];
+}
+
+/**
+ * The host `Agent`'s live lifecycle state.
+ *
+ * `running` means a driver is active for that session; `idle` means it settled
+ * and no work is scheduled. It is the host's own answer to "is this subagent
+ * still doing something", which is exactly what the subagent tree draws.
+ */
+export type AgentStatusLike = 'idle' | 'running';
+
+/**
+ * One live session as the host's registry publishes it.
+ *
+ * The two registries answer different shapes for the same id — `agents.get`
+ * gives an Agent carrying `{ session }` (and often *is* the session), while
+ * `sessions.get` gives the session itself — so callers normalize both.
+ */
+export interface AgentSessionLike {
+  header: {
+    id?: string;
+    parentSession?: string;
+    createdAt?: number;
+  };
+}
+
+/** Subset of the host's `ctx.sessions` service (`dsh-session`'s store). */
+export interface SessionsLike {
+  get(id: string): unknown;
 }
 
 /**

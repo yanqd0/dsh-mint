@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   activeElapsedMs,
   clearMeasurements,
+  contextTokens,
   lastMeasurement,
   measureDagNodes,
   mergeMetrics,
@@ -223,6 +224,46 @@ describe('activeElapsedMs', () => {
   });
 });
 
+describe('contextTokens', () => {
+  // 两个字段不是同一把尺子：provider 报出的最近一次请求大小（窗口口径）优先，
+  // `tokenUsage.last` 的三桶之和只是它在别的宿主上的同义替身（输出不计入）。
+  it('prefers the provider-reported pressure over the last usage sample', () => {
+    expect(
+      contextTokens(
+        { pressureTokens: 900 },
+        { totals: totals(), last: { turn: 1, step: 1, buckets: totals() } }
+      )
+    ).toBe(900);
+  });
+
+  it('falls back to the last usage sample input buckets when pressure is absent', () => {
+    expect(
+      contextTokens(undefined, { totals: totals(), last: { turn: 1, step: 1, buckets: totals() } })
+    ).toBe(8);
+  });
+
+  it('falls back when the pressure state is registered but carries no token yet', () => {
+    expect(
+      contextTokens({}, { totals: totals(), last: { turn: 0, step: 0, buckets: totals() } })
+    ).toBe(8);
+  });
+
+  // 缺失不猜：两条来源都不成时返回 undefined，绝不把半截输入冒充成上下文占用。
+  it('refuses when neither source carries a usable number', () => {
+    for (const [pressure, usage] of [
+      [undefined, undefined],
+      [undefined, { totals: totals() }],
+      [undefined, { totals: totals(), last: null }],
+      [undefined, { totals: totals(), last: { at: 1 } }],
+      [undefined, { totals: totals(), last: { buckets: totals({ cacheReadTokens: -1 }) } }],
+      [{ pressureTokens: 1.5 }, undefined],
+      [{ pressureTokens: 'x' }, undefined],
+    ] as const) {
+      expect(contextTokens(pressure, usage), JSON.stringify([pressure, usage])).toBeUndefined();
+    }
+  });
+});
+
 describe('nodeMetrics', () => {
   // 拆分与求和一起发布：`tokens` 是四桶之和（语义不变），四桶分开落，面板才能读成本构成。
   it('publishes the four buckets alongside their sum', () => {
@@ -308,6 +349,62 @@ describe('nodeMetrics', () => {
     expect(
       nodeMetrics({ session: child('a'), projections, status: 'done', sampledMs: SAMPLED_MS })
     ).toEqual({});
+  });
+
+  // 上下文占用是独立的一次读：`contextPressure` 没注册只丢 `context`，四桶/步数/时长照旧。
+  it('publishes the context occupancy next to the buckets', () => {
+    const projections = projectionsFor({
+      tokenUsage: { totals: totals() },
+      contextPressure: { pressureTokens: 900 },
+      subagentTiming: { settledMs: 42 },
+    });
+    expect(
+      nodeMetrics({ session: child('a'), projections, status: 'done', sampledMs: SAMPLED_MS })
+    ).toEqual({
+      tokens: 10,
+      uncached_input: 1,
+      cache_read: 3,
+      cache_write: 4,
+      output: 2,
+      context: 900,
+      elapsed_ms: 42,
+    });
+  });
+
+  it('omits only the context when the pressure key is not registered', () => {
+    const projections = projectionsFor({
+      tokenUsage: { totals: totals() },
+      sessionStats: { steps: 7 },
+    });
+    const found = nodeMetrics({
+      session: child('a'),
+      projections,
+      status: 'done',
+      sampledMs: SAMPLED_MS,
+    });
+    expect(found.context).toBeUndefined();
+    expect(found.steps).toBe(7);
+    expect(found.tokens).toBe(10);
+  });
+
+  // main 口径：整条主会话的累计不是「这个节点花了多少」，故求和与四桶都不发；
+  // 上下文占用与步数、时长是全会话可比的量，照发。
+  it('withholds the token counts for the main session but keeps context and time', () => {
+    const projections = projectionsFor({
+      tokenUsage: { totals: totals() },
+      contextPressure: { pressureTokens: 900 },
+      sessionStats: { steps: 7 },
+      subagentTiming: { settledMs: 42 },
+    });
+    expect(
+      nodeMetrics({
+        session: child('a'),
+        projections,
+        status: 'running',
+        sampledMs: SAMPLED_MS,
+        kind: 'main',
+      })
+    ).toEqual({ context: 900, steps: 7, elapsed_ms: 42 });
   });
 });
 

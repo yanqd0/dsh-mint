@@ -105,6 +105,39 @@ export function sessionSteps(stats: unknown): number | undefined {
 }
 
 /**
+ * 当前上下文占用：最近一次请求的提示词大小（未命中 + 命中 + 缓存写，不含输出）。
+ *
+ * 两条来源**同义、按新到旧**，与四桶的 `tokens` 是刻意不同的尺子（累计 vs 窗口）：
+ *
+ * 1. `contextPressure.pressureTokens` —— provider 报出的最近一次请求大小，宿主 token-meter
+ *    自己也在用同一个字段；
+ * 2. 退回 `tokenUsage.last.buckets` 的三桶之和 —— 同一语义，只是在 `contextPressure`
+ *    未注册或还没采到的宿主上，`tokenUsage` 的「最近一次请求」就是同一件事。
+ *
+ * 只要有一个数读不到（`last` 为 `null`、桶缺失或非法）就返回 `undefined`：宁可整项不画，
+ * 也不把半截输入冒充成上下文占用。
+ *
+ * @param pressure - `contextPressure` 投影的 **state**（不是它的 wire view）。
+ * @param usage - `tokenUsage` 投影的 **state**。
+ */
+export function contextTokens(pressure: unknown, usage: unknown): number | undefined {
+  if (isRecord(pressure)) {
+    const value = pressure['pressureTokens'];
+    if (value !== undefined) return isCount(value) ? value : undefined;
+  }
+  if (!isRecord(usage)) return undefined;
+  const last = usage['last'];
+  if (!isRecord(last)) return undefined;
+  const buckets = last['buckets'];
+  if (!isRecord(buckets)) return undefined;
+  const uncached = buckets['uncachedInputTokens'];
+  const cacheRead = buckets['cacheReadTokens'];
+  const cacheWrite = buckets['cacheWriteTokens'];
+  if (!isCount(uncached) || !isCount(cacheRead) || !isCount(cacheWrite)) return undefined;
+  return uncached + cacheRead + cacheWrite;
+}
+
+/**
  * The active-turn duration the host's own subagent timing reports.
  *
  * The formula and the clock match the dsh subagent UI: past turns are frozen in
@@ -139,6 +172,11 @@ export function activeElapsedMs(
 /**
  * Read one node's live metrics off the host's projection registry.
  *
+ * 每次读取都是**独立**的一次：四桶坏了不连累步数/时长/上下文，反之亦然。唯一一条跨字段
+ * 的规则是 `kind === 'main'` 时**不发** token 计数——整条主会话的累计不是「这个节点花了
+ * 多少」（与 `dag-tool` 的「main 自有节点不填 tokens」同一条口径），而上下文占用是全会话
+ * 与子代理都成立的可比量，故仍然发。
+ *
  * The whole body is one `try`/`catch`: `stateOf` belongs to another package and
  * may throw for a session it does not know, which must cost this node its
  * metrics, not the route its answer.
@@ -148,11 +186,14 @@ export function nodeMetrics(input: {
   projections: SessionProjectionsLike;
   status: DagStatus;
   sampledMs: number;
+  /** `main` 只收上下文/步数/时长；子代理另收四桶与求和。缺席按子代理算。 */
+  kind?: 'main' | 'subagent';
 }): DagNodeMetrics {
   try {
     const metrics: DagNodeMetrics = {};
-    const buckets = tokenBuckets(input.projections.stateOf(input.session, 'tokenUsage'));
-    if (buckets !== undefined) {
+    const usage = input.projections.stateOf(input.session, 'tokenUsage');
+    const buckets = tokenBuckets(usage);
+    if (buckets !== undefined && input.kind !== 'main') {
       // 四桶同在：求和与拆分是同一次读数的两副面孔，面板既有 `tokens` 可读，也能分开看成本。
       metrics.tokens = sumBuckets(buckets);
       metrics.uncached_input = buckets.uncached_input;
@@ -160,6 +201,11 @@ export function nodeMetrics(input: {
       metrics.cache_write = buckets.cache_write;
       metrics.output = buckets.output;
     }
+    const context = contextTokens(
+      input.projections.stateOf(input.session, 'contextPressure'),
+      usage
+    );
+    if (context !== undefined) metrics.context = context;
     // 步数独立于四桶：`sessionStats` 读不到只是不发布它，四桶照旧。
     const steps = sessionSteps(input.projections.stateOf(input.session, 'sessionStats'));
     if (steps !== undefined) metrics.steps = steps;

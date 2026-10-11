@@ -27,6 +27,9 @@ export const ROUTE_NAMES = [
   // The plan DAG's read-only view: file-keyed rather than
   // project-keyed, so it takes a session id and spawns no CLI.
   'dag',
+  // The subagent tree of the same session: read entirely off live host
+  // services, so it also takes a session id and spawns no CLI.
+  'agents',
 ] as const;
 
 export type RouteName = (typeof ROUTE_NAMES)[number];

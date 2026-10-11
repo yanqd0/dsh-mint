@@ -278,8 +278,8 @@ function ownerOfSession(
  * 要同步。
  *
  * 每一个「测不到」的理由都是一个 `return`：宿主没有投影注册表、注册表不认得该代理的
- * 会话，或一个数都没回来（四桶、步数与时长三者皆空）。它们都不是要上报的错误，节点
- * 自身的 `tokens` 仍是面板已经认得的兜底。
+ * 会话，或一个数都没回来（四桶、步数、上下文与时长四者皆空）。它们都不是要上报的错误，
+ * 节点自身的 `tokens` 仍是面板已经认得的兜底。
  *
  * @param input.status - 节点自身的生命周期，计时公式据此分支（`running` 按采样时钟量，
  *   已结算节点按它投影记下的 `through` 量）。
@@ -308,7 +308,8 @@ export function readAgentMetrics(input: {
   if (
     metrics.tokens === undefined &&
     metrics.elapsed_ms === undefined &&
-    metrics.steps === undefined
+    metrics.steps === undefined &&
+    metrics.context === undefined
   )
     return undefined;
   return metrics;
