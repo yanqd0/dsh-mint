@@ -135,8 +135,10 @@ AbortController**（`RequestScope`），
 `MaxListeners`，且只能取消其中一个。
 
 > **`/dsh-mint/dag` 与 `/dsh-mint/agents` 是两条按「会话」而非「项目」取数的路由**：前者读
-> `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），后者读宿主内存里的
-> `subagentCatalog` 投影与 agent/会话注册表（`src/dag/agent-tree/agent-tree.ts`）。两条都
+> `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），后者以宿主内存里的
+> `subagentCatalog` 投影与 agent/会话注册表（`src/dag/agent-tree/agent-tree.ts`）为准，
+> 读不到时退回自己的快照 `/tmp/mint/agents/<sessionId>.json`
+> （`src/dag/agent-tree/agent-tree-store.ts`）。两条都
 > **不 spawn mint、也不做在线会话门禁**——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验，非法即 400。
 > `/dsh-mint/dag` 的信封
 > `{ ok:true, dag: DagView|null, revision, file, autoOpen, metrics?, sampled_at?, warnings? }`：**文件缺失 → 200 + `dag:null`**
@@ -145,9 +147,11 @@ AbortController**（`RequestScope`），
 > （客户端只有这一次机会知道开关，见下）。
 >
 > `/dsh-mint/agents` 的信封是
-> `{ ok:true, nodes: AgentNodeView[], counts:{total,running,unsupported}, sampled_at, warnings? }`：
-> **根会话不在册、服务缺失、投影读抛错都是空树**（不是 404、不是 500），`warnings` 只在非空时出现。
-> 线格式与口径见 [agent-tree.md](agent-tree.md)。
+> `{ ok:true, nodes: AgentNodeView[], counts:{total,running,unsupported}, sampled_at, revision?, file?, stale?, warnings? }`：
+> 读到非空实时树就答它（`revision: 0`）并顺手落一份快照；实时树为空而盘上有快照就答快照
+> （`stale:true`、逐节点 `running:false`、`sampled_at`/`revision`/`file` 都取自那份文档）；都没有
+> 才是空树（不是 404、不是 500）。**根会话不在册、服务缺失、投影读抛错都不算失败**；只有快照文件
+> 存在却读不动才多一条 `warnings`。线格式与口径见 [agent-tree.md](agent-tree.md)。
 
 > **落盘样本**：实测值会**写进 DAG 文档**的 `samples`（`subagent/end` 与 `mint_plan_dag`
 > 的 `set → done` 各落一次，路由对「仍 running 但已测不到 agent」的节点兜底补一次）。信封里

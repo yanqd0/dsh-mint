@@ -19,12 +19,12 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 │   ├── reminders.ts                       # 工具调用后的事件提醒
 │   ├── planbind.ts / plan-mode.ts         # 计划模式退出/开工门禁 + 会话计划状态
 │   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀；入口只再导出）
-│   ├── routes/internal/                   # 按职责拆分：request-scope / list-policy / mint-handler / cli-surface
+│   ├── routes/internal/                   # 按职责拆分：request-scope / list-policy / mint-handler / cli-surface / agent-snapshot（子代理树快照）
 │   └── ...                                # session-ledger.ts：会话内 mint 写台账
 ├── dag/                                   # 依赖 shared + mint，并反向接 host
 │   ├── dag.ts                             # DAG 数据层公开面（只再导出 dag/ 的实现）
 │   ├── dag/internal/                      # 按职责拆分：model / validate / parse-action / parse-doc / write / graph
-│   ├── agent-tree/                        # 子代理树：读父会话的 subagentCatalog 投影 + 注册表 + 会话投影
+│   ├── agent-tree/                        # 子代理树：读父会话的 subagentCatalog 投影 + 注册表 + 会话投影；agent-tree-store.ts 是它的快照文件层（/tmp/mint/agents，与 dag-store 同形态）
 │   ├── dag-store.ts / dag-lifecycle.ts    # /tmp 文档读写与锁 / 子代理起止配对
 │   ├── dag-tool.ts / worktree-tool.ts     # mint_plan_dag 与 worktree 两个宿主工具
 │   └── ...                                # metrics / plan-reminder / worktree-sweep
