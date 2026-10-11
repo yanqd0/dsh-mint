@@ -132,6 +132,7 @@ export const ZH = {
   'agents.running': '{count} 个在跑',
   'agents.unsupported': '{count} 个未支持',
   'agents.dagNode': 'DAG 节点 {id}',
+  'agents.stale': '会话已结束，显示 {at} 的快照',
   'agents.root': 'main',
 } as const satisfies Record<string, string>;
 
@@ -244,6 +245,7 @@ export const EN = {
   'agents.running': '{count} running',
   'agents.unsupported': '{count} unsupported',
   'agents.dagNode': 'DAG node {id}',
+  'agents.stale': 'Session ended; showing the {at} snapshot',
   'agents.root': 'main',
 } as const satisfies Record<CopyKey, string>;
 

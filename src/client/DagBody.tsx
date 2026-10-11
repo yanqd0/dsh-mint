@@ -228,6 +228,13 @@ export function DagBody(props: MintBodyProps): ReactElement {
         aria-labelledby={`${viewId}-subagents`}
         style={{ ...BODY, ...panel }}
       >
+        {agentsState.value.stale === true ? (
+          <p style={{ ...NOTE, padding: '8px 10px 0', margin: 0 }}>
+            {copy(AGENT_COPY_KEYS.stale, {
+              at: new Date(agentsState.value.sampled_at).toLocaleTimeString(),
+            })}
+          </p>
+        ) : undefined}
         <AgentTreeBody
           payload={agentsState.value}
           copy={copy}

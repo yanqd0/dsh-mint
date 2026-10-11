@@ -13,6 +13,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 import { collectAgentTree } from '../../../dag/agent-tree/agent-tree.js';
 import type { AgentTreeRead } from '../../../dag/agent-tree/agent-tree.js';
+import { AGENT_TREE_DIR, readAgentTreeDoc } from '../../../dag/agent-tree/agent-tree-store.js';
+import type { AgentTreeFileRead } from '../../../dag/agent-tree/agent-tree-store.js';
 import { isValidDagSession, sampleOf } from '../../../dag/dag.js';
 import type { DagSample } from '../../../dag/dag.js';
 import { withSample } from '../../../dag/dag-lifecycle.js';
@@ -37,6 +39,7 @@ import {
 import type { ParsedItems } from '../../../mint/mint-json.js';
 import { runMint } from '../../../mint/mint.js';
 import type { MintRunOptions, MintRunResult } from '../../../mint/mint.js';
+import { flushAgentSnapshot } from './agent-snapshot.js';
 import type { DagNodeMetrics, DagStatus, MintDagPayload } from '../../../shared/records.js';
 import { ROUTE_PREFIX, isRouteName } from '../../../shared/route-paths.js';
 import type {
@@ -220,15 +223,20 @@ export function createMintHandler(
   /**
    * 应答子代理树路由。
    *
-   * 与 {@link sendDag} 同一族：**按会话寻址，不按项目**——数据全在宿主内存里（agent 与会话
-   * 注册表 + 三个会话投影），不跑 mint CLI，所以也在活跃会话查找之前应答。差别只有一个：这里
-   * 没有「文档不可读」那种态，服务缺失或抛错都退化成**空树**，面板显示空态而不是失败页。
+   * 与 {@link sendDag} 同一族：**按会话寻址，不按项目**——读数全在宿主内存里（agent 与会话
+   * 注册表 + 三个会话投影），不跑 mint CLI，所以也在活跃会话查找之前应答；兜底那份文档同样按
+   * 会话 id 寻址。
+   *
+   * 答案分三种：读到非空实时树就答它、顺手落一份快照；读不到实时树而盘上有快照就答快照
+   * （`stale`，`running` 一律按已结束下发）；两者都没有就是空树。只有第三种里的「文档不可读」
+   * 会在 `warnings` 里点名，服务缺失或抛错仍然只是空树——面板宁可画空树，不接受失败页。
    */
   const sendAgents = async (res: ServerResponse, params: URLSearchParams): Promise<void> => {
     const sessionId = params.get('session') ?? '';
     if (!isValidDagSession(sessionId)) {
       throw new RouteRequestError('session must be a 1-64 char [A-Za-z0-9_-] id');
     }
+    const agentsDir = deps.agentsDir ?? AGENT_TREE_DIR;
     // 一次请求只读一次钟：信封的 `sampled_at` 就是这次读数的基准，面板据它走秒。
     const sampledMs = now();
     let read: AgentTreeRead;
@@ -241,14 +249,58 @@ export function createMintHandler(
       // 树的读取是尽力而为：一个注册表塌了也不能把 200 变成 500（面板宁可画空树）。
       read = { nodes: [], counts: { total: 0, running: 0, unsupported: 0 } };
     }
+    // 活着的服务答得出东西，就以它为准；这也是快照的唯一写入时机——快照只能取自真实读数，
+    // 绝不能把上一次的旧树再写回去变成新的旧树。
+    if (read.nodes.length > 0) {
+      await flushAgentSnapshot({ sessionId, read, dir: agentsDir, sampledMs });
+      sendJson(res, 200, {
+        ok: true,
+        nodes: read.nodes,
+        counts: read.counts,
+        sampled_at: sampledMs,
+        revision: 0,
+        ...(read.warnings === undefined || read.warnings.length === 0
+          ? {}
+          : { warnings: read.warnings }),
+      });
+      return;
+    }
+    let stored: AgentTreeFileRead | undefined;
+    try {
+      stored = await readAgentTreeDoc(sessionId, agentsDir);
+    } catch {
+      // 路径校验在路由入口已经做过，这里只兜住其余意外：读不到快照就是没有快照。
+      stored = undefined;
+    }
+    if (stored?.state === 'ok') {
+      const { doc } = stored;
+      sendJson(res, 200, {
+        ok: true,
+        // 快照里的 `running` 说的是一次过去的读数：会话已不在，一律按已结束下发，
+        // 否则面板会为一段不会再动的旧读数起走秒定时器。
+        nodes: doc.nodes.map((node) => ({ ...node, running: false })),
+        counts: {
+          total: doc.nodes.length,
+          running: 0,
+          unsupported: read.counts.unsupported,
+        },
+        sampled_at: doc.sampled_at,
+        revision: doc.revision,
+        file: stored.file,
+        stale: true,
+      });
+      return;
+    }
+    const warnings = [
+      ...(read.warnings ?? []),
+      ...(stored?.state === 'unreadable' ? [`unreadable agent tree: ${stored.error}`] : []),
+    ];
     sendJson(res, 200, {
       ok: true,
-      nodes: read.nodes,
+      nodes: [],
       counts: read.counts,
       sampled_at: sampledMs,
-      ...(read.warnings === undefined || read.warnings.length === 0
-        ? {}
-        : { warnings: read.warnings }),
+      ...(warnings.length === 0 ? {} : { warnings }),
     });
   };
 
@@ -481,12 +533,12 @@ export function createMintHandler(
  *
  * @param ctx - 插件的根 context。
  * @param entry - 挂载行的 `mintEntry`，转发给每一次运行。
- * @param options - 挂载行的客户端旋钮：DAG 标签页的自动打开默认值与 DAG 目录覆写。
+ * @param options - 挂载行的客户端旋钮：DAG 标签页的自动打开默认值，以及 DAG / 子代理树两个目录覆写。
  */
 export function installMintRoutes(
   ctx: DshContext,
   entry?: string,
-  options?: { openDagTab?: boolean; dagDir?: string }
+  options?: { openDagTab?: boolean; dagDir?: string; agentsDir?: string }
 ): void {
   ctx.inject?.(['webServer'], (scoped) => {
     const webServer: WebServerLike | undefined = scoped.webServer;
@@ -527,6 +579,7 @@ export function installMintRoutes(
       ...(entry === undefined ? {} : { entry }),
       ...(options?.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
       ...(options?.dagDir === undefined ? {} : { dagDir: options.dagDir }),
+      ...(options?.agentsDir === undefined ? {} : { agentsDir: options.agentsDir }),
     });
     const register = (): (() => void) =>
       webServer.register({ kind: 'prefix', path: ROUTE_PREFIX, handler });

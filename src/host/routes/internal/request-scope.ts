@@ -40,6 +40,8 @@ export interface MintRouteDeps {
   now?: () => number;
   /** DAG 目录覆写；默认 `DAG_DIR`。 */
   dagDir?: string;
+  /** 子代理树文档目录覆写；默认 `AGENT_TREE_DIR`。 */
+  agentsDir?: string;
   /** 挂载行的 `openDagTab`，随 DAG 信封下发；默认 true。 */
   openDagTab?: boolean;
   /** 某个会话 DAG 的逐节点实时指标；测试/精简主机上没有。 */
