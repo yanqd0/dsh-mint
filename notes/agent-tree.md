@@ -74,16 +74,37 @@
   ],
   "counts": { "total": 3, "running": 2, "unsupported": 0 },
   "sampled_at": 1786000001000,
+  "revision": 0,
   "warnings": ["root session is not live"],
 }
 ```
 
 - 形状是**扁平数组 + `parent`**（不是嵌套树）：客户端要按行排版，嵌套结构只会把「父缺失」
   「id 重复」这类坏数据的处理塞进序列化里。
-- `warnings` 只在非空时出现；**根不在册、服务缺失、`stateOf` 抛错都是空树**，不是 404 也不是 500
-  ——这条路由没有「文件不可读」那种态，只有「读不到」。
+- `warnings` 只在非空时出现；**根不在册、服务缺失、`stateOf` 抛错都是空树**，不是 404 也不是 500。
 - **护栏**：`visited` 去重（防坏 catalog 的环）、`mode` 未知即丢、深度 ≤ 8、节点 ≤ 200；一个分支
   抛错只丢它自己。
+- **live 优先、快照兜底**（两个方向各是三段之一）：
+  1. 读到**非空实时树** → 答它（`revision: 0`，无 `stale`），并把这份读数落成快照（见 §4.1）；
+  2. 实时树为空（会话已结束、注册表塌了、宿主重启过）而盘上有快照 → 答**快照**：`stale: true`、
+     `file`（文档路径）、`revision`（文档版本）、`sampled_at`（那份文档的采样钟），且**逐节点把
+     `running` 改成 `false`**——旧读数不能继续走秒，`counts.running` 随之归零；
+  3. 两者都没有（文件缺失是正常态）→ 空树；只有快照文件**存在但读不动**（坏 JSON / 版本不符 /
+     session 对不上）才回空树 + `warnings: ["unreadable agent tree: …"]`。
+- 线格式的三处增量都是可选的：`revision` / `file` / `stale`——旧客户端读到 live 答案时它们缺席，
+  行为不变。
+
+### 4.1 快照文档（`/tmp/mint/agents/<sessionId>.json`）
+
+- **写入时机＝面板轮询**（与 DAG 的 `samples` 同形态）：路由每次拿到**非空**实时树就顺手写一份；
+  空树**绝不**写（它什么都没答，写下去只会把上一次好快照抹掉）。
+- 形状 `{ version: 1, session, revision, sampled_at, nodes }`：`revision` 从 1 起、只在**树真的变了**
+  时才前进，`sampled_at` 存**这次读数的宿主钟**（不是写盘那一刻）。
+- 「变没变」的判据排除 `elapsed_ms`：时长只增不减，把它算进来等于每次轮询都写盘。判据实现在
+  `src/host/routes/internal/agent-snapshot.ts`。
+- 读取校验整体严格（版本 / 会话 id / `revision` / `sampled_at` / 节点上限 200）、单节点宽松（坏节点
+  整条丢，其余照画）；路径段先过 `isValidDagSession` 再拼，坏 id 抛 `AgentTreePathError`。原子替换
+  （同目录临时文件 + `rename`、`0600`）与按会话 promise 锁照 `dag-store.ts`。
 
 ## 5. 客户端
 
@@ -92,8 +113,12 @@
 - **两条读各按自己的路由轮询**，且**只有当前视图被读**；切回来立即补读一次。整份读数守卫
   （`sameSample`）对两者共用：DAG 比 `revision + sampled_at + metrics`，子代理树比节点 id →
   `{running, label 指纹, tokens, context, elapsed_ms}`。**子代理树的 `sampled_at` 不参与判定**——
-  那条路由每次应答都会读一次钟，把它算进身份会让面板每 2s 白重渲一次。
-- **走秒只对 running 行**，锚在信封的 `sampled_at` 上；一个共用的 1s 定时器。
+  那条路由每次应答都会读一次钟，把它算进身份会让面板每 2s 白重渲一次；**兜底快照的 `revision`
+  参与判定**（它只在树真变了时才前进），于是 live ↔ 快照的切换与快照内部的一次重写都按它重渲。
+- **走秒只对 running 行**，锚在信封的 `sampled_at` 上；一个共用的 1s 定时器。兜底快照的
+  `sampled_at` 是过去那一刻，且节点已被改成 `running: false`，所以那棵树不起走秒。
+- **stale 说明**：`stale === true` 时，子代理面板在树上方多一行「会话已结束，显示 HH:MM:SS 的快照」
+  （`agents.stale`，钟点由客户端格式化）——旧值必须看起来像旧值，而不是像现状。
 - **hover 卡片**给完整 label、会话 id、`mode`、步数、`seenAt`，以及**该 agent 被哪些 DAG 节点
   认领过**（由容器从第一视图的文档里查 `node.agent` 现算，不新增路由字段）。
 - **配色一律复用**：行盒子走 `agentRowStyle`（与 `dagNodeStyle` 同一套 `color-mix` + 满强度描边），
@@ -102,31 +127,37 @@
 
 ## 6. 已知限制
 
-- **不落盘**：agent 树的读数只活在进程内存里，重启即丢（DAG 节点有 `samples` 落盘，子代理没有
-  ——它没有「节点」这个宿主概念，落盘要额外发明一份文档）。子代理结束、会话离开注册表之后，
-  它的读数就只剩这棵树上已经画出来的那一份。
-- **一次都没被观测过就没有数字**：与 DAG 的 §7.6 同一条边界——面板不开、catalog 读不到，就没有
-  读数可记。
+- **只有被观测过才留痕**：快照的唯一来源是面板轮询。整段会话都没开过 DAG 面板（或面板一直停在
+  Nodes 视图、从未切到 Subagents）时，路由不会被请求，也就没有快照——事后仍然是空树。这与 DAG 的
+  `samples` 是同一条边界（见 [plan-dag.md](plan-dag.md) §7.6），不是本视图特有的缺口。
+- **快照一律按已结束画**：会话结束后的那棵树里没有任何东西还在跑，故路由把 `running` 全部改成
+  `false`；读者看到的是「最后一棵树的形状与读数」，不是一个仍在推进的现状。
 - **`sessionQuery` 那条路没走**：宿主自己能用 `observeSession` 读到已经归档的会话 catalog；本插件
-  只读内存状态，所以端到端的视界是「本进程见过的会话」。
+  只读内存状态 + 自己的快照文件，所以端到端的视界是「本进程见过的会话 ∪ 本进程写过的快照」。
 
 ## 7. 落点与测试
 
-| 层           | 文件                                                                                                                                                                                                  |
-| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 宿主读树     | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；纯同步、无 I/O、无 `node:`）                                                                                                                  |
-| 宿主路由     | `src/host/routes/internal/mint-handler.ts` 的 `sendAgents` + `readAgentTree` 缝；路由名在 `src/shared/route-paths.ts`                                                                                 |
-| 线格式       | `src/shared/records.ts` 的 `AgentNodeView` / `MintAgentsPayload`；`DagNodeMetrics` 加 `context`                                                                                                       |
-| 客户端纯逻辑 | `src/client/agent-tree-model.ts`（行/排版/单元格/摘要）、`src/client/dag-sampler.ts` 的 `agentSampleOf`                                                                                               |
-| 客户端视图   | `src/client/DagBody.tsx`（容器 + 切换）、`DagGraphView.tsx`、`AgentTreeBody.tsx`                                                                                                                      |
-| 测试         | `tests/unit/dag/agent-tree/agent-tree.test.ts`、`tests/unit/client/agent-tree-model.test.ts`、`tests/unit/host/routes.test.ts`（子代理树路由组）、`tests/unit/client/{dag-sampler,api,index}.test.ts` |
+| 层             | 文件                                                                                                                                                                                                                                                  |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 宿主读树       | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；纯同步、无 I/O、无 `node:`）                                                                                                                                                                  |
+| 宿主快照文件层 | `src/dag/agent-tree/agent-tree-store.ts`（原子写 + 按会话锁 + 三态读）、`src/dag/agent-tree/internal/parse-doc.ts`（文档校验）                                                                                                                        |
+| 宿主快照写入   | `src/host/routes/internal/agent-snapshot.ts`（「值不值得写」的判据 + 落盘）                                                                                                                                                                           |
+| 宿主路由       | `src/host/routes/internal/mint-handler.ts` 的 `sendAgents` + `readAgentTree` / `agentsDir` 缝；路由名在 `src/shared/route-paths.ts`                                                                                                                   |
+| 线格式         | `src/shared/records.ts` 的 `AgentNodeView` / `MintAgentsPayload`（`revision` / `file` / `stale` 三处增量）；`DagNodeMetrics` 加 `context`                                                                                                             |
+| 客户端纯逻辑   | `src/client/agent-tree-model.ts`（行/排版/单元格/摘要）、`src/client/dag-sampler.ts` 的 `agentSampleOf`                                                                                                                                               |
+| 客户端视图     | `src/client/DagBody.tsx`（容器 + 两处切换 + stale 说明）、`DagGraphView.tsx`、`AgentTreeBody.tsx`                                                                                                                                                     |
+| 测试           | `tests/unit/dag/agent-tree/{agent-tree,agent-tree-store}.test.ts`、`tests/unit/host/routes.test.ts`（子代理树路由组）、`tests/unit/host/routes/internal/agent-snapshot.test.ts`、`tests/unit/client/{agent-tree-model,dag-sampler,api,index}.test.ts` |
 
 ## 8. 实测
 
 - **本机（2026-10-11）**：`pnpm lint` 0 error；`pnpm check-types` 0 error；`pnpm test`
   **54 文件 / 1095 用例全绿**；`pnpm build` 产出 `dist/index.js` + `dist/client.js`。
-- **待重启复核（本轮未做）**：`/dsh-mint/agents` 是**宿主侧**路由，只在 harness 启动时随 bundle
-  载入；当前进程里仍是旧 bundle，故 `curl` 答 404 `unknown-route`（实测）。重启 harness 后应得到
-  200 + `nodes`，`session=../etc` / 缺参 → 400；客户端产物（`dist/client.js`）只需刷新页面。
-- **待重启复核（人眼）**：面板内的 `SegmentedControl`、树的缩进与肘线、running 行的脉动、
-  token 黄 / 时长紫在两个主题下的可读性、hover 卡片。
+- **根因记录（`unknown-route`）**：`/dsh-mint/agents` 是**宿主侧**路由，只在 harness 启动时随
+  bundle 的模块载入；ESM 模块缓存按进程存活，**磁盘上 dist 已含 `agents` 也不生效**——实测线上
+  `curl` 答 404 `unknown-route` 时，`dist/index.js` 里的 `ROUTE_NAMES` 已含 `"agents"`、`sendAgents`
+  也在，而进程启动时刻早于该路由的提交与构建时刻。**判据 = 比对进程启动时刻与 dist mtime**；修法只有
+  重启 harness（客户端产物 `dist/client.js` 只需刷新页面）。headless 自检通过 ≠ 运行中的 harness 已更新
+  （同一条口径见 [client-face.md](client-face.md) §6.5）。
+- **待重启复核（人眼）**：面板内的两处 `SegmentedControl`、树的缩进与肘线、running 行的脉动、
+  token 黄 / 时长紫在两个主题下的可读性、hover 卡片、以及**快照兜底**那一行说明（把会话结束后重开
+  面板当作一次人工用例：应当看到「会话已结束，显示 …」+ 最后一棵树，且没有任何脉动）。

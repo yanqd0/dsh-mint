@@ -182,9 +182,14 @@
 
 ### 4.3 渲染
 
-- SVG 图；**宿主不下发布局**，客户端按 `depends_on` **拓扑分层、自上而下**，同层等距。
+- SVG 图；**宿主不下发布局**，客户端按 `depends_on` **拓扑分层**，同层等距；**默认自上而下**。
 - 节点圆角矩形 + 折线边；框内**两行**：`label` 在上，下面一行是实测 `token` 与时长（见 §4.7）。
 - 悬停 tooltip：状态/结论**徽章行**、完整 `title`、实测 token 与时长（缺失时退回节点 `tokens`）、`note`（结果原文，可滚动）。
+- **方向可切（左右）**：工具栏紧挨视图切换控件放第二个 `SegmentedControl`（`↓ 上下` / `→ 左右`），
+  只在 Nodes 视图出现；方向状态是**面板容器的内存态**（`DagBody.tsx`），刷新回默认「上下」，
+  不落盘、不进配置面。`layoutDag(view, direction)` 是唯一的布局函数（`direction` 默认 `'vertical'`，
+  既有调用不变）：`horizontal` 把整张图转 90°——层号→列、列内节点自上而下并垂直居中、连线从
+  父节点右中走到子节点左中。切方向**不触发重读**、也不重置 hover。
 
 ### 4.4 四态配色（已核对主题 token）
 
@@ -293,11 +298,13 @@ sub agent 树。它**不新增侧边栏 tab 类型**——面板内部用 `Segme
 
 与本节的分工（完整规格见 [agent-tree.md](agent-tree.md)）：
 
-- **面板变成容器**：`src/client/DagBody.tsx` 只做两件事——视图切换，以及两条读各自的 2s 轮询
+- **面板变成容器**：`src/client/DagBody.tsx` 只做三件事——视图切换、**方向切换**（两个
+  `SegmentedControl`；方向只对 DAG 视图有意义），以及两条读各自的 2s 轮询
   （**只有当前视图被读**，切回来立即补读）。画图的 `DagGraphView.tsx` 与画树的 `AgentTreeBody.tsx`
-  因此都不持轮询。
+  因此都不持轮询，方向也由容器下传给图视图。
 - **数据源完全不同**：DAG 读 `/tmp` 的文档，子代理树读宿主内存（`subagentCatalog` 投影 +
-  `agents.get(id)?.status` + 三个投影），路由是 `GET /dsh-mint/agents`。
+  `agents.get(id)?.status` + 三个投影），读不到时退回自己的快照 `/tmp/mint/agents/<sessionId>.json`
+  （live 优先、快照兜底），路由是 `GET /dsh-mint/agents`。
 - **口径的两处新约定**：`context`（`contextPressure.pressureTokens`，与 `tokens` 不是同一把尺子）
   与「main 不发累计 token」；两者都只在本视图生效，DAG 节点的既有口径不动。
 - **配色与脉动复用**：行盒子、running 闪烁、token 黄 / 时长紫都是第一视图那一套。
