@@ -1,71 +1,75 @@
 /**
- * plan DAG tab 的 body（spec: `notes/plan-dag.md`）：一个文档一张 SVG——节点是 `dag-model` 的盒子、
- * 边是它的折线、状态配色用与模型测试同一套 tone 函数；组件只持模型管不了的三件事：何时读
- * （可见性 + 2s 轮询）、宿主样本如何老化成实时时钟（1s tick，只在有东西真在跑时）、hover 显示什么。
+ * plan DAG 面板：一个 tab、两个视图（规格见 `notes/plan-dag.md` 与 `notes/agent-tree.md`）。
  *
- * 轮询只在答案的 revision 或它带的样本变了才替换状态：安静的计划图保持不动，仍在跑的节点继续走。
+ * 它是**容器**：视图切换（`SegmentedControl`）、两条必读（DAG 与子代理树）的轮询、跳过重渲的
+ * 整份读数守卫、以及一个共用的 1s 走秒时钟都在这里；两个视图（`DagGraphView` /
+ * `AgentTreeBody`）各自只画自己的东西。
+ *
+ * 两条读各按自己的路由轮询，且**只有当前视图被读**：切到子代理树时 DAG 的那条 2s 请求停掉，
+ * 反之亦然。切回来立即补读一次，所以「停掉」不会在面板上留下过期数字。
+ *
+ * 两个视图共用同一个 `now`：它是「上一次采样之后又过了多久」的浏览器半边，而两条路由共用同一
+ * 个宿主采样钟（`sampled_at`），所以一个定时器就够，也只有一个。
  */
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
-import type { MintDagPayload } from '../shared/records.js';
+import { SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives';
+
+import type { MintAgentsPayload, MintDagPayload, MintResponse } from '../shared/records.js';
+import { AgentTreeBody } from './AgentTreeBody.js';
+import { DagGraphView } from './DagGraphView.js';
 import { StateNotice } from './StateNotice.js';
-import { dagCounts, dagTone, isRunning, layoutDag } from './dag-model.js';
+import { AGENT_COPY_KEYS, agentSummary } from './agent-tree-model.js';
+import type { ReadSample } from './dag-sampler.js';
+import { agentSampleOf, sameSample, sampleOf } from './dag-sampler.js';
+import { dagCounts } from './dag-model.js';
 import type { LoadState } from './model.js';
 import { toLoadState } from './model.js';
-import {
-  DAG_CANVAS,
-  DAG_NODE_LABEL,
-  DAG_RUNNING_CLASS,
-  DAG_SHELL,
-  NOTE,
-  TOOLBAR,
-  dagNodeStyle,
-} from './styles.js';
+import { BODY, DAG_SHELL, NOTE, TOOLBAR } from './styles.js';
 import type { MintBodyProps, TabInfoLike } from './types.js';
-import { NodeMetricsLine, NodeTooltip } from './NodeCard.js';
-import type { DagSample } from './dag-sampler.js';
-import { sameSample, sampleMetrics, sampleOf } from './dag-sampler.js';
 
 const POLL_MS = 2000;
 
 const TICK_MS = 1000;
 
-/**
- * 节点盒子里两条文本基线，从盒子顶部量起。盒子做成 44 高正是为此：标签占第一行、测量对占第二行，
- * 两行都居中，故这两个常量无论标签自身的度量如何都相隔一行。
- */
-const NODE_LABEL_DY = 16;
-const NODE_METRICS_DY = 32;
+/** 面板的两个视图：顺序即 `SegmentedControl` 的分段顺序。 */
+export type PlanDagView = 'nodes' | 'subagents';
 
-const KEYFRAMES = `
-@keyframes dsh-mint-dag-pulse {
-  0%, 100% { stroke-opacity: 1; }
-  50% { stroke-opacity: 0.25; }
+/** 打开面板先给 DAG：它是这个 tab 的本来面目，子代理树是第二眼。 */
+export const DEFAULT_PLAN_DAG_VIEW: PlanDagView = 'nodes';
+
+/** 切换控件的分段：与「正文预览 / 代码」同一个控件、同一套 id 契约。 */
+export function viewOptions(
+  copy: MintBodyProps['copy']
+): readonly { value: PlanDagView; label: string }[] {
+  return [
+    { value: 'nodes', label: copy(AGENT_COPY_KEYS.tabNodes) },
+    { value: 'subagents', label: copy(AGENT_COPY_KEYS.tabSubagents) },
+  ];
 }
-.${DAG_RUNNING_CLASS} { animation: dsh-mint-dag-pulse 1.2s ease-in-out infinite; }
-@media (prefers-reduced-motion: reduce) {
-  .${DAG_RUNNING_CLASS} { animation: none; }
-}
-`;
 
 /** The seat's hook; a stable no-op keeps the call unconditional in lean harnesses. */
 const NO_TAB_INFO = (): TabInfoLike | undefined => undefined;
 
-export function DagBody(props: MintBodyProps): ReactElement {
-  const { api, copy, useTabInfo = NO_TAB_INFO } = props;
-  const info = useTabInfo();
-  const signal = info?.tab.signal;
-  const visible = info?.tab.visible ?? true;
-  const actions = info?.tab.actions;
-
-  const [state, setState] = useState<LoadState<MintDagPayload>>({ status: 'loading' });
-  const [hovered, setHovered] = useState<string | undefined>(undefined);
-  const [reload, setReload] = useState(0);
-  const [nowMs, setNowMs] = useState(() => Date.now());
-  // 面板最后接受的一次读数。用 ref 而非 state：它守的是一次写入、从不作画；而且它同时记住样本与
-  // revision，因为文档不动时数字仍在变。
-  const lastSample = useRef<DagSample | undefined>(undefined);
+/**
+ * 一条读的轮询：可见且被选中时每 2s 读一次，读数与上次全等就跳过写 state。
+ *
+ * `activeRef` 而不是 `active` 进依赖：切换视图会重启这个循环（于是切回来立即补读一次），但
+ * 循环体内的判据是**当下**的选中态，不是启动那一刻的。
+ */
+function usePolledRead<T extends { ok: true }>(
+  read: (signal: AbortSignal) => Promise<MintResponse<T>>,
+  sample: (payload: T) => ReadSample,
+  activeRef: { readonly current: boolean },
+  visible: boolean,
+  signal: AbortSignal | undefined,
+  reload: number
+): LoadState<T> {
+  const [state, setState] = useState<LoadState<T>>({ status: 'loading' });
+  // 面板最后接受的一次读数。用 ref 而非 state：它守的是一次写入、从不作画；而且它同时记住
+  // revision 与样本，因为数据不动时数字仍在变。
+  const last = useRef<ReadSample | undefined>(undefined);
 
   useEffect(() => {
     if (!visible || signal?.aborted === true) return;
@@ -74,55 +78,93 @@ export function DagBody(props: MintBodyProps): ReactElement {
       controller.abort();
     };
     signal?.addEventListener('abort', abort);
-    const read = (): void => {
-      void api.dag(controller.signal).then((response) => {
+    const once = (): void => {
+      void read(controller.signal).then((response) => {
         if (controller.signal.aborted) return;
-        // The same document measured into the same numbers: re-setting the state
-        // would re-render the same graph and drop an open tooltip for nothing.
-        if (response.ok && sameSample(lastSample.current, sampleOf(response))) return;
+        // 同一份读数摆在同一组数字上：重设 state 只会重画同一张图并收掉一个打开的卡片。
+        if (response.ok && sameSample(last.current, sample(response))) return;
         // 整份 payload 进 state——上面的守卫只为跳过写入，从不把旧样本并进新样本。失败的答案忘掉
         // 读数，这样恢复后的会话不会被误判成「同一样本」而一直停在提示上。
-        lastSample.current = response.ok ? sampleOf(response) : undefined;
+        last.current = response.ok ? sample(response) : undefined;
         setState(toLoadState(response));
       });
     };
-    read();
-    const timer = setInterval(read, POLL_MS);
+    const tick = (): void => {
+      if (activeRef.current) once();
+    };
+    tick();
+    const timer = setInterval(tick, POLL_MS);
     return () => {
       signal?.removeEventListener('abort', abort);
       controller.abort();
       clearInterval(timer);
     };
-  }, [api, visible, signal, reload]);
+  }, [read, sample, activeRef, visible, signal, reload]);
 
-  // The tab's own refresh command: an explicit read bypasses the guard.
+  return state;
+}
+
+export function DagBody(props: MintBodyProps): ReactElement {
+  const { api, copy, useTabInfo = NO_TAB_INFO } = props;
+  const info = useTabInfo();
+  const signal = info?.tab.signal;
+  const visible = info?.tab.visible ?? true;
+  const actions = info?.tab.actions;
+
+  const [view, setView] = useState<PlanDagView>(DEFAULT_PLAN_DAG_VIEW);
+  const [reload, setReload] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+  const [hoveredAgent, setHoveredAgent] = useState<string | undefined>(undefined);
+  // 切换控件按基 id 生成 tab 与它认领的面板 id（见 `Body.tsx`）：同一页面可以挂多个会话的
+  // mint tab，故必须唯一。
+  const viewId = useId();
+  const activeRef = useRef(true);
+  activeRef.current = visible && view === 'nodes';
+  const agentsActiveRef = useRef(true);
+  agentsActiveRef.current = visible && view === 'subagents';
+
+  // 两条读各自的「读一次」：用 `useCallback` 稳定引用，否则轮询 effect 每次渲染都会重启。
+  const readDag = useCallback((controller: AbortSignal) => api.dag(controller), [api]);
+  const readAgents = useCallback((controller: AbortSignal) => api.agents(controller), [api]);
+  const sampleDag = useCallback((payload: MintDagPayload) => sampleOf(payload), []);
+  const sampleAgents = useCallback((payload: MintAgentsPayload) => agentSampleOf(payload), []);
+
+  const dagState = usePolledRead(readDag, sampleDag, activeRef, visible, signal, reload);
+  const agentsState = usePolledRead(
+    readAgents,
+    sampleAgents,
+    agentsActiveRef,
+    visible,
+    signal,
+    reload
+  );
+
+  // The tab's own refresh command: an explicit read bypasses the guard, so the
+  // sample guard is reset by re-mounting the poll effects (the `reload` bump).
   useEffect(() => {
     if (actions === undefined) return;
     return actions.bindCommands({
       refresh: () => {
-        lastSample.current = undefined;
         setReload((count) => count + 1);
       },
     });
   }, [actions]);
 
-  const payload = state.status === 'ready' ? state.value : undefined;
-  const metrics = sampleMetrics(payload);
-  const sampledAtMs = payload?.sampled_at;
-  // 只有真有 running 节点在活时，时钟才值得起定时器：只读到存量样本的节点不在累加，每次 tick
-  // 都只会重画同一张图（它的行显示存量数字，日期在卡片里）。
-  const liveClock =
-    payload?.dag?.nodes.some(
-      (node) =>
-        node.status === 'running' &&
-        metrics[node.id]?.at === undefined &&
-        metrics[node.id]?.elapsed_ms !== undefined
-    ) ?? false;
+  const dagPayload = dagState.status === 'ready' ? dagState.value : undefined;
+  const agentsPayload = agentsState.status === 'ready' ? agentsState.value : undefined;
+
+  // 只有真有东西在跑时才起定时器：安静的面板每秒重画一次是白费，而两个视图的走秒都锚在各自
+  // 答案的 `sampled_at` 上。
+  const dagLive =
+    visible &&
+    view === 'nodes' &&
+    (dagPayload?.dag?.nodes.some((node) => node.status === 'running') ?? false);
+  const agentsLive =
+    visible && view === 'subagents' && (agentsPayload?.nodes.some((node) => node.running) ?? false);
 
   useEffect(() => {
-    if (!visible || !liveClock) return;
-    // The first tick re-anchors `now` on the browser clock, so the line starts
-    // from the sample's age rather than from whenever the component mounted.
+    if (!dagLive && !agentsLive) return;
+    // 第一次 tick 把 `now` 重新锚到浏览器钟上，于是这一行从样本的年龄开始走，而不是从挂载那一刻。
     setNowMs(Date.now());
     const timer = setInterval(() => {
       setNowMs(Date.now());
@@ -130,137 +172,91 @@ export function DagBody(props: MintBodyProps): ReactElement {
     return () => {
       clearInterval(timer);
     };
-  }, [visible, liveClock]);
+  }, [dagLive, agentsLive]);
 
-  if (state.status === 'loading') return <StateNotice copy={copy} state="loading" />;
-  if (state.status === 'failed') {
+  /** 该 agent 被哪些 DAG 节点认领过：纯查表，数据来自第一视图的文档。 */
+  const dagNodesOf = (agentId: string): readonly string[] =>
+    dagPayload?.dag?.nodes.filter((node) => node.agent === agentId).map((node) => node.id) ?? [];
+
+  const toolbar =
+    view === 'nodes'
+      ? ((): string | undefined => {
+          if (dagPayload?.dag == null) return undefined;
+          const counts = dagCounts(dagPayload.dag);
+          return `${copy('dag.count', { nodes: counts.nodes, edges: counts.edges })} · ${copy(
+            'dag.runningCount',
+            { count: counts.running }
+          )}`;
+        })()
+      : agentsPayload === undefined
+        ? undefined
+        : agentSummary(agentsPayload, copy);
+
+  const content = ((): ReactElement => {
+    // 每个视图是一个自成一体的可滚动列：切换控件认领的就是下面这个 panel id。
+    const panel = { padding: 0 };
+    if (view === 'nodes') {
+      return (
+        <div
+          id={`${viewId}-nodes-panel`}
+          role="tabpanel"
+          aria-labelledby={`${viewId}-nodes`}
+          style={{ ...BODY, ...panel }}
+        >
+          <DagGraphView {...props} state={dagState} active={visible} />
+        </div>
+      );
+    }
+    if (agentsState.status === 'loading') return <StateNotice copy={copy} state="loading" />;
+    if (agentsState.status === 'failed') {
+      return (
+        <StateNotice
+          copy={copy}
+          state="failed"
+          message={agentsState.message}
+          stderr={agentsState.stderr}
+          onRetry={() => {
+            setReload((count) => count + 1);
+          }}
+        />
+      );
+    }
     return (
-      <StateNotice
-        copy={copy}
-        state="failed"
-        message={state.message}
-        stderr={state.stderr}
-        onRetry={() => {
-          lastSample.current = undefined;
-          setReload((count) => count + 1);
-        }}
-      />
-    );
-  }
-
-  const { dag, file, warnings } = state.value;
-
-  // No readable document: either this session never had one (the normal state),
-  // or the file exists and could not be parsed — which names the path it failed
-  // on instead of reading as a bug in the panel.
-  if (dag === null) {
-    return (
-      <div style={DAG_SHELL}>
-        <p style={{ ...NOTE, padding: '8px 10px' }}>
-          {warnings === undefined || warnings.length === 0
-            ? copy('dag.empty')
-            : copy('dag.unreadable')}
-        </p>
-        {warnings !== undefined && warnings.length > 0 && (
-          <p style={{ ...NOTE, padding: '0 10px 8px' }}>{copy('dag.file', { path: file })}</p>
-        )}
+      <div
+        id={`${viewId}-subagents-panel`}
+        role="tabpanel"
+        aria-labelledby={`${viewId}-subagents`}
+        style={{ ...BODY, ...panel }}
+      >
+        <AgentTreeBody
+          payload={agentsState.value}
+          copy={copy}
+          sampledAtMs={agentsState.value.sampled_at}
+          nowMs={nowMs}
+          hovered={hoveredAgent}
+          onHover={setHoveredAgent}
+          dagNodesOf={dagNodesOf}
+        />
       </div>
     );
-  }
-
-  const layout = layoutDag(dag);
-  const counts = dagCounts(dag);
-  const hoveredNode = dag.nodes.find((node) => node.id === hovered);
+  })();
 
   return (
     <div style={DAG_SHELL}>
-      {/* The keyframes belong to the SVG below them; one copy per pane is enough. */}
-      <style>{KEYFRAMES}</style>
       <div style={TOOLBAR}>
-        <span style={NOTE}>{copy('dag.count', { nodes: counts.nodes, edges: counts.edges })}</span>
-        <span style={NOTE}>{copy('dag.runningCount', { count: counts.running })}</span>
+        <SegmentedControl
+          id={viewId}
+          value={view}
+          options={viewOptions(copy)}
+          onChange={(next) => {
+            setView(next);
+            setHoveredAgent(undefined);
+          }}
+          label={copy(AGENT_COPY_KEYS.tabLabel)}
+        />
+        {toolbar !== undefined && <span style={NOTE}>{toolbar}</span>}
       </div>
-      <div style={DAG_CANVAS}>
-        <svg
-          width={layout.width}
-          height={layout.height}
-          viewBox={`0 0 ${String(layout.width)} ${String(layout.height)}`}
-          role="img"
-          aria-label={copy('dag.type.label')}
-        >
-          {layout.edges.map((edge) => (
-            <polyline
-              key={`${edge.from}->${edge.to}`}
-              points={edge.points}
-              fill="none"
-              stroke="var(--dsw-alias-border-l2)"
-              strokeWidth={1.5}
-            />
-          ))}
-          {layout.boxes.map((box) => {
-            const node = dag.nodes.find((candidate) => candidate.id === box.id);
-            if (node === undefined) return null;
-            return (
-              <g
-                key={box.id}
-                tabIndex={0}
-                role="button"
-                aria-label={node.title}
-                onMouseEnter={() => {
-                  setHovered(box.id);
-                }}
-                onMouseLeave={() => {
-                  setHovered(undefined);
-                }}
-                onFocus={() => {
-                  setHovered(box.id);
-                }}
-                onBlur={() => {
-                  setHovered(undefined);
-                }}
-              >
-                <rect
-                  x={box.x}
-                  y={box.y}
-                  width={box.w}
-                  height={box.h}
-                  rx={6}
-                  style={dagNodeStyle(dagTone(node))}
-                  className={isRunning(node) ? DAG_RUNNING_CLASS : undefined}
-                />
-                <text
-                  x={box.x + box.w / 2}
-                  y={box.y + NODE_LABEL_DY}
-                  textAnchor="middle"
-                  dominantBaseline="middle"
-                  style={DAG_NODE_LABEL}
-                >
-                  {node.label}
-                </text>
-                <NodeMetricsLine
-                  node={node}
-                  metrics={metrics[box.id]}
-                  sampledAtMs={sampledAtMs}
-                  nowMs={nowMs}
-                  copy={copy}
-                  x={box.x + box.w / 2}
-                  y={box.y + NODE_METRICS_DY}
-                />
-              </g>
-            );
-          })}
-        </svg>
-        {hoveredNode !== undefined && (
-          <NodeTooltip
-            node={hoveredNode}
-            copy={copy}
-            layout={layout}
-            metrics={metrics[hoveredNode.id]}
-            sampledAtMs={sampledAtMs}
-            nowMs={nowMs}
-          />
-        )}
-      </div>
+      {content}
     </div>
   );
 }

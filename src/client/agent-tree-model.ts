@@ -202,6 +202,80 @@ export function agentCanvasWidth(labelWidth: number): number {
   return Math.max(260, AGENT_PAD * 2 + labelWidth);
 }
 
+/** 数字列与标签列之间的固定间隙。 */
+export const AGENT_LABEL_METRICS_GAP = 16;
+
+/** 每个字符按这个宽度估算标签列宽（中英混排的近似值，只用于决定画布宽度）。 */
+const CHAR_WIDTH = 7.2;
+
+/** 数字列预留的宽度：`888,888t · 888,888t · 888s`。 */
+export const AGENT_METRICS_COLUMN_W = 156;
+
+/** 行左侧与标签之间的内边距。 */
+export const AGENT_ROW_PAD = 8;
+
+/** 该行的标签要占多宽（按字符数估算，封顶 {@link AGENT_LABEL_MAX}）。 */
+export function agentLabelWidth(label: string): number {
+  return Math.min(AGENT_LABEL_MAX, label.length * CHAR_WIDTH);
+}
+
+/** 一行的排版结果：画布坐标、两列的位置，以及那一行要写的文本。 */
+export interface AgentRowBox {
+  row: AgentRow;
+  cells: AgentRowCells;
+  top: number;
+  /** 标签文本的起点。 */
+  labelX: number;
+  /** 数字段的右端（右对齐）。 */
+  metricsRight: number;
+}
+
+export interface AgentTreeLayout {
+  width: number;
+  height: number;
+  rows: AgentRowBox[];
+  /** 每个节点 id 的行顶（悬停卡片定位用）。 */
+  topOf: Record<string, number>;
+}
+
+/**
+ * 排版：先算标签列需要多宽，再把每行摆到它的 `depth` 缩进上、数字列贴住右端。
+ *
+ * 纯函数、不读 DOM：画布尺寸与每格文本因此可以在 Node 里验证，`AgentTreeBody` 只负责画。
+ */
+export function layoutAgentTree(
+  payload: MintAgentsPayload,
+  copy: CopyTranslate,
+  sampledAtMs: number | undefined,
+  nowMs: number
+): AgentTreeLayout {
+  const rows = agentRows(payload.nodes);
+  const labelWidth = rows.reduce(
+    (widest, row) => Math.max(widest, agentLabelWidth(row.node.label)),
+    0
+  );
+  const widestRow = rows.reduce((widest, row) => Math.max(widest, row.left + AGENT_ROW_PAD), 0);
+  const width = Math.max(
+    260,
+    widestRow + labelWidth + AGENT_LABEL_METRICS_GAP + AGENT_METRICS_COLUMN_W
+  );
+  const metricsRight = width - 12;
+  const boxes: AgentRowBox[] = [];
+  const topOf: Record<string, number> = {};
+  rows.forEach((row, index) => {
+    const top = AGENT_PAD + index * (AGENT_ROW_H + AGENT_ROW_GAP);
+    topOf[row.node.id] = top;
+    boxes.push({
+      row,
+      cells: agentRowCells(row.node, agentMetrics(row.node), sampledAtMs, nowMs, copy),
+      top,
+      labelX: row.left + AGENT_ROW_PAD,
+      metricsRight,
+    });
+  });
+  return { width, height: agentCanvasHeight(boxes.length), rows: boxes, topOf };
+}
+
 /**
  * 这一视图的 copy key 集中命名处。
  *
