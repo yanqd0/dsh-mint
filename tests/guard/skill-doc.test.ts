@@ -125,7 +125,19 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // `subagent.maxDepth`). Trimming this re-opens depth guessing for every plan.
   [
     'references/plan-dag.md',
-    ['总—分—总', 'ask_user_question', '派子代理', '注入前置纪律', '委派允许两级'],
+    [
+      '总—分—总',
+      'ask_user_question',
+      '派子代理',
+      '注入前置纪律',
+      '委派允许两级',
+      // research intake is a reading problem: materials that can be delegated
+      // (whole references/notes, repo-wide sweeps) and the reply shape that
+      // keeps the middle product in the child session live here, so the
+      // research phase stops eating the main window.
+      '读材料',
+      '回执形状',
+    ],
   ],
   // `dag-exec` owns the graph's *shape*: an edge is a semantic dependency only.
   // Execution order (same-file serialisation, one node at a time, batch order)
@@ -134,7 +146,17 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // Rework is a reopen, not a new node: a failed test re-runs its own test node.
   [
     'references/dag-exec.md',
-    ['给子代理', '留 main', '五轴', '无环', '执行序不进边', 'reopen 同一个 test 节点重跑'],
+    [
+      '给子代理',
+      '留 main',
+      '五轴',
+      '无环',
+      '执行序不进边',
+      'reopen 同一个 test 节点重跑',
+      // an oversized node is a split signal, not a tool error: the split is by
+      // file ownership, and it happens before any debate about parallelism.
+      '超预算先按文件归属拆节点',
+    ],
   ],
   // the container derivation table now mirrors mint's `derive.rs` — `open`
   // children derive an `open` plan (not `running`), which is the fact the plan
@@ -164,6 +186,15 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '变更: ',
       '验收: ',
       '未决: ',
+      // brief 的字节序契约与读取分工：逐字固定头 + 变体槽是前缀缓存的唯一
+      // 抓手；AGENTS.md 由 harness 注入、范围读（offset/limit）与「谁读什么」
+      // 是同一块钱的另外三面；节点体量预算给「多少步算过大」一个判据。
+      '逐字固定头',
+      '变体槽',
+      'AGENTS.md 已注入',
+      '读取粒度',
+      '谁读什么',
+      '预期步数上限',
     ],
   ],
   // The fallback is deliberately **not** on the default path: it holds what to
