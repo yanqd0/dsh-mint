@@ -121,6 +121,18 @@ export const ZH = {
   'dag.worktree.state.conflict': 'conflict',
   'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
+
+  // 子代理树：与 DAG 是同一面板里的第二个视图，故沿用 `agents.` 前缀而不是另起命名空间。
+  // 两个视图名与宿主自己的 `main` 都是术语，两侧保持英文（见 `KEPT_IN_ENGLISH`）。
+  'agents.tab.nodes': 'Nodes',
+  'agents.tab.subagents': 'Subagents',
+  'agents.tab.label': 'Plan DAG 视图',
+  'agents.empty': '本会话没有子代理',
+  'agents.count': '{count} 个节点',
+  'agents.running': '{count} 个在跑',
+  'agents.unsupported': '{count} 个未支持',
+  'agents.dagNode': 'DAG 节点 {id}',
+  'agents.root': 'main',
 } as const satisfies Record<string, string>;
 
 /** 面板可以请求的全部 key：拼错是编译错误，而不是渲染成一个原始 key。 */
@@ -223,6 +235,16 @@ export const EN = {
   'dag.worktree.state.conflict': 'conflict',
   'dag.worktree.state.removed': 'removed',
   'dag.node.id': '{id}',
+
+  'agents.tab.nodes': 'Nodes',
+  'agents.tab.subagents': 'Subagents',
+  'agents.tab.label': 'Plan DAG view',
+  'agents.empty': 'No subagents in this session',
+  'agents.count': '{count} nodes',
+  'agents.running': '{count} running',
+  'agents.unsupported': '{count} unsupported',
+  'agents.dagNode': 'DAG node {id}',
+  'agents.root': 'main',
 } as const satisfies Record<CopyKey, string>;
 
 /**
@@ -260,6 +282,10 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'dag.tokens',
   // 节点 id 是不透明标识符，没有任何语言相关的部分。
   'dag.node.id',
+  // 两个视图名与宿主自己的 `main` 都是术语（`Nodes` / `Subagents` / `main`），保留英文。
+  'agents.tab.nodes',
+  'agents.tab.subagents',
+  'agents.root',
 ];
 
 /** 面板的翻译座位：key 按 {@link CopyKey} 检查。 */

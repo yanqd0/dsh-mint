@@ -1,7 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DagNodeMetrics, DagNodeView, MintDagPayload } from '../../../src/shared/records.js';
+import type {
+  DagNodeMetrics,
+  DagNodeView,
+  MintAgentsPayload,
+  MintDagPayload,
+} from '../../../src/shared/records.js';
 import {
+  agentSampleOf,
   measuredAtLabel,
   measuredTimeMs,
   sampleMetrics,
@@ -25,6 +31,73 @@ function payload(over: Partial<MintDagPayload> = {}): MintDagPayload {
     ...over,
   };
 }
+
+describe('agentSampleOf', () => {
+  /** 一份只填断言需要字段的子代理树信封。 */
+  function agents(nodes: MintAgentsPayload['nodes']): MintAgentsPayload {
+    return {
+      ok: true,
+      nodes,
+      counts: { total: nodes.length, running: 0, unsupported: 0 },
+      sampled_at: 5,
+    };
+  }
+
+  // 同一次读数的判据：`sampled_at` 每轮都不同，若把它算进身份，面板每 2s 都会白重渲一次。
+  it('ignores the sample clock so two identical reads compare equal', () => {
+    const one = agents([{ id: 'a', kind: 'main', depth: 0, label: 'main', running: true }]);
+    expect(sameSample(agentSampleOf(one), agentSampleOf({ ...one, sampled_at: 99 }))).toBe(true);
+  });
+
+  it('treats a flipped running flag, a new reading or a renamed label as a new reading', () => {
+    const base = agentSampleOf(
+      agents([
+        {
+          id: 'a',
+          kind: 'subagent',
+          depth: 1,
+          label: '审 tests',
+          running: true,
+          metrics: { tokens: 1, context: 2 },
+        },
+      ])
+    );
+    const flipped = agentSampleOf(
+      agents([{ id: 'a', kind: 'subagent', depth: 1, label: '审 tests', running: false }])
+    );
+    const measured = agentSampleOf(
+      agents([
+        {
+          id: 'a',
+          kind: 'subagent',
+          depth: 1,
+          label: '审 tests',
+          running: true,
+          metrics: { tokens: 1, context: 3 },
+        },
+      ])
+    );
+    const renamed = agentSampleOf(
+      agents([{ id: 'a', kind: 'subagent', depth: 1, label: '跑测试', running: true }])
+    );
+    expect(sameSample(base, flipped)).toBe(false);
+    expect(sameSample(base, measured)).toBe(false);
+    expect(sameSample(base, renamed)).toBe(false);
+  });
+
+  it('treats a node appearing or disappearing as a new reading', () => {
+    const one = agentSampleOf(
+      agents([{ id: 'a', kind: 'main', depth: 0, label: 'main', running: false }])
+    );
+    const two = agentSampleOf(
+      agents([
+        { id: 'a', kind: 'main', depth: 0, label: 'main', running: false },
+        { id: 'b', kind: 'subagent', parent: 'a', depth: 1, label: 'b', running: false },
+      ])
+    );
+    expect(sameSample(one, two)).toBe(false);
+  });
+});
 
 describe('sampleOf / sameSample', () => {
   it('reads the identity of an answer: revision, sample clock, and metrics', () => {

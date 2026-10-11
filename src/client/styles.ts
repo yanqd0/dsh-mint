@@ -347,3 +347,40 @@ export const DAG_TOOLTIP_META: CSSProperties = {
   color: 'var(--dsw-alias-label-secondary)',
   fontSize: 11,
 };
+
+/**
+ * 子代理树一行的盒子：与 DAG 节点**同一套着色**（色调混进面板层 + 满强度描边），只是宽高由
+ * 调用方按内容给——它的标签是派发时的 description，比六字节点标签长得多。
+ */
+export function agentRowStyle(tone: 'success' | 'idle'): CSSProperties {
+  const token = `var(--dsw-alias-state-${tone}-primary)`;
+  return {
+    fill: `color-mix(in srgb, ${token} 12%, var(--dsw-alias-bg-layer-1))`,
+    stroke: token,
+    strokeWidth: 1.5,
+  };
+}
+
+/**
+ * 树里连接父子的肘线：与 DAG 的边**同一个颜色**，只是画在行与行之间的缩进空隙里。
+ *
+ * 用次级描边色而非状态色：它说的是「谁挂在谁下面」，与那一行在不在跑无关。
+ */
+export const AGENT_ELBOW: CSSProperties = {
+  fill: 'none',
+  stroke: 'var(--dsw-alias-border-l2)',
+  strokeWidth: 1.5,
+};
+
+/** 行标签的字号：与 DAG 节点标签同号，两棵树因此读起来是一套。 */
+export const AGENT_ROW_LABEL: CSSProperties = {
+  fill: 'var(--dsw-alias-label-primary)',
+  fontSize: 12,
+  fontFamily: 'inherit',
+};
+
+/** 行右侧的数字格：与 DAG 节点的第二行同号（9px）。 */
+export const AGENT_ROW_METRICS: CSSProperties = {
+  fontSize: 9,
+  fontFamily: 'inherit',
+};

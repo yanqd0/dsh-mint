@@ -7,6 +7,7 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
+  MintAgentsPayload,
   MintDagPayload,
   MintDetailPayload,
   MintIssuePayload,
@@ -18,6 +19,7 @@ import type {
 import type { CopyTranslate, Translate } from './copy.js';
 
 export type {
+  AgentNodeView,
   ContainerChild,
   ContainerDetail,
   DagNodeMetrics,
@@ -30,6 +32,7 @@ export type {
   IssueItem,
   LabelItem,
   MilestoneItem,
+  MintAgentsPayload,
   MintDagPayload,
   MintDetailPayload,
   MintIssuePayload,
@@ -161,6 +164,13 @@ export interface MintApiLike {
    * project, and a missing file is a normal answer (`dag: null`), not a failure.
    */
   dag(signal?: AbortSignal): Promise<MintResponse<MintDagPayload>>;
+  /**
+   * The subagent tree of this session.
+   *
+   * Same session-keyed shape as {@link dag}, except the data is entirely live
+   * host state: an unreadable tree is an empty `nodes` array, never a failure.
+   */
+  agents(signal?: AbortSignal): Promise<MintResponse<MintAgentsPayload>>;
 }
 
 /** The actions a tab body may take on its own occurrence. */

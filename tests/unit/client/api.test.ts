@@ -166,4 +166,19 @@ describe('createApi', () => {
     });
     expect(await api.dag()).toEqual({ ok: false, error: 'invalid session' });
   });
+
+  it('reads the subagent tree by session alone', async () => {
+    const calls: Call[] = [];
+    const body =
+      '{"ok":true,"nodes":[],"counts":{"total":0,"running":0,"unsupported":0},"sampled_at":1}';
+    const api = createApi({
+      sessionId: 's1',
+      baseUri: 'http://host/app/',
+      fetch: fetchStub(body, 200, calls),
+    });
+    await api.agents();
+    // Same shape as the DAG read: the session is the only parameter.
+    expect(calls[0]?.url).toBe('/app/dsh-mint/agents?session=s1');
+    expect(calls[0]?.method).toBe('GET');
+  });
 });

@@ -10,6 +10,7 @@ import type {
   ContainerDetail,
   IssueItem,
   MilestoneItem,
+  MintAgentsPayload,
   MintDagPayload,
   MintDetailPayload,
   MintFailurePayload,
@@ -35,6 +36,7 @@ export const ROUTES = {
   milestone: routePath('milestone'),
   meta: routePath('meta'),
   dag: routePath('dag'),
+  agents: routePath('agents'),
 } as const;
 
 /**
@@ -118,5 +120,7 @@ export function createApi(options: CreateApiOptions): MintApiLike {
       get<MintDetailPayload<ContainerDetail>>(ROUTES.milestone, { id: String(id) }, signal),
     // DAG 路由除会话外不接受查询参数：探测与面板读的是同一份按会话落盘的文件。
     dag: (signal) => get<MintDagPayload>(ROUTES.dag, {}, signal),
+    // 子代理树同样按会话取数，只是数据全在宿主内存里（没有可命名的文件）。
+    agents: (signal) => get<MintAgentsPayload>(ROUTES.agents, {}, signal),
   };
 }

@@ -151,6 +151,7 @@ describe('mint client plugin', () => {
       expect(Object.keys(injectedProps ?? {}).sort()).toEqual(['api', 'copy']);
       const api = (injectedProps as { api: Record<string, unknown> }).api;
       expect(Object.keys(api).sort()).toEqual([
+        'agents',
         'dag',
         'issue',
         'issues',

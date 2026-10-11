@@ -273,6 +273,13 @@ export interface DagNodeMetrics {
    * (a live one carries the answer's `sampled_at`).
    */
   at?: number;
+  /**
+   * **只在客户端内部用**：子代理树那一行标签的指纹。
+   *
+   * 它存在的唯一理由是轮询守卫要比「这一行变了没有」——label 是那行最显眼的文本，改它必须
+   * 触发重渲。宿主从不发布它，落盘样本也从不携带它（`sampleOf` 逐字段白名单会丢掉）。
+   */
+  agentTag?: number;
 }
 
 /**
