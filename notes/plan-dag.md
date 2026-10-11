@@ -285,6 +285,23 @@
   `dag.measuredAt`（落盘样本的采样时刻，占位 `{at}`）；键名在 `src/client/dag-model.ts` 的
   `DAG_COPY_KEYS` 里只写一次（`copy.test.ts` 的"无死 key"判据读源码文本）。
 
+### 4.10 第二个视图：子代理树（后续叠加）
+
+同一个 `plan-dag` tab 里还有第二个视图，画的是**谁在跑**而不是计划：本次会话下最多两级的
+sub agent 树。它**不新增侧边栏 tab 类型**——面板内部用 `SegmentedControl`（与「正文预览 / 代码」
+同一个控件）切「节点 / 子代理」，两个视图共用一套 `useId` 的 tabpanel 契约。
+
+与本节的分工（完整规格见 [agent-tree.md](agent-tree.md)）：
+
+- **面板变成容器**：`src/client/DagBody.tsx` 只做两件事——视图切换，以及两条读各自的 2s 轮询
+  （**只有当前视图被读**，切回来立即补读）。画图的 `DagGraphView.tsx` 与画树的 `AgentTreeBody.tsx`
+  因此都不持轮询。
+- **数据源完全不同**：DAG 读 `/tmp` 的文档，子代理树读宿主内存（`subagentCatalog` 投影 +
+  `agents.get(id)?.status` + 三个投影），路由是 `GET /dsh-mint/agents`。
+- **口径的两处新约定**：`context`（`contextPressure.pressureTokens`，与 `tokens` 不是同一把尺子）
+  与「main 不发累计 token」；两者都只在本视图生效，DAG 节点的既有口径不动。
+- **配色与脉动复用**：行盒子、running 闪烁、token 黄 / 时长紫都是第一视图那一套。
+
 ## 5. 落点与测试文件清单
 
 > 本节写的是首版落点；`src/dag/dag.ts` 与 `src/client/DagBody.tsx` 后来按文件限大

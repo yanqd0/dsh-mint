@@ -18,12 +18,13 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 │   ├── subagent-depth.ts                  # 宿主 subagent.maxDepth 生效值探测与降级文案
 │   ├── reminders.ts                       # 工具调用后的事件提醒
 │   ├── planbind.ts / plan-mode.ts         # 计划模式退出/开工门禁 + 会话计划状态
-│   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀）
-│   ├── routes/internal/                   # 按职责拆分：只读 CLI 面常量（cli-surface）
+│   ├── routes.ts                          # 面板只读 HTTP 路由（webServer 前缀；入口只再导出）
+│   ├── routes/internal/                   # 按职责拆分：request-scope / list-policy / mint-handler / cli-surface
 │   └── ...                                # session-ledger.ts：会话内 mint 写台账
 ├── dag/                                   # 依赖 shared + mint，并反向接 host
 │   ├── dag.ts                             # DAG 数据层公开面（只再导出 dag/ 的实现）
 │   ├── dag/internal/                      # 按职责拆分：model / validate / parse-action / parse-doc / write / graph
+│   ├── agent-tree/                        # 子代理树：读父会话的 subagentCatalog 投影 + 注册表 + 会话投影
 │   ├── dag-store.ts / dag-lifecycle.ts    # /tmp 文档读写与锁 / 子代理起止配对
 │   ├── dag-tool.ts / worktree-tool.ts     # mint_plan_dag 与 worktree 两个宿主工具
 │   └── ...                                # metrics / plan-reminder / worktree-sweep
@@ -36,9 +37,10 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 ├── client/                                # 浏览器半边：只 import shared 与现成纯模块
 │   ├── index.tsx                          # esbuild 预构建入口（dsh.client 产物）
 │   ├── api.ts / model.ts / dag-model.ts   # fetch 通道 / 视图纯逻辑 / DAG 分层
+│   ├── agent-tree-model.ts                # 子代理树的纯逻辑：行/排版/单元格/摘要
 │   ├── body-view.ts                       # 正文模式（预览 / 原文代码块）与两模式的词条
 │   ├── dag-open.ts                        # DAG tab 自动打开探测
-│   └── ...                                # 面板组件：MintBody / Issue* / Container* / DagBody / Rows / styles / types
+│   └── ...                                # 面板组件：MintBody / Issue* / Container* / DagBody（DAG 面板容器）/ DagGraphView / AgentTreeBody / Rows / styles / types
 └── index.ts                               # 宿主入口（tsup key index），装配全部 install*
 ```
 

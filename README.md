@@ -37,7 +37,11 @@ plan always has a mint plan behind it.
   running (pulsing) and settled nodes, each showing the token count and elapsed
   time the host measures from the child session itself (kept as a dated sample
   once the child is gone), with the full title and the conclusion text on hover. It opens itself as soon as a DAG exists for the
-  session, and a running node's time ticks while it is on screen.
+  session, and a running node's time ticks while it is on screen. The panel also
+  switches to a **Subagents** view of the same session: the sub-agent tree (at
+  most two levels), one line per agent with its delegation label, whether it is
+  running, the context it currently occupies, its cumulative tokens, elapsed
+  time, and the DAG node it is working on.
 - **Reminders** — after a `git commit` the agent is reminded to register it, and
   after a mint state change to sync the host todo panel.
 - **Bundled mint skill** — the `mint` skill ships with this package and is

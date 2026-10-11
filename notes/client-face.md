@@ -127,19 +127,27 @@ dsh-mint 的路由表（全部 GET、只读）：`/dsh-mint/issues`、`/dsh-mint
 `/dsh-mint/plans`、`/dsh-mint/plan`、`/dsh-mint/milestones`、`/dsh-mint/milestone`、`/dsh-mint/meta`，
 均带 `session=<SessionId>`，宿主经 `ctx.agents.get(sessionId)?.session.header.cwd` 解析项目目录
 （**不接受浏览器给的路径**）。**前缀与路由名单只有一份**：`src/shared/route-paths.ts`（`ROUTE_PREFIX` /
-`ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/host/routes.ts` 与浏览器 `src/client/api.ts` 各自
+`ROUTE_NAMES` / `routePath` / `isRouteName`），宿主 `src/host/routes.ts`（入口只做再导出，实现在
+`src/host/routes/internal/`）与浏览器 `src/client/api.ts` 各自
 派生——`tests/unit/shared/route-paths.test.ts` 比对两表防漂移。每次 CLI run 共享**本请求的一个
 AbortController**（`RequestScope`），
 浏览器断连即取消该请求的全部子进程——早先「一次 run 挂一个 `close` 监听」在 meta 的并行读下会撞
 `MaxListeners`，且只能取消其中一个。
 
-> **`/dsh-mint/dag` 是唯一按「文件」而非「项目」取数的路由**：它读
-> `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），所以**不 spawn mint、也不做在线会话门禁**
-> ——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验后拼路径，非法即 400。信封
+> **`/dsh-mint/dag` 与 `/dsh-mint/agents` 是两条按「会话」而非「项目」取数的路由**：前者读
+> `/tmp/mint/dag/<sessionId>.json`（`src/dag/dag-store.ts`），后者读宿主内存里的
+> `subagentCatalog` 投影与 agent/会话注册表（`src/dag/agent-tree/agent-tree.ts`）。两条都
+> **不 spawn mint、也不做在线会话门禁**——`session` 只按 `^[A-Za-z0-9_-]{1,64}$` 校验，非法即 400。
+> `/dsh-mint/dag` 的信封
 > `{ ok:true, dag: DagView|null, revision, file, autoOpen, metrics?, sampled_at?, warnings? }`：**文件缺失 → 200 + `dag:null`**
 > （正常态，不是 404）；JSON/version 坏了 → 同样 `dag:null` 但多一个 `warnings` 与 `file`，面板显示
 > 「DAG 不可读 + 路径」而不是空白。`autoOpen` 是宿主把挂载行 `openDagTab` 回传给浏览器半边的地方
 > （客户端只有这一次机会知道开关，见下）。
+>
+> `/dsh-mint/agents` 的信封是
+> `{ ok:true, nodes: AgentNodeView[], counts:{total,running,unsupported}, sampled_at, warnings? }`：
+> **根会话不在册、服务缺失、投影读抛错都是空树**（不是 404、不是 500），`warnings` 只在非空时出现。
+> 线格式与口径见 [agent-tree.md](agent-tree.md)。
 
 > **落盘样本**：实测值会**写进 DAG 文档**的 `samples`（`subagent/end` 与 `mint_plan_dag`
 > 的 `set → done` 各落一次，路由对「仍 running 但已测不到 agent」的节点兜底补一次）。信封里
@@ -351,6 +359,8 @@ MarkdownText:…}))`，启动种子表拿的是**整份导出**，不是按需�
   id 是 `<id>-<value>`、`aria-controls` 指向 `<id>-<value>-panel`，方向键游走与焦点迁移由控件自理。因此
   **`id` 必须页面内唯一**（同一页面可挂多个会话的 mint tab）→ 面板用 `useId()`，被认领的面板元素自带
   `role="tabpanel"` + `aria-labelledby`；只渲染当前模式的面板（把另一模式隐藏会让长正文双份渲染）。
+  同一个控件也用于 **plan DAG 面板内部的「节点 / 子代理」两个视图**（`DagBody.tsx` 是那个容器，
+  见 [agent-tree.md](agent-tree.md)）——即「一个侧边栏 tab 里的两个视图」不需要注册第二个 tab 类型。
 - **`labels` 不 memo**：`copy` 座位跨语言切换是**稳定引用**（绑定函数每次调用才读 locale，见 §4.1），按它
   `useMemo` 会把围栏复制按钮与脚注标题冻结在旧语言；要 memo 只能按三个词条值。面板选择每次渲染现取——
   mint 正文只有几 KB，`React.memo` 失效的代价是一次亚毫秒级解析。
