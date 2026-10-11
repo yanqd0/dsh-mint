@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { applyDagWrite, emptyDag } from '../../../src/dag/dag.js';
 import { rememberMeasurement } from '../../../src/dag/dag-metrics.js';
 import { dagFilePath, readDag, updateDag } from '../../../src/dag/dag-store.js';
+import { readAgentTreeDoc, updateAgentTree } from '../../../src/dag/agent-tree/agent-tree-store.js';
 import {
   BODY_MAX_BYTES,
   META_LABELS_ARGV,
@@ -68,6 +69,8 @@ function harness(options: {
   now?: () => number;
   /** DAG directory override: the plan DAG route is file-keyed. */
   dagDir?: string;
+  /** Subagent tree document directory override: the agents route is file-keyed too. */
+  agentsDir?: string;
   /** Mount-line `openDagTab`, published in the DAG envelope. */
   openDagTab?: boolean;
   /** Per-node live metrics seam for the DAG route. */
@@ -91,6 +94,7 @@ function harness(options: {
     ...(options.entry === undefined ? {} : { entry: options.entry }),
     ...(options.now === undefined ? {} : { now: options.now }),
     ...(options.dagDir === undefined ? {} : { dagDir: options.dagDir }),
+    ...(options.agentsDir === undefined ? {} : { agentsDir: options.agentsDir }),
     ...(options.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
     ...(options.readDagMetrics === undefined ? {} : { readDagMetrics: options.readDagMetrics }),
     ...(options.readAgentTree === undefined ? {} : { readAgentTree: options.readAgentTree }),
@@ -1221,9 +1225,56 @@ describe('the plan DAG route', () => {
 });
 
 describe('the subagent tree route', () => {
+  // 这条路由会写兜底快照，所以每个用例都给一个自己的目录：默认目录是真实的 `/tmp/mint/agents`。
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), 'dsh-mint-agents-route-'));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
   /** 一份只填断言需要字段的空树答案。 */
   function emptyRead(): AgentTreeRead {
     return { nodes: [], counts: { total: 0, running: 0, unsupported: 0 } };
+  }
+
+  /** 一条与收集器同形的子代理读数，供快照用例复用。 */
+  const CHILD = {
+    id: 'c1',
+    kind: 'subagent',
+    parent: 's1',
+    depth: 1,
+    label: '审 tests',
+    running: true,
+    metrics: { tokens: 12, context: 900 },
+  } as const;
+
+  /** 直接从盘上读会话语义的快照版本；没有文件或读不动都抛错（用例据此红掉）。 */
+  function storedRevision(): number {
+    const text = readFileSync(join(dir, 's1.json'), 'utf8');
+    const parsed = JSON.parse(text) as { revision: number };
+    return parsed.revision;
+  }
+
+  /** 用真 store 把一份快照种在测试目录里（伪造的文件会掩盖真写入路径的毛病）。 */
+  async function seedSnapshot(revision: number, nodes: unknown[]): Promise<void> {
+    const updated = await updateAgentTree(
+      's1',
+      () => ({
+        doc: {
+          version: 1,
+          session: 's1',
+          revision,
+          sampled_at: 1_600_000_000_000,
+          nodes: nodes as AgentTreeRead['nodes'],
+        },
+      }),
+      dir
+    );
+    expect(updated.ok).toBe(true);
   }
 
   // 信封与采样钟：`sampled_at` 来自路由自己的 `now()`，读数与它同源，面板据它走秒。
@@ -1231,18 +1282,11 @@ describe('the subagent tree route', () => {
     const asked: Array<[string, number]> = [];
     const nodes: AgentTreeRead['nodes'] = [
       { id: 's1', kind: 'main', depth: 0, label: 'main', running: true },
-      {
-        id: 'c1',
-        kind: 'subagent',
-        parent: 's1',
-        depth: 1,
-        label: '审 tests',
-        running: true,
-        metrics: { tokens: 12, context: 900 },
-      },
+      CHILD,
     ];
     const { handler } = harness({
       cwd: '/proj',
+      agentsDir: dir,
       now: () => 1_700_000_000_000,
       readAgentTree: (sessionId, sampledMs) => {
         asked.push([sessionId, sampledMs]);
@@ -1259,6 +1303,9 @@ describe('the subagent tree route', () => {
       sampled_at: 1_700_000_000_000,
     });
     expect(payload).not.toHaveProperty('warnings');
+    // 实时答案不落盘的版本可言：`revision` 恒为 0，也不带 `stale`。
+    expect(payload).toMatchObject({ revision: 0 });
+    expect(payload).not.toHaveProperty('stale');
     // The reader is asked about this session, once per request, at the envelope's own clock.
     expect(asked).toEqual([['s1', 1_700_000_000_000]]);
   });
@@ -1266,6 +1313,7 @@ describe('the subagent tree route', () => {
   it('carries the reader warnings through the envelope', async () => {
     const { handler } = harness({
       cwd: '/proj',
+      agentsDir: dir,
       readAgentTree: () =>
         Promise.resolve({ ...emptyRead(), warnings: ['root session is not live'] }),
     });
@@ -1276,7 +1324,7 @@ describe('the subagent tree route', () => {
   // 服务缺失/抛错一律退化成空树：这条路由没有「文档不可读」那种态，只有「读不到」。
   it('degrades to an empty tree without a reader or when the read throws', async () => {
     const noReader = await invoke(
-      harness({ cwd: '/proj' }).handler,
+      harness({ cwd: '/proj', agentsDir: dir }).handler,
       `${ROUTE_PREFIX}/agents?session=s1`
     );
     expect(noReader.statusCode).toBe(200);
@@ -1285,6 +1333,7 @@ describe('the subagent tree route', () => {
     const throwing = await invoke(
       harness({
         cwd: '/proj',
+        agentsDir: dir,
         readAgentTree: () => Promise.reject(new Error('registry gone')),
       }).handler,
       `${ROUTE_PREFIX}/agents?session=s1`
@@ -1298,6 +1347,7 @@ describe('the subagent tree route', () => {
     let asked = 0;
     const { handler } = harness({
       cwd: '/proj',
+      agentsDir: dir,
       readAgentTree: () => {
         asked += 1;
         return Promise.resolve(emptyRead());
@@ -1319,11 +1369,97 @@ describe('the subagent tree route', () => {
   it('refuses a non-GET like every other route', async () => {
     const { handler } = harness({
       cwd: '/proj',
+      agentsDir: dir,
       readAgentTree: () => Promise.resolve(emptyRead()),
     });
     const res = await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`, 'POST');
     expect(res.statusCode).toBe(405);
     expect(res.headers['allow']).toBe('GET');
+  });
+
+  // 实时读数顺手落一份快照（版本从 1 起）；同树再来一次不再重写，于是文件里的版本不动。
+  it('snapshots a live tree once and leaves the revision alone while it does not change', async () => {
+    const nodes: AgentTreeRead['nodes'] = [
+      { id: 's1', kind: 'main', depth: 0, label: 'main', running: true },
+      CHILD,
+    ];
+    const { handler } = harness({
+      cwd: '/proj',
+      agentsDir: dir,
+      now: () => 1_700_000_000_000,
+      readAgentTree: () =>
+        Promise.resolve({ nodes, counts: { total: 2, running: 2, unsupported: 0 } }),
+    });
+    await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`);
+    const first = await readAgentTreeDoc('s1', dir);
+    expect(first.state).toBe('ok');
+    if (first.state !== 'ok') throw new Error('expected ok');
+    expect(first.doc).toEqual({
+      version: 1,
+      session: 's1',
+      revision: 1,
+      sampled_at: 1_700_000_000_000,
+      nodes,
+    });
+    await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`);
+    expect(storedRevision()).toBe(1);
+  });
+
+  // 兜底：实时树空而盘上有快照时答快照——`running` 一律按已结束下发，`sampled_at` 换成快照自己的钟，
+  // 并带上 `revision` / `file` / `stale` 三样，面板据此说明「显示的是哪一刻的旧值」。
+  it('falls back to the stored snapshot when the live tree is empty', async () => {
+    await seedSnapshot(4, [
+      { id: 's1', kind: 'main', depth: 0, label: 'main', running: true },
+      CHILD,
+    ]);
+    const { handler } = harness({
+      cwd: '/proj',
+      agentsDir: dir,
+      now: () => 1_700_000_000_000,
+      readAgentTree: () =>
+        Promise.resolve({ ...emptyRead(), counts: { total: 0, running: 0, unsupported: 2 } }),
+    });
+    const payload = (await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`)).json();
+    expect(payload).toMatchObject({
+      ok: true,
+      sampled_at: 1_600_000_000_000,
+      revision: 4,
+      stale: true,
+      file: join(dir, 's1.json'),
+      counts: { total: 2, running: 0, unsupported: 2 },
+    });
+    expect(payload.nodes).toEqual([
+      { id: 's1', kind: 'main', depth: 0, label: 'main', running: false },
+      { ...CHILD, running: false },
+    ]);
+  });
+
+  it('answers an empty tree without stale when there is neither a live tree nor a snapshot', async () => {
+    const { handler } = harness({ cwd: '/proj', agentsDir: dir });
+    const payload = (await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`)).json();
+    expect(payload).toMatchObject({ ok: true, nodes: [] });
+    expect(payload.sampled_at).toEqual(expect.any(Number));
+    expect(payload).not.toHaveProperty('stale');
+    expect(payload).not.toHaveProperty('revision');
+    expect(payload).not.toHaveProperty('warnings');
+  });
+
+  // 坏快照只值得一条告警：实时读不到、兜底也读不动时，面板仍要拿到空树而不是失败。
+  it('answers an empty tree with a warning for an unreadable snapshot', async () => {
+    writeFileSync(join(dir, 's1.json'), '{ not json');
+    const { handler } = harness({
+      cwd: '/proj',
+      agentsDir: dir,
+      readAgentTree: () =>
+        Promise.resolve({ ...emptyRead(), warnings: ['root session is not live'] }),
+    });
+    const payload = (await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`)).json();
+    expect(payload.nodes).toEqual([]);
+    expect(payload).not.toHaveProperty('stale');
+    expect(payload.warnings).toEqual([
+      'root session is not live',
+      expect.stringContaining('unreadable agent tree: invalid JSON'),
+    ]);
   });
 });
 

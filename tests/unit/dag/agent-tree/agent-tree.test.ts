@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { collectAgentTree } from '../../../../src/dag/agent-tree/agent-tree.js';
 import type { CollectAgentTreeInput } from '../../../../src/dag/agent-tree/agent-tree.js';
+import { parseAgentTreeDoc } from '../../../../src/dag/agent-tree/internal/parse-doc.js';
 import type {
   AgentCwdLike,
   AgentsLike,
@@ -369,5 +370,138 @@ describe('collectAgentTree', () => {
     const read = collectAgentTree(input(tree({ parents, catalogs })));
     expect(read.nodes).toHaveLength(9);
     expect(read.nodes.at(-1)?.depth).toBe(8);
+  });
+});
+
+describe('parseAgentTreeDoc', () => {
+  /** 一份形状完整的文档；只有断言关心的字段会被改写。 */
+  function raw(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      version: 1,
+      session: ROOT,
+      revision: 2,
+      sampled_at: SAMPLED_MS,
+      nodes: [
+        {
+          id: ROOT,
+          kind: 'main',
+          depth: 0,
+          label: 'main',
+          running: true,
+          metrics: { tokens: 3, context: 900, elapsed_ms: 42 },
+        },
+      ],
+      ...over,
+    };
+  }
+
+  /** 只跑解析并按 `error` 断言：合法时必须失败，让用例本身红掉。 */
+  function errorOf(document: unknown): string {
+    const parsed = parseAgentTreeDoc(document);
+    if (!('error' in parsed)) throw new Error('expected an error');
+    return parsed.error;
+  }
+
+  it('round-trips a valid document', () => {
+    const parsed = parseAgentTreeDoc(raw());
+    expect(parsed).toEqual({
+      doc: {
+        version: 1,
+        session: ROOT,
+        revision: 2,
+        sampled_at: SAMPLED_MS,
+        nodes: [
+          {
+            id: ROOT,
+            kind: 'main',
+            depth: 0,
+            label: 'main',
+            running: true,
+            metrics: { tokens: 3, context: 900, elapsed_ms: 42 },
+          },
+        ],
+      },
+    });
+  });
+
+  // 整体字段严：版本、会话 id、revision 与 sampled_at 任一不成立就是具名错误，不做默认值猜测。
+  it.each([
+    ['an unsupported version', raw({ version: 2 }), 'unsupported version'],
+    [
+      'a session id that may become a path',
+      raw({ session: '../etc/passwd' }),
+      'session is not a valid session id',
+    ],
+    ['a negative revision', raw({ revision: -1 }), 'revision must be a non-negative integer'],
+    [
+      'a fractional sampled_at',
+      raw({ sampled_at: 1.5 }),
+      'sampled_at must be a non-negative integer',
+    ],
+    ['nodes that are not an array', raw({ nodes: 'x' }), 'nodes must be an array'],
+    ['an over-long node list', raw({ nodes: new Array(201).fill(0) }), 'at most 200'],
+  ])('refuses %s', (_case, document, message) => {
+    expect(errorOf(document)).toContain(message);
+  });
+
+  it('refuses a document that is not an object', () => {
+    expect(errorOf([])).toBe('document must be an object');
+  });
+
+  // 节点层从宽：形状坏的那条、重复 id 的那条各自丢掉，余下的照原顺序留下。
+  it.each([
+    [
+      'a duplicate id',
+      [
+        { id: ROOT, kind: 'main', depth: 0, label: 'main', running: true },
+        { id: ROOT, kind: 'subagent', depth: 1, label: 'dup', running: true },
+      ],
+      1,
+    ],
+    ['an unknown kind', [{ id: 'c1', kind: 'agent', depth: 1, label: 'c1', running: true }], 0],
+  ])('drops the node with %s instead of failing the document', (_case, nodes, kept) => {
+    const parsed = parseAgentTreeDoc(raw({ nodes }));
+    if ('error' in parsed) throw new Error(parsed.error);
+    expect(parsed.doc.nodes).toHaveLength(kept);
+    if (kept > 0) expect(parsed.doc.nodes[0]?.id).toBe(ROOT);
+  });
+
+  // 读数逐字段收：坏的那一个只丢它自己，一个都没剩才整项不发。
+  it('keeps the metrics fields that survived and drops the broken one', () => {
+    const parsed = parseAgentTreeDoc(
+      raw({
+        nodes: [
+          {
+            id: 'c1',
+            kind: 'subagent',
+            depth: 1,
+            label: 'c1',
+            running: false,
+            metrics: { tokens: 3, elapsed_ms: -1, context: 900 },
+          },
+        ],
+      })
+    );
+    if ('error' in parsed) throw new Error(parsed.error);
+    expect(parsed.doc.nodes[0]?.metrics).toEqual({ tokens: 3, context: 900 });
+  });
+
+  it('drops metrics entirely when no field survived', () => {
+    const parsed = parseAgentTreeDoc(
+      raw({
+        nodes: [
+          {
+            id: 'c1',
+            kind: 'subagent',
+            depth: 1,
+            label: 'c1',
+            running: false,
+            metrics: { tokens: 'x' },
+          },
+        ],
+      })
+    );
+    if ('error' in parsed) throw new Error(parsed.error);
+    expect(parsed.doc.nodes[0]).not.toHaveProperty('metrics');
   });
 });

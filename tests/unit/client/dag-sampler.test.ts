@@ -49,6 +49,15 @@ describe('agentSampleOf', () => {
     expect(sameSample(agentSampleOf(one), agentSampleOf({ ...one, sampled_at: 99 }))).toBe(true);
   });
 
+  // 兜底快照的 `revision` 只在树真变了时才前进，所以它是它与 live 之间、以及兜底内部的判据。
+  it('treats a changed revision as a new reading', () => {
+    const one = agents([{ id: 'a', kind: 'main', depth: 0, label: 'main', running: false }]);
+    const first = agentSampleOf({ ...one, revision: 1, stale: true });
+    const second = agentSampleOf({ ...one, revision: 2, stale: true });
+    expect(sameSample(first, second)).toBe(false);
+    expect(sameSample(first, agentSampleOf({ ...one, revision: 1, stale: true }))).toBe(true);
+  });
+
   it('treats a flipped running flag, a new reading or a renamed label as a new reading', () => {
     const base = agentSampleOf(
       agents([

@@ -357,8 +357,10 @@ export interface AgentNodeView {
 /**
  * `GET /dsh-mint/agents` — 子代理树这一视图的整个答案。
  *
- * 与 `/dsh-mint/dag` 的差别：这里没有「文件不可读」这种态——数据全来自活着的宿主服务，
- * 读不到就是个空数组加一条 `warnings`，没有一份可以命名路径的文档。
+ * 数据**live 优先、快照兜底**：宿主内存里的注册表与投影读得到东西时，就是此刻的真树；读不到
+ * （会话已结束、注册表塌了、宿主重启过）时退回上一次落盘的按会话文档，此时答案带上 `file`（文档
+ * 路径）、`revision`（文档版本）与 `stale`（这套节点是旧值），`sampled_at` 也换成那份文档的采样钟。
+ * 两条路都读不到才是空树。
  */
 export interface MintAgentsPayload {
   ok: true;
@@ -367,5 +369,19 @@ export interface MintAgentsPayload {
   counts: { total: number; running: number; unsupported: number };
   /** The host clock (epoch ms) every metric in this answer was sampled at. */
   sampled_at: number;
+  /**
+   * 兜底快照的文档版本；live 答案恒为 `0`（这份数据不落盘，没有版本可言）。
+   *
+   * 快照的 `revision` 只在树真的变了时才前进，所以面板能靠它跳过白重渲。
+   */
+  revision?: number;
+  /** 这次答案来自哪份文档（兜底时才有）；面板据此指明「读的是哪个文件」。 */
+  file?: string;
+  /**
+   * 这套节点取自快照而非此刻的宿主：`running` 已按「已结束」下发。
+   *
+   * 缺席即 live 答案。面板据此给出一行「会话已结束」的说明，而不是把旧值冒充现状。
+   */
+  stale?: boolean;
   warnings?: string[];
 }

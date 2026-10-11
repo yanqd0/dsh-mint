@@ -116,12 +116,13 @@ export function sampleMetrics(
  *
  * `sampledAt` **刻意留空**：这条路由每次应答都会读一次钟，若把 `sampled_at` 算进身份，面板
  * 每 2s 都会因为「时钟不同」而重渲一次——而它恰恰是这里唯一不该参与判定的字段（走秒的锚由
- * 返回值自己带着，不需要守卫替它把关）。
+ * 返回值自己带着，不需要守卫替它把关）。兜底快照自带稳定的 `revision`（只在树真变了时才前进），
+ * 所以 live 与兜底之间的切换、以及兜底内部的一次重写，都靠它触发重渲。
  */
 export function agentSampleOf(payload: MintAgentsPayload): ReadSample {
   const metrics: Record<string, DagNodeMetrics> = {};
   for (const node of payload.nodes) metrics[node.id] = agentCompact(node);
-  return { revision: 0, sampledAt: undefined, metrics };
+  return { revision: payload.revision ?? 0, sampledAt: undefined, metrics };
 }
 
 /**

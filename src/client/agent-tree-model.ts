@@ -291,6 +291,7 @@ export const AGENT_COPY_KEYS = {
   running: 'agents.running',
   unsupported: 'agents.unsupported',
   dagNode: 'agents.dagNode',
+  stale: 'agents.stale',
   root: 'agents.root',
   seconds: 'dag.seconds',
 } as const;
