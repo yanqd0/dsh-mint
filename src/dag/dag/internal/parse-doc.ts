@@ -21,14 +21,11 @@ import {
 } from './validate.js';
 
 /**
- * One node's sample, built from a raw reading: `at` must be a usable stamp, and
- * every count field is validated **one by one**, so a malformed one is dropped —
- * but at least one count must survive for the reading to be worth storing.
+ * 一个节点的采样，由一次原始读数拼成：`at` 必须是可用的戳，每个计数字段**逐个**校验，
+ * 坏的那一个只丢它自己——但至少得活下来一个计数，这次读数才值得落。
  *
- * Field-wise on purpose: a live reading is the one source where a single number
- * can be junk while another was really measured, and throwing the good one away
- * would be the same guess this module refuses to make. A *stored* entry is
- * stricter — see {@link parseDagDoc}.
+ * 逐字段是刻意的：现场读数正是「一个数是垃圾、另一个真的测到了」的唯一来源，把好的那个
+ * 一起丢掉，就是这个模块拒绝做的那种猜。**已落库**的条目更严——见 {@link parseDagDoc}。
  */
 export function sampleOf(metrics: DagNodeMetrics, at: number): DagSample | undefined {
   if (!isCount(at)) return undefined;
@@ -46,7 +43,7 @@ export function sampleOf(metrics: DagNodeMetrics, at: number): DagSample | undef
   return { ...kept, at };
 }
 
-/** A stored field is either absent or a usable count; nothing is coerced. */
+/** 已落库的字段要么缺席、要么是可用的计数：绝不做强制转换。 */
 function isSampleField(value: unknown): boolean {
   return value === undefined || isCount(value);
 }

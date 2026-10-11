@@ -64,7 +64,7 @@ function readTotals(totals: Record<string, unknown>): DagTokenBuckets | undefine
  * 四桶**要么同在要么同缺**：任一桶缺失或不是非负安全整数就整组不发布——半组合法值会
  * 让求和静默少算，而分开落盘时更会被读成「这一桶就是 0」。
  *
- * @param usage - the `tokenUsage` projection **state** (not its wire view).
+ * @param usage - `tokenUsage` 投影的 **state**（不是它的 wire view）。
  * @returns 四桶，或读不到/形状不对时的 `undefined`。
  */
 export function tokenBuckets(usage: unknown): DagTokenBuckets | undefined {
@@ -94,7 +94,7 @@ export function tokenTotal(usage: unknown): number | undefined {
 /**
  * 该会话已结算的步数（`sessionStats.steps`，`step/end` 计数）。
  *
- * @param stats - the `sessionStats` projection state.
+ * @param stats - `sessionStats` 投影的 state。
  * @returns 步数；`sessionStats` 未注册或形状不对时 `undefined`（步数缺失只影响它自己，
  *   不连累四桶）。
  */

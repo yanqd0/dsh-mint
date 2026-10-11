@@ -195,7 +195,7 @@ export type DagWorktreeState = 'active' | 'merged' | 'conflict' | 'removed';
  * （工作区内的 `.worktrees/`）与文件白名单，不来自围栏。
  */
 export interface DagWorktree {
-  /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<s8>/<node>`。 */
+  /** 绝对路径：`<common git dir>/dsh-mint/worktrees/<session-slug>/<node>`。 */
   path: string;
   branch: string;
   /** The commit the worktree (and its branch) started from. */

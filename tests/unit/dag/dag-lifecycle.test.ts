@@ -117,7 +117,7 @@ function harness(): Harness {
   };
 }
 
-/** The projection states the measurement really reads, under one child. */
+/** 这次实测真正读到的那些投影 state，挂在一个子会话下。 */
 function measurable(events: Harness, id = AGENT): void {
   events.states.set(id, {
     // The registry is keyed by the projection's own name, not by ours.

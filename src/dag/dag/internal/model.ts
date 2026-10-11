@@ -66,8 +66,8 @@ export function isValidDagSession(id: string): boolean {
 export type DagNode = DagNodeView;
 
 /**
- * One node's persisted host measurement (`samples[id]`): what the panel falls
- * back to once the child session is gone. Not the node's self-reported `tokens`.
+ * 一个节点落库的宿主实测（`samples[id]`）：子会话没了之后面板回落到的那份，不是节点
+ * 自报的 `tokens`。
  *
  * 字段与 {@link DagNodeMetrics} 同名同义（`tokens` 只是四桶之和，同样不是成本代理），
  * 逐字段可选：缺失就是不发布，不写 0。全部字段都可选，故 `DAG_VERSION` 不因新增字段而升。

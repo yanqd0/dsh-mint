@@ -271,22 +271,18 @@ function ownerOfSession(
 }
 
 /**
- * One live measurement, once: the session behind an agent, and its numbers.
+ * 一次现场实测，只测一次：一个子代理背后的会话，以及它这一次的数。
  *
- * Shared by the two host paths that persist a sample — the `subagent/end`
- * listener below and the tool's `set`-to-`done` step (`dag-tool.ts`) — because
- * the reading and the "refuse rather than guess" rules are the same for both,
- * and a second copy is a second thing to keep in step.
+ * 两条落盘路径共用——下面的 `subagent/end` 监听器与工具 `set` 到 `done` 那一步
+ * （`dag-tool.ts`）：读数与「宁可拒绝也不猜」的规则对两者相同，抄第二份就是多一处
+ * 要同步。
  *
- * Every reason the measurement can be missing is a `return`: the host has no
- * projection registry, the registry knows no session for the agent, or no
- * number came back at all (四桶、步数与时长三者皆空)。None of them is an error
- * worth reporting, and the node's own `tokens` stays the fallback the panel
- * already knows.
+ * 每一个「测不到」的理由都是一个 `return`：宿主没有投影注册表、注册表不认得该代理的
+ * 会话，或一个数都没回来（四桶、步数与时长三者皆空）。它们都不是要上报的错误，节点
+ * 自身的 `tokens` 仍是面板已经认得的兜底。
  *
- * @param input.status - the node's lifecycle, which is what the timing formula
- *   branches on (`running` measures against the sample clock, a settled node
- *   against the `through` its projection recorded).
+ * @param input.status - 节点自身的生命周期，计时公式据此分支（`running` 按采样时钟量，
+ *   已结算节点按它投影记下的 `through` 量）。
  */
 export function readAgentMetrics(input: {
   agentId: string;
