@@ -160,6 +160,13 @@ describe('panel copy', () => {
     expect(ZH['count.issue.one']).toBe(ZH['count.issue.other']);
   });
 
+  // 步数行的数字只能来自插值：两侧占位符相同还不够，它必须真的存在，
+  // 否则面板会把步数整项吞掉（写成常量文案，读者看不到数字）。
+  it('interpolates the measured step count in both locales', () => {
+    expect(placeholders(ZH['dag.steps'])).toEqual(['steps']);
+    expect(placeholders(EN['dag.steps'])).toEqual(['steps']);
+  });
+
   // The seat is a plain narrowing: whatever the bound translator answers is what
   // the panel shows, so a locale without this namespace shows the key rather
   // than silently falling back to Chinese.

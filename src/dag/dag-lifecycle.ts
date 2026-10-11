@@ -271,7 +271,7 @@ function ownerOfSession(
 }
 
 /**
- * One live measurement, once: the session behind an agent, and its two numbers.
+ * One live measurement, once: the session behind an agent, and its numbers.
  *
  * Shared by the two host paths that persist a sample — the `subagent/end`
  * listener below and the tool's `set`-to-`done` step (`dag-tool.ts`) — because
@@ -279,9 +279,10 @@ function ownerOfSession(
  * and a second copy is a second thing to keep in step.
  *
  * Every reason the measurement can be missing is a `return`: the host has no
- * projection registry, the registry knows no session for the agent, or the two
- * numbers came back empty. None of them is an error worth reporting, and the
- * node's own `tokens` stays the fallback the panel already knows.
+ * projection registry, the registry knows no session for the agent, or no
+ * number came back at all (四桶、步数与时长三者皆空)。None of them is an error
+ * worth reporting, and the node's own `tokens` stays the fallback the panel
+ * already knows.
  *
  * @param input.status - the node's lifecycle, which is what the timing formula
  *   branches on (`running` measures against the sample clock, a settled node
@@ -308,7 +309,12 @@ export function readAgentMetrics(input: {
     status: input.status,
     sampledMs: input.sampledMs,
   });
-  if (metrics.tokens === undefined && metrics.elapsed_ms === undefined) return undefined;
+  if (
+    metrics.tokens === undefined &&
+    metrics.elapsed_ms === undefined &&
+    metrics.steps === undefined
+  )
+    return undefined;
   return metrics;
 }
 

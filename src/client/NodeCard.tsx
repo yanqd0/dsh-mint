@@ -11,6 +11,7 @@ import {
   dagWorktreeTone,
   formatCount,
   formatSeconds,
+  metricsBreakdown,
 } from './dag-model.js';
 import type { layoutDag } from './dag-model.js';
 import {
@@ -191,6 +192,8 @@ export function NodeTooltip({
   const tokens = metrics?.tokens;
   const elapsed = measuredTimeMs(node, metrics, sampledAtMs, nowMs);
   const duration = elapsed === undefined ? undefined : formatSeconds(elapsed);
+  // 成本构成（四桶 + 步数）：盒子只有 104 宽，故只进卡片，占一行安静的小字。
+  const breakdown = metricsBreakdown(metrics, copy);
   const measuredAt = metrics?.at;
   const worktree = node.worktree;
   return (
@@ -236,6 +239,9 @@ export function NodeTooltip({
         <p style={TOOLTIP_LINE}>
           <LiveTokensLine copy={copy} tokens={tokens} />
         </p>
+      )}
+      {breakdown !== undefined && (
+        <p style={{ ...TOOLTIP_LINE, ...TOOLTIP_QUIET, ...DAG_TOOLTIP_META }}>{breakdown}</p>
       )}
       {duration !== undefined && (
         <p style={TOOLTIP_LINE}>

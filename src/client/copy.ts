@@ -105,6 +105,13 @@ export const ZH = {
   'dag.seconds': '秒',
   // `at` 是本地钟点、由调用方格式化：这里翻译的是标签，永远不是时间戳。
   'dag.measuredAt': '实测于 {at}',
+  // 实测的成本构成：四桶分开落，因为命中与未命中的单价相差约 50 倍——`tokens` 只是
+  // 它们的和，不是成本代理。步数补上「为什么这么大」：步数 × 留存上下文主导成本。
+  'dag.bucket.uncachedInput': '未命中',
+  'dag.bucket.cacheRead': '命中',
+  'dag.bucket.cacheWrite': '缓存写',
+  'dag.bucket.output': '输出',
+  'dag.steps': '{steps} 步',
   'dag.note': '结果原文',
   // 节点独立的工作树：它所在的分支，以及该工作区的状态。四种状态是 mint 自己的词汇，
   // 故两侧读起来一样（见 `KEPT_IN_ENGLISH`）。
@@ -204,6 +211,11 @@ export const EN = {
   'dag.liveTokens': '{tokens} tokens (measured)',
   'dag.seconds': 's',
   'dag.measuredAt': 'measured {at}',
+  'dag.bucket.uncachedInput': 'cache miss',
+  'dag.bucket.cacheRead': 'cache hit',
+  'dag.bucket.cacheWrite': 'cache write',
+  'dag.bucket.output': 'output',
+  'dag.steps': '{steps} steps',
   'dag.note': 'Result',
   'dag.worktree.branch': 'Branch {branch}',
   'dag.worktree.state.active': 'active',

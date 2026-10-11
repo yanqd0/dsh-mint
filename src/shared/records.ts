@@ -223,7 +223,7 @@ export interface DagNodeView {
   issue?: number;
   /** Subagent session id, backfilled by the host's `subagent/start` pairing. */
   agent?: string;
-  /** Self-reported token count; the host has no query for a child's usage. */
+  /** 该节点的 token 数：模型自报，或宿主测到该节点时由实测值覆盖（见 {@link DagNodeMetrics}）。 */
   tokens?: number;
   /** The conclusion text a node's own agent reported (tooltip, scrollable). */
   note?: string;
@@ -234,8 +234,28 @@ export interface DagNodeView {
 
 /** One node's host-measured usage, absent when the host cannot read it (never a zero guess). */
 export interface DagNodeMetrics {
-  /** The child session's four durable token buckets, summed. */
+  /**
+   * 该子会话四桶的**和**（下面四个桶字段相加）。
+   *
+   * 只为向后兼容保留：**它不是成本代理**——命中（`cache_read`）与未命中（`uncached_input`）
+   * 的单价相差约 50 倍，同一个和可以对应差很多的账单，要读成本得分开看四桶。
+   */
   tokens?: number;
+  /** 未命中缓存的输入 token（宿主投影 `uncachedInputTokens`），四桶之一。 */
+  uncached_input?: number;
+  /** 命中缓存的输入 token（宿主投影 `cacheReadTokens`），四桶之一；单价远低于未命中。 */
+  cache_read?: number;
+  /** 写入缓存的输入 token（宿主投影 `cacheWriteTokens`），四桶之一。 */
+  cache_write?: number;
+  /** 输出 token（宿主投影 `outputTokens`；推理 token 含在其中）。 */
+  output?: number;
+  /**
+   * 该会话已结算的步数（`sessionStats.steps`，即 `step/end` 计数）。
+   *
+   * 步数×留存上下文才是成本的主项，故它与四桶一起落：`tokens` 只说明「多大」，
+   * 步数说明「为什么这么大」。
+   */
+  steps?: number;
   /** Active-turn duration in milliseconds, from the host's own timing projection. */
   elapsed_ms?: number;
   /**

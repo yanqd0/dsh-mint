@@ -13,6 +13,10 @@ import {
   nodeMetrics,
   readDagMetrics,
   rememberMeasurement,
+  sameSampleNumbers,
+  sampleNumbersMoved,
+  sessionSteps,
+  tokenBuckets,
   tokenTotal,
 } from '../../../src/dag/dag-metrics.js';
 import { dagFilePath } from '../../../src/dag/dag-store.js';
@@ -108,6 +112,45 @@ describe('tokenTotal', () => {
   });
 });
 
+describe('tokenBuckets / sessionSteps', () => {
+  // 拆分契约：四桶各自落到线上字段名，顺序固定（面板按这个顺序画那一行）。
+  it('maps the four durable buckets onto their wire names', () => {
+    expect(tokenBuckets({ totals: totals() })).toEqual({
+      uncached_input: 1,
+      cache_read: 3,
+      cache_write: 4,
+      output: 2,
+    });
+  });
+
+  // 原子性契约：任一桶坏掉，整组不发布——半组合法值会被读成「这一桶就是 0」，那是猜。
+  it('refuses the whole group when any one bucket is unusable', () => {
+    for (const missing of [
+      'uncachedInputTokens',
+      'outputTokens',
+      'cacheReadTokens',
+      'cacheWriteTokens',
+    ]) {
+      const bucket = { ...totals() } as Record<string, unknown>;
+      delete bucket[missing];
+      expect(tokenBuckets({ totals: bucket }), missing).toBeUndefined();
+      bucket[missing] = -1;
+      expect(tokenBuckets({ totals: bucket }), `${missing} negative`).toBeUndefined();
+    }
+  });
+
+  it('reads the closed-step count off the stats state', () => {
+    expect(sessionSteps({ steps: 12, turns: 3 })).toBe(12);
+    expect(sessionSteps({ steps: 0 })).toBe(0);
+  });
+
+  it('refuses a missing or malformed step count', () => {
+    for (const stats of [undefined, null, 42, {}, { steps: -1 }, { steps: 1.5 }, { steps: '3' }]) {
+      expect(sessionSteps(stats), JSON.stringify(stats)).toBeUndefined();
+    }
+  });
+});
+
 describe('activeElapsedMs', () => {
   it('returns settledMs alone when no turn is in flight', () => {
     expect(activeElapsedMs({ settledMs: 5 }, 'done', SAMPLED_MS)).toBe(5);
@@ -181,17 +224,43 @@ describe('activeElapsedMs', () => {
 });
 
 describe('nodeMetrics', () => {
-  it('reads both fields when both keys are registered', () => {
+  // 拆分与求和一起发布：`tokens` 是四桶之和（语义不变），四桶分开落，面板才能读成本构成。
+  it('publishes the four buckets alongside their sum', () => {
     const projections = projectionsFor({
       tokenUsage: { totals: totals() },
       subagentTiming: { settledMs: 42 },
     });
     expect(
       nodeMetrics({ session: child('a'), projections, status: 'done', sampledMs: SAMPLED_MS })
-    ).toEqual({ tokens: 10, elapsed_ms: 42 });
+    ).toEqual({
+      tokens: 10,
+      uncached_input: 1,
+      cache_read: 3,
+      cache_write: 4,
+      output: 2,
+      elapsed_ms: 42,
+    });
   });
 
-  it('exposes only tokens when the timing key is not registered', () => {
+  it('publishes the step count next to the buckets', () => {
+    const projections = projectionsFor({
+      tokenUsage: { totals: totals() },
+      sessionStats: { steps: 7, turns: 2 },
+    });
+    expect(
+      nodeMetrics({ session: child('a'), projections, status: 'done', sampledMs: SAMPLED_MS })
+    ).toEqual({
+      tokens: 10,
+      uncached_input: 1,
+      cache_read: 3,
+      cache_write: 4,
+      output: 2,
+      steps: 7,
+    });
+  });
+
+  // 缺失不猜：`sessionStats` 没注册时只是不发布 `steps`，四桶与求和照旧。
+  it('omits only the step count when the stats key is not registered', () => {
     const projections = projectionsFor({ tokenUsage: { totals: totals() } });
     const found = nodeMetrics({
       session: child('a'),
@@ -199,8 +268,26 @@ describe('nodeMetrics', () => {
       status: 'done',
       sampledMs: SAMPLED_MS,
     });
-    expect(Object.keys(found)).toEqual(['tokens']);
-    expect(found).toEqual({ tokens: 10 });
+    expect(found.steps).toBeUndefined();
+    expect(found).toEqual({
+      tokens: 10,
+      uncached_input: 1,
+      cache_read: 3,
+      cache_write: 4,
+      output: 2,
+    });
+  });
+
+  // 桶坏了就整组不发：`elapsed_ms` 与 `steps` 是另两次读，不该被连累。
+  it('omits the whole bucket group when one bucket is unusable', () => {
+    const projections = projectionsFor({
+      tokenUsage: { totals: totals({ cacheReadTokens: 1.5 }) },
+      sessionStats: { steps: 4 },
+      subagentTiming: { settledMs: 42 },
+    });
+    expect(
+      nodeMetrics({ session: child('a'), projections, status: 'done', sampledMs: SAMPLED_MS })
+    ).toEqual({ steps: 4, elapsed_ms: 42 });
   });
 
   it('returns nothing when neither key is registered', () => {
@@ -429,9 +516,23 @@ describe('reading DAG metrics', () => {
     );
     const found = await read({ projections, agents });
     expect(found).toEqual({
-      a: { tokens: 10, elapsed_ms: 7 },
+      a: {
+        tokens: 10,
+        uncached_input: 1,
+        cache_read: 3,
+        cache_write: 4,
+        output: 2,
+        elapsed_ms: 7,
+      },
       b: { elapsed_ms: 8 },
-      c: { tokens: 10, elapsed_ms: 12 },
+      c: {
+        tokens: 10,
+        uncached_input: 1,
+        cache_read: 3,
+        cache_write: 4,
+        output: 2,
+        elapsed_ms: 12,
+      },
     });
   });
 
@@ -466,7 +567,13 @@ describe('reading DAG metrics', () => {
     );
     const found = await read({ projections, agents });
     expect(Object.keys(found)).toEqual(['a']);
-    expect(Object.keys(found['a'] ?? {})).toEqual(['tokens']);
+    expect(Object.keys(found['a'] ?? {})).toEqual([
+      'tokens',
+      'uncached_input',
+      'cache_read',
+      'cache_write',
+      'output',
+    ]);
   });
 
   describe('measureDagNodes', () => {
@@ -517,7 +624,15 @@ describe('reading DAG metrics', () => {
       const projections = projectionsBySession(
         new Map<unknown, Record<string, unknown>>([[a, { tokenUsage: { totals: totals() } }]])
       );
-      expect((await measure({ agents, projections })).metrics).toEqual({ a: { tokens: 10 } });
+      expect((await measure({ agents, projections })).metrics).toEqual({
+        a: {
+          tokens: 10,
+          uncached_input: 1,
+          cache_read: 3,
+          cache_write: 4,
+          output: 2,
+        },
+      });
     });
 
     it('answers nothing for a node with neither an agent nor a stored sample', async () => {
@@ -528,6 +643,52 @@ describe('reading DAG metrics', () => {
       });
       expect(Object.keys(metrics)).toEqual(['b']);
     });
+  });
+});
+
+describe('sample comparison', () => {
+  const base: DagSample = {
+    tokens: 10,
+    uncached_input: 1,
+    cache_read: 3,
+    cache_write: 4,
+    output: 2,
+    steps: 5,
+    at: 7,
+  };
+
+  // 逐字段全等：六个计数字段任一不同就不是同一份读数（节流据此决定要不要落盘）。
+  it('calls two samples equal only when every count agrees', () => {
+    expect(sameSampleNumbers(base, { ...base })).toBe(true);
+    for (const field of [
+      'tokens',
+      'uncached_input',
+      'cache_read',
+      'cache_write',
+      'output',
+      'steps',
+    ] as const) {
+      expect(sameSampleNumbers(base, { ...base, [field]: 99 }), field).toBe(false);
+    }
+    expect(sameSampleNumbers(base, { ...base, elapsed_ms: 1 })).toBe(false);
+  });
+
+  // `at` 是落库戳而不是计数：同一个数换个戳仍是同一份读数。
+  it('treats `at` as its own axis rather than a count', () => {
+    expect(sameSampleNumbers(base, { ...base, at: 8 })).toBe(true);
+  });
+
+  it('counts a moved bucket or step as movement', () => {
+    expect(sampleNumbersMoved(base, { ...base })).toBe(false);
+    expect(sampleNumbersMoved(base, { ...base, cache_read: 99 })).toBe(true);
+    expect(sampleNumbersMoved(base, { ...base, steps: 6 })).toBe(true);
+    // 时长由写节流阈值单独把关，这里的「动」不含它。
+    expect(sampleNumbersMoved(base, { ...base, elapsed_ms: 99 })).toBe(false);
+  });
+
+  it('reads a newly measured field as movement, an absent one as none', () => {
+    expect(sampleNumbersMoved(base, { tokens: 10, at: 7 })).toBe(false);
+    expect(sampleNumbersMoved({ tokens: 10, at: 7 }, base)).toBe(true);
   });
 });
 
@@ -558,6 +719,24 @@ describe('the measurement cache', () => {
     expect(lastMeasurement(SESSION, 'a')).toEqual({ tokens: 1, elapsed_ms: 2, at: 7 });
     rememberMeasurement(SESSION, 'b', { tokens: Number.NaN, elapsed_ms: 3 }, 8);
     expect(lastMeasurement(SESSION, 'b')).toEqual({ elapsed_ms: 3, at: 8 });
+  });
+
+  // 白名单同步：内存缓存也要留住四桶与步数，否则后到的读者落盘时会把它们丢掉。
+  it('keeps the four buckets and the step count in the memory too', () => {
+    rememberMeasurement(
+      SESSION,
+      'a',
+      { uncached_input: 1, cache_read: 2, cache_write: 3, output: 4, steps: 5 },
+      7
+    );
+    expect(lastMeasurement(SESSION, 'a')).toEqual({
+      uncached_input: 1,
+      cache_read: 2,
+      cache_write: 3,
+      output: 4,
+      steps: 5,
+      at: 7,
+    });
   });
 
   // 缓存容量边界：每会话只留最近 200 条，第 201 条落进来必须把最旧的挤掉。

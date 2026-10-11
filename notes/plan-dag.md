@@ -75,7 +75,7 @@
 { "samples": { "<node id>": { "tokens": 28067, "elapsed_ms": 3231, "at": 1786000000000 } } }
 ```
 
-- `at` = 该样本的采样时刻（宿主 epoch ms）；`tokens`/`elapsed_ms` 与线上 `DagNodeMetrics` **同语义**。
+- `at` = 该样本的采样时刻（宿主 epoch ms）；各字段与线上 `DagNodeMetrics` **同名同义**（含四桶与 `steps`，映射见 §4.7）。
 - **校验是「整份严格、单条宽松」**：`samples` 不是对象 → 整份文档不可读；某条自身的字段非法（`at` 缺失/负数/小数、已出现的数字字段非法）→ **只丢该条**，图照常渲染；条目里一个数字都没有也丢。无 `samples` 的旧文档解析后**不产生该键**（round-trip 不变）。
 - **谁写**：只有生命周期与路由的补写路径（`updateDag` 里手工 merge，见 §3/§4.7）；`src/dag/dag.ts` 自己不写，`applyDagWrite` 靠 spread 原样保留已有 `samples`。写实现见 §3 与 §4.7。
   - **`set → done` 的两条路径**：子代理收尾自己的节点（**own 路径**）时测量键是**调用者自己的会话**，读数落 `samples`，并把同一个 token 数写进节点 `tokens`（**同一次** `updateDag`，`revision` 只 +1，实测优先于自报）；main 收尾一个曾配过子代理的节点时退回节点 `agent`，只写 `samples`；main 给自己的节点（没有 `agent`）收尾不测。
@@ -256,6 +256,20 @@
   （`实测于 <本地时间>`）——宁缺勿假：不把陈旧样本当活的在涨，也不把它藏起来。
 - **真机复核口径**：节点 `running` 时 `curl '/dsh-mint/dag?session=<sid>'` 应出现该节点的实时 `metrics`；
   子代理结束之后再 curl，同一节点应出现**带 `at`** 的 `metrics`，DAG 文件里出现 `samples`（见 §7.6）。
+- **成本拆分与步数**：`metrics` 与 `samples` 除 `tokens`（四桶之和）外，另逐字段落四桶与步数
+  （都可选，与 `DagNodeMetrics` 同名同义）：
+  - 映射：`cache_read = totals.cacheReadTokens`（命中）、`uncached_input = totals.uncachedInputTokens`（未命中）、
+    `cache_write = totals.cacheWriteTokens`、`output = totals.outputTokens`（reasoning ⊆ output）、
+    `steps = sessionStats.steps`（该会话 `step/end` 计数，宿主 `@deepseek-ai/dsh-session-stats` 投影）。
+  - **四桶要么同在要么同缺**：任一桶缺失或非法 ⇒ 整组不发布，`tokens`（求和，语义不变，只为向后兼容保留）
+    也随之为空；`sessionStats` 读不到只影响 `steps`——不写 0，也不连累四桶。
+  - **`tokens` 不是成本代理**：命中与未命中的单价相差约 50 倍，同一个和可以对应差很多的账单。
+    主导成本的是**步数 × 留存上下文**，故步数与四桶一起落，面板据此读「为什么这么大」。
+  - **钱 / 单价 / 账本会话归属属外部底座**：宿主没有 cost 投影、单价不落本地、外部账本没有会话维度；
+    本仓**不自建价目表**，只落宿主给得到的计数。
+  - `DAG_VERSION` **不升**：读路径逐字段校验、未知键在重建时丢弃 ⇒ 新旧双向兼容。
+  - 客户端只做**呈现**（卡片一行 `未命中 / 命中 / 缓存写 / 输出 + N 步`）：**不做阈值配色、不做告警**——
+    阈值等有实测分布之后再定。
 
 ### 4.8 自动打开
 
