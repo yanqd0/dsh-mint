@@ -258,13 +258,18 @@ describe('renderMintOutcome', () => {
     );
   });
 
-  it('adds a version-skew hint for unknown subcommands/arguments', () => {
+  it('adds a command-shape/version-skew hint for unknown subcommands/arguments', () => {
     const clap = renderMintOutcome({
       ok: false,
       exitCode: 2,
       stderr: "error: unexpected argument '--help-llm' found",
     });
     expect(clap).toContain("[mint] exit 2: error: unexpected argument '--help-llm' found");
+    // 写法（层级/参数个数）必须排在「版本偏斜」之前：实战里 `issue search` 被误判成版本落后，
+    // 排查方向整条跑偏。
+    expect(clap).toContain('命令层级');
+    expect(clap).toContain('参数个数');
+    expect(clap).toContain('--help-llm');
     expect(clap).toContain('版本偏斜');
     expect(clap).toContain('mintEntry');
     expect(clap).toContain('MINT_ENTRY');

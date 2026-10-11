@@ -122,16 +122,18 @@ export function redundantProjectHint(project: string): string {
 }
 
 /**
- * clap 对运行中的构建不认识的子命令/旗标的措辞。本地/较旧入口（或删过旗标的 CLI）仍会
- * 出现版本偏斜，此时它表现为 `unexpected argument`——一个版本问题，除非被点出来，否则读起来
- * 就像错别字。
+ * clap 对运行中的构建不认识的子命令/旗标的措辞。它有两个来源，**先怀疑的是写法**：
+ * ① 命令层级或参数个数写错（`search` 是**顶层**命令而不是 `issue search`；`attach` 只吃一个 id）；
+ * ② 版本偏斜（实跑的 mint 落后于该命令）。判反了会把时间全花在换入口上，所以提示必须两支都给。
  */
 const SKEW_ERROR_PATTERN = /unrecognized subcommand|unexpected argument|invalid subcommand/i;
 
-/** 追加到版本偏斜失败上的可行动后续。 */
+/** 追加到 clap 不识别失败上的可行动后续：先排写法，再说版本偏斜。 */
 export const MINT_SKEW_HINT =
-  '提示：该子命令/参数不被当前 mint 识别，可能是版本偏斜（实跑的 mint 落后于该命令）。' +
-  '先用 mint({args:["-V"]}) 确认版本；再用挂载行 mintEntry 或环境变量 MINT_ENTRY 指向更新的 mint' +
+  '提示：该子命令/参数不被当前 mint 识别。先排两种写法问题：① 命令层级（例如 `search` 是顶层命令，' +
+  '不是 `issue search`）；② 参数个数/位置（有些子命令只吃一个 id）。用 mint({args:["--help-llm"]}) ' +
+  '或该子命令的 --help 确认。两条都排除后才是版本偏斜（实跑的 mint 落后于该命令）：先用 mint({args:["-V"]}) ' +
+  '确认版本；再用挂载行 mintEntry 或环境变量 MINT_ENTRY 指向更新的 mint' +
   '（如本地构建的 target/debug/mint）。';
 
 /**
