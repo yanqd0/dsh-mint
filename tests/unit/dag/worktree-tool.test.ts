@@ -307,6 +307,11 @@ describe('parseWorktreeAction', () => {
       node: 'a1',
       force: true,
     });
+    // prune 也认 force：它把候选分支从「只报告」升成「真删」。
+    expect(parseWorktreeAction({ action: 'prune', force: true })).toEqual({
+      action: 'prune',
+      force: true,
+    });
   });
 
   // 动作与字段的匹配门禁：给动作塞它用不到的字段必须拒绝，免得模型以为参数生效了。
@@ -317,15 +322,21 @@ describe('parseWorktreeAction', () => {
     expect(errorOf({ action: 'remove' })).toContain('该动作需要 node');
     expect(errorOf({ action: 'list', base: 'HEAD' })).toContain('base 只用于 create');
     expect(errorOf({ action: 'merge', node: 'a1', base: 'HEAD' })).toContain('base 只用于 create');
-    expect(errorOf({ action: 'create', node: 'a1', force: true })).toContain('force 只用于 remove');
-    expect(errorOf({ action: 'list', force: true })).toContain('force 只用于 remove');
+    expect(errorOf({ action: 'create', node: 'a1', force: true })).toContain(
+      'force 只用于 remove/prune'
+    );
+    expect(errorOf({ action: 'list', force: true })).toContain('force 只用于 remove/prune');
   });
 
-  it('refuses node, base and force on prune', () => {
-    // prune 是仓库级动作：它按规则处理整仓，点名哪一棵是 remove 的事。
+  it('refuses node and base on prune but accepts force', () => {
+    // prune 是仓库级动作：它按规则处理整仓，点名哪一棵是 remove 的事；force 则放开到
+    // 「候选分支真删」，所以只有 node/base 两个字段仍然错配。
     expect(errorOf({ action: 'prune', node: 'a1' })).toContain('prune 不接受 node');
     expect(errorOf({ action: 'prune', base: 'HEAD' })).toContain('base 只用于 create');
-    expect(errorOf({ action: 'prune', force: true })).toContain('force 只用于 remove');
+    expect(parseWorktreeAction({ action: 'prune', force: false })).toEqual({
+      action: 'prune',
+      force: false,
+    });
   });
 
   it('validates the node id, base and force shapes', () => {
@@ -334,6 +345,7 @@ describe('parseWorktreeAction', () => {
     expect(errorOf({ action: 'create', node: 'a1', base: '' })).toContain('base');
     expect(errorOf({ action: 'create', node: 'a1', base: 'HEAD\n' })).toContain('控制字符');
     expect(errorOf({ action: 'remove', node: 'a1', force: 'yes' })).toContain('force');
+    expect(errorOf({ action: 'prune', force: 'yes' })).toContain('force');
   });
 });
 
@@ -636,5 +648,27 @@ describe('executeWorktreeTool prune', () => {
     expect(pruned.summary).toContain('未合并');
     expect(existsSync(old)).toBe(false);
     expect(existsSync(b1)).toBe(true);
+  });
+
+  // 默认只报告、force 才删：删分支不可逆，先让模型看见候选是这条口径的验收点。
+  // 手建一条无树且已指向 HEAD 的分支，跑两次 prune（默认 / force）断言删除是否发生。
+  it('reports a treeless merged branch by default and deletes it only with force', async () => {
+    const branch = `dsh-mint/wt/${SESSION}/a1`;
+    execFileSync('git', ['branch', branch], { cwd: repo });
+    const branchList = (): string =>
+      execFileSync('git', ['branch', '--list', branch], { cwd: repo, encoding: 'utf8' });
+
+    const reported = await runWorktree({ action: 'prune' });
+    expect(reported.ok).toBe(true);
+    expect(reported.summary).toContain('分支：删 0 条，保留 1 条');
+    expect(reported.summary).toContain(`kept branch ${SESSION}/a1 · ${branch}`);
+    expect(reported.summary).toContain('未加 force');
+    expect(branchList()).toContain(branch);
+
+    const forced = await runWorktree({ action: 'prune', force: true });
+    expect(forced.ok).toBe(true);
+    expect(forced.summary).toContain('分支：删 1 条，保留 0 条');
+    expect(forced.summary).toContain(`removed branch ${SESSION}/a1 · ${branch}`);
+    expect(branchList().trim()).toBe('');
   });
 });

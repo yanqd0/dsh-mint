@@ -7,9 +7,11 @@ import { basename, join, sep } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
+  DEFAULT_WORKTREE_BRANCH_PREFIX,
   createWorktree,
   installedWorktrees,
   mergeWorktree,
+  pruneBranches,
   pruneWorktrees,
   removeWorktree,
   worktreeBranch,
@@ -634,14 +636,14 @@ describe('worktree 降级指引', () => {
  * `options` 拨时间（`nowMs` / `minAgeMs`），不去改系统时钟——树够不够老只由这两个
  * 数决定，测试要能一眼看出自己卡的是哪一档。
  */
-describe('pruneWorktrees', () => {
-  /** 建一棵树，失败就抛（用例的后半段都建立在「树真的建出来了」之上）。 */
-  async function tree(id: string): Promise<string> {
-    const created = await createWorktree(deps(), { id });
-    if (!created.ok) throw new Error(`建树失败：${created.error}`);
-    return created.worktree.path;
-  }
+/** 建一棵树，失败就抛（prune 的两组用例都建立在「树真的建出来了」之上）。 */
+async function tree(id: string): Promise<string> {
+  const created = await createWorktree(deps(), { id });
+  if (!created.ok) throw new Error(`建树失败：${created.error}`);
+  return created.worktree.path;
+}
 
+describe('pruneWorktrees', () => {
   // 开工点清理的验收点：已合并、干净、够老的树删掉，但分支必须留下当凭据。
   // 在真临时仓建一棵零领先的树，`minAgeMs: 0` 触发 prune 后断言目录没了、分支还在。
   it('removes a merged, clean and old tree but keeps its branch', async () => {
@@ -730,5 +732,85 @@ describe('pruneWorktrees', () => {
 
     expect(results[0]?.verdict).toBe('unmeasured');
     expect(results[0]?.node).toBe('a1');
+  });
+});
+
+/**
+ * 分支清理：开工点 prune 的另一半（树收走后长期残留在 `git branch` 里的旧分支）。
+ *
+ * 候选三条判据缺一不可——命名空间内、已并入 HEAD、**没有任何 worktree 检出它**；缺省
+ * 只报告，`force` 才 `git branch -d`。全部对真临时仓跑生产 git，绝不碰本仓的分支。
+ */
+describe('pruneBranches', () => {
+  /** 建一条指向 HEAD 的分支（因此已并入 HEAD），不建任何树。 */
+  function branchOnly(id: string): string {
+    const branch = worktreeBranch(deps(), { id });
+    gitIn(repo, 'branch', branch);
+    return branch;
+  }
+
+  it('reports a merged branch with no worktree and keeps it without force', async () => {
+    // 一棵树在盘上（它的分支被检出，不算候选）+ 一条无树的已合并分支。
+    const path = await tree('a1');
+    const branch = branchOnly('b1');
+
+    const results = await pruneBranches(deps());
+
+    expect(results).toEqual([{ branch, session: SESSION, node: 'b1', verdict: 'kept' }]);
+    // 默认只报告：分支与那棵树的目录都原地不动。
+    expect(gitIn(repo, 'branch', '--list', branch)).toContain(branch);
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it('deletes that branch only when force is set', async () => {
+    const branch = branchOnly('b1');
+
+    const results = await pruneBranches(deps(), { force: true });
+
+    expect(results).toEqual([{ branch, session: SESSION, node: 'b1', verdict: 'removed' }]);
+    expect(gitIn(repo, 'branch', '--list', branch).trim()).toBe('');
+  });
+
+  it('keeps an unmerged branch even when no worktree holds it', async () => {
+    // 先建树并提交未合并的工作，再带 force 删树（remove 不动分支）——于是它是
+    // 「无树 + 未合并」这一档，只有「已并入 HEAD」那条判据能挡住它。
+    const created = await createWorktree(deps(), { id: 'b1' });
+    if (!created.ok) throw new Error(`建树失败：${created.error}`);
+    commitFile(created.worktree.path, 'feature.txt', 'work\n', 'work b1');
+    const removed = await removeWorktree(deps(), { id: 'b1' }, true);
+    expect(removed.ok).toBe(true);
+
+    const results = await pruneBranches(deps(), { force: true });
+
+    expect(results).toEqual([]);
+    expect(gitIn(repo, 'branch', '--list', worktreeBranch(deps(), { id: 'b1' }))).toContain(
+      DEFAULT_WORKTREE_BRANCH_PREFIX
+    );
+  });
+
+  it('keeps a merged branch that a worktree still has checked out', async () => {
+    // 零领先的树 → 分支已并入 HEAD；但树还检出着它，删分支会让这棵树失去 checkout。
+    const path = await tree('a1');
+
+    const results = await pruneBranches(deps(), { force: true });
+
+    expect(results).toEqual([]);
+    expect(gitIn(repo, 'branch', '--list', worktreeBranch(deps(), { id: 'a1' }))).toContain(
+      DEFAULT_WORKTREE_BRANCH_PREFIX
+    );
+    expect(existsSync(path)).toBe(true);
+  });
+
+  it('ignores branches outside this tool namespace', async () => {
+    // 仓里手建的分支（普通命名、以及前缀下只一段的）都不该被看见，force 也不动。
+    gitIn(repo, 'branch', 'feature/leftover');
+    const shallow = `${DEFAULT_WORKTREE_BRANCH_PREFIX}/onlyone`;
+    gitIn(repo, 'branch', shallow);
+
+    const results = await pruneBranches(deps(), { force: true });
+
+    expect(results).toEqual([]);
+    expect(gitIn(repo, 'branch', '--list', 'feature/leftover')).toContain('feature/leftover');
+    expect(gitIn(repo, 'branch', '--list', shallow)).toContain(shallow);
   });
 });

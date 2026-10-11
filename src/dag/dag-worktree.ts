@@ -578,6 +578,27 @@ export interface PruneResult {
 }
 
 /**
+ * 一条**没有 worktree 检出**的命名空间内分支的处置结论。
+ *
+ * `kept` 与 `failed` 都保留现场，差别只在原因：前者是「本轮没传 `force`，按设计只报告」，
+ * 后者是「传了 `force` 而 `git branch -d` 仍拒绝」。
+ */
+export type PruneBranchVerdict = 'removed' | 'kept' | 'failed';
+
+export interface PruneBranchResult {
+  /** 分支全名（`<prefix>/<session 短标识>/<node>`）。 */
+  branch: string;
+  session: string;
+  node: string;
+  verdict: PruneBranchVerdict;
+}
+
+export interface PruneBranchOptions {
+  /** 真删候选分支（`git branch -d`）；缺省 `false` = 只报告不删。 */
+  force?: boolean;
+}
+
+/**
  * 分支头提交时间（毫秒），读不到时 `undefined`。
  *
  * 用 `%ct`（Unix 秒）而不是 `%cI`：这里要算差值，ISO 串还得再解析一次。
@@ -623,9 +644,10 @@ function ageOf(path: string, nowMs: number, tipMs: number | undefined): number |
  * 4. `unmeasured`：连目录 mtime 都读不到，年龄无从判定。
  *
  * 只有「已合并 + 干净 + 够老」才真删，失败（权限、git 太老等）记 `failed` 并**不抛**：
- * 清理是收尾动作，一次失败不该让开工点停下来。**全程不删分支**——分支是回退的唯一
- * 凭据，删树不等于丢工作。扫描结束后跑一次 `git worktree prune` 清孤儿元数据（手工删
- * 过目录时元数据会残留；失败忽略）。
+ * 清理是收尾动作，一次失败不该让开工点停下来。**本函数只删树、不删分支**——分支是回退的
+ * 唯一凭据，删树不等于丢工作；「没有树检出的已合并旧分支」由 {@link pruneBranches} 单独收，
+ * 且必须在删树之后跑（树一没，它的分支才成为候选）。扫描结束后跑一次 `git worktree prune`
+ * 清孤儿元数据（手工删过目录时元数据会残留；失败忽略）。
  *
  * 只处理 {@link installedWorktrees} 返回的树（命名空间内、正好两层深）：主工作树、
  * 用户在仓里手工建的普通 worktree 一律不碰。
@@ -672,4 +694,99 @@ export async function pruneWorktrees(
   // 孤儿元数据（目录被手工删过）只有 `prune` 清得掉；失败不影响上面的结论。
   await deps.git(deps.repo, ['worktree', 'prune']);
   return results;
+}
+
+/**
+ * 分支名 → 会话短标识与节点 id；不在本工具命名空间（或不是正好两段）时 `undefined`。
+ *
+ * 判据与 {@link isNodePath} 同构，只是分隔符从路径换成 `/`：前缀之外必须正好两段非空。
+ * 于是 `dsh-mint/wtx/…`、更深/更浅的分支都不算本工具的东西——命名空间外一律不被看见。
+ */
+function branchScope(
+  prefix: string,
+  branch: string
+): { session: string; node: string } | undefined {
+  const namespace = `${prefix}/`;
+  if (!branch.startsWith(namespace)) return undefined;
+  const parts = branch.slice(namespace.length).split('/');
+  if (parts.length !== 2) return undefined;
+  const [session, node] = parts;
+  if (session === undefined || node === undefined || session === '' || node === '') {
+    return undefined;
+  }
+  return { session, node };
+}
+
+/**
+ * 当前被任一 worktree 检出的分支名集合（`worktree list --porcelain` 的 `branch` 字段）。
+ *
+ * 判据取自 git 自己，而不是等 `git branch -d` 的副作用来发现「仍被检出」：报告阶段
+ * （缺省不 `force`）也要说清哪条为什么没进候选。`worktree list` 失败（老 git）时给空集：
+ * 空集只会让候选变多，而删除仍由 `git branch -d` 自己把关，不会误删。
+ */
+async function checkedOutBranches(deps: WorktreeDeps): Promise<Set<string>> {
+  const result = await deps.git(deps.repo, ['worktree', 'list', '--porcelain']);
+  if (!result.ok) return new Set();
+  const names = result.stdout
+    .split('\n')
+    .filter((line) => line.startsWith('branch '))
+    .map((line) =>
+      line
+        .slice('branch '.length)
+        .trim()
+        .replace(/^refs\/heads\//, '')
+    );
+  return new Set(names);
+}
+
+/**
+ * 收掉本仓命名空间内**已没有 worktree 检出、且已并入 HEAD** 的旧分支，返回逐条处置结果。
+ *
+ * 这是 {@link pruneWorktrees} 的另一半：删树不等于清干净——长期残留在 `git branch` 里的
+ * 正是这些「树早收了、分支还在」的旧分支。候选三条判据**缺一不可**：① 分支名落在本工具
+ * 命名空间（{@link DEFAULT_WORKTREE_BRANCH_PREFIX}，正好两段）；② 已并入当前 HEAD
+ * （`merge-base --is-ancestor <branch> HEAD` 成功，与 `remove`/`prune` 的收尾判据同源）；
+ * ③ 没有任何 worktree 检出它。命名空间外的分支、未合并的分支、仍被检出的分支**一律不进
+ * 结果**——连报告都没有。
+ *
+ * **缺省只报告不删**（`force: true` 才真跑 `git branch -d`）：分支是回退的唯一凭据，删它
+ * 不可逆，够格与否先给人看一遍。用 `-d` 而不是 `-D`：让 git 再挡一道「未合并 / 仍被检出」，
+ * 与树那一侧**绝不 `--force`** 同一口径。
+ */
+export async function pruneBranches(
+  deps: WorktreeDeps,
+  options: PruneBranchOptions = {}
+): Promise<PruneBranchResult[]> {
+  const prefix = deps.branchPrefix ?? DEFAULT_WORKTREE_BRANCH_PREFIX;
+  // `for-each-ref` 而不是 `branch --list`：输出只有 ref 名，不必按 `*` / 缩进 / 颜色解析。
+  const listed = await deps.git(deps.repo, [
+    'for-each-ref',
+    '--format=%(refname:short)',
+    `refs/heads/${prefix}/`,
+  ]);
+  if (!listed.ok) return [];
+  const checkedOut = await checkedOutBranches(deps);
+  const found: PruneBranchResult[] = [];
+  for (const line of listed.stdout.split('\n')) {
+    const branch = line.trim();
+    const scope = branchScope(prefix, branch);
+    if (scope === undefined || checkedOut.has(branch)) continue;
+    const merged = await deps.git(deps.repo, ['merge-base', '--is-ancestor', branch, 'HEAD']);
+    if (!merged.ok) continue;
+    const verdict = await deleteBranch(deps, branch, options.force === true);
+    found.push({ branch, session: scope.session, node: scope.node, verdict });
+  }
+  // 按分支名排序：`for-each-ref` 的顺序随 ref 布局变，同一状态必须给同一串行。
+  return found.sort((left, right) => left.branch.localeCompare(right.branch));
+}
+
+/** 一条候选分支的处置：`force` 为假只报告；`-d` 失败记 `failed`（保留现场，不抛）。 */
+async function deleteBranch(
+  deps: WorktreeDeps,
+  branch: string,
+  force: boolean
+): Promise<PruneBranchVerdict> {
+  if (!force) return 'kept';
+  const result = await deps.git(deps.repo, ['branch', '-d', branch]);
+  return result.ok ? 'removed' : 'failed';
 }

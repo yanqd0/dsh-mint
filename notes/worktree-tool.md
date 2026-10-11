@@ -36,10 +36,10 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 | `list`   | 无                                    | 仓库级清单（见 §3），**不读 DAG、不需要节点**                                            |
 | `merge`  | `node`（必需）                        | 把节点分支合回它记录的**目标分支**                                                       |
 | `remove` | `node`（必需）、`force`（可选，布尔） | 清理工作树；**未合并默认拒绝**                                                           |
-| `prune`  | 无                                    | 仓库级按规则清理旧树（见 §5），**不读 DAG、不需要节点**                                  |
+| `prune`  | `force`（可选，布尔）                 | 仓库级清理旧树（见 §5），并报告/删除无树的已合并旧分支；**不读 DAG、不需要节点**         |
 
 - **非法组合**：`该动作需要 node`（create/merge/remove 缺 node）、`prune 不接受 node`、
-  `base 只用于 create`、`force 只用于 remove`、`base 必须是非空字符串（commit / ref）`、
+  `base 只用于 create`、`force 只用于 remove/prune`、`base 必须是非空字符串（commit / ref）`、
   `base 含控制字符`、`force 必须是布尔值`、`节点不存在：<id>`。节点 id 的校验复用 `dag.ts` 导出的
   `checkNodeId`（一份规则，不复制）。
 - **`create`/`merge`/`remove` 需要本会话的 DAG 与节点**：没有文档 → 拒绝并提示先
@@ -60,10 +60,10 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 - **已知代价（改 slug 之后）**：存量按旧 slug 落在 `session-/` 目录下的树对**写侧**
   （`create`/`merge`/`remove`）失联——写侧按新 slug 拼路径，认不出它们；`list`/`prune` 仍
   看得见、也清得掉（只读视图按路径父目录名判定，不看 slug 规则）。它们的分支
-  （`dsh-mint/wt/session-/*`）由 main 手工处理（删树不删分支，分支本就是回退凭据）。
-  收口实测：`git branch -d` 删掉 9 条**已并入 HEAD 且没有对应树**的旧分支
-  （`e199`/`ehub`/`pnpm-doc`/`w1d`…`w6d`）；仍挂着树的 9 条（`n1d`…`n5d` 与本次
-  `w1`…`w4`）保留——树归下一次开工点 `prune` 收，分支按回退凭据保留。
+  （`dsh-mint/wt/session-/*`）也归 `prune` 收：**已并入 HEAD 且没有任何树检出**的分支进候选，
+  默认只报告、`force: true` 才删（见 §5）。收口实测：当时 9 条这类旧分支
+  （`e199`/`ehub`/`pnpm-doc`/`w1d`…`w6d`）是 main 手工 `git branch -d` 清的——把这一步并进
+  `prune` 正由这次实测而来；仍挂着树的那些（`n1d`…`n5d` 等）保留，树归下一次开工点 `prune` 收。
 - 每个动作成功后把完整的 `DagWorktree` 记录写回该节点：`updateDag` + `revision + 1`
   （沿用既有 `persist` 手法——先做 git、再落盘，git 被拒时文档里不会留下半个声明）。
   字段：`path` / `branch` / `base` / `state`（`active`|`merged`|`conflict`|`removed`）/
@@ -125,9 +125,11 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
 **口径**：worktree **保留现场**——`plan close` 不清理（`remove` 只在有人显式点名时用），旧树由
 下一个**开工点**的 `prune` 收（为什么见 `skill/references/worktree-exec.md` §7）。`prune` 与 `list`
-同为**仓库级**动作：不读 DAG、不需要 session / 节点，扫的是 git 自己登记的树。
+同为**仓库级**动作：不读 DAG、不需要 session / 节点，扫的是 git 自己登记的树与分支。
 
-判据按顺序短路，**任一命中即保留**并记因（决不从 `--force` 找补）：
+`prune` 收**两类**候选，判据都是「git 自己怎么说」：
+
+**① 树**（`pruneWorktrees`）——判据按顺序短路，**任一命中即保留**并记因（决不从 `--force` 找补）：
 
 | 顺序 | verdict      | 判据                                                                                | 动作             |
 | ---- | ------------ | ----------------------------------------------------------------------------------- | ---------------- |
@@ -138,47 +140,69 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 | —    | `removed`    | 已合并 + 干净 + 够老 → `git worktree remove <path>`（**不带 `--force`**）成功       | 删树             |
 | —    | `failed`     | 判定够格但 `worktree remove` 失败（错误不抛，记因保留）                             | 保留             |
 
+**② 分支**（`pruneBranches`）——**三条同时成立**才算候选，缺一不可：
+
+| 顺序 | 判据                                                                        | 不成立时 |
+| ---- | --------------------------------------------------------------------------- | -------- |
+| 1    | 分支名落在本工具命名空间（前缀之后正好两段：会话短标识 + 节点 id）          | 看不见   |
+| 2    | `merge-base --is-ancestor <branch> HEAD` 成功（与树那一侧同源）             | 不报告   |
+| 3    | **没有任何 worktree 检出它**（`git worktree list --porcelain` 的 `branch`） | 不报告   |
+
+候选默认**只报告不删**（`kept`，原因 `未加 force，默认只报告`）；`force: true` 才跑
+`git branch -d`（**不是 `-D`**，让 git 再挡一道），成功记 `removed`、失败记 `failed` 并保留。
+顺序上**先收树再扫分支**：树一没，它那条已合并分支才成为「无树」候选，同一趟 `prune` 就收得干净。
+
 - **年龄** = `nowMs`（缺省 `Date.now()`）− **max(树目录 `statSync(path).mtimeMs`, 分支头提交时间)**
   （`git log -1 --format=%ct <branch>` × 1000）；分支读不到时只用目录 mtime。取较大者是判据本身：
   只按 mtime 会让刚 checkout 过的旧树永远显新，只按提交时间会让「提交很早但刚才还在动」的树显老。
-- **不删分支**：`prune` 只删工作树，分支一律留着（回退与复看的唯一凭据）；扫描结束后跑一次
-  `git worktree prune` 清**孤儿元数据**（目录被手工删过时的残留登记，失败忽略）——它同样不动分支。
-- **只碰命名空间内的树**：处理范围就是 `installedWorktrees(deps)` 返回的那批
-  （`<commonGitDir>/dsh-mint/worktrees/<session 短标识>/<node>`，正好两层深）。主工作树与用户在仓里手工建的
-  普通 worktree **一律不碰**（与 §3 的过滤同源，一处收口）。
-- **接口**：`pruneWorktrees(deps, { nowMs?, minAgeMs? })`（`src/dag/dag-worktree.ts`）→
-  `PruneResult[]`（`{ path, session, node, branch, verdict }`，按 `path` 排序）；两个 option 只为测试存在。
+  分支候选**不看年龄**：判据只有上面三条（树都没了，`recent` 保护无从谈起）。
+- **树这一路不删分支**：`pruneWorktrees` 只删工作树；分支由 `pruneBranches` 那一半单独收
+  （默认仍保留——分支是回退凭据，删它不可逆）。扫描结束后跑一次 `git worktree prune` 清**孤儿
+  元数据**（目录被手工删过时的残留登记，失败忽略）——它同样不动分支。
+- **只碰命名空间内的东西**：树的范围就是 `installedWorktrees(deps)` 返回的那批
+  （`<commonGitDir>/dsh-mint/worktrees/<session 短标识>/<node>`，正好两层深），分支的范围是
+  `refs/heads/<prefix>/` 下正好两段的 ref。主工作树、以及用户在仓里手工建的普通 worktree / 分支
+  **一律不碰**（与 §3 的过滤同源，一处收口）。
+- **接口**：`pruneWorktrees(deps, { nowMs?, minAgeMs? })` → `PruneResult[]`
+  （`{ path, session, node, branch, verdict }`）；`pruneBranches(deps, { force? })` →
+  `PruneBranchResult[]`（`{ branch, session, node, verdict }`），两者都按名排序、两个 option 只为
+  测试存在（`src/dag/dag-worktree.ts`）。
 - **输出**（`executeWorktreeTool` 的 `prune` 分支，总行数上限 20，超出追加 `  …还有 K 条`）：
 
   ```
-  prune：删除 N 棵，保留 M 棵；
+  prune：删除 N 棵，保留 M 棵； 分支：删 P 条，保留 Q 条；
     removed <session 短标识>/<node> · <branch>
     kept <session 短标识>/<node> · <branch> · <原因>
+    removed branch <session 短标识>/<node> · <branch>
+    kept branch <session 短标识>/<node> · <branch> · <原因>
   ```
 
-  原因文案：`未合并 | 有未提交改动 | 不到 1 小时 | 年龄不可测 | 删除失败`。
-  一条都没有（含空仓）时输出 `本仓没有可清理的 dsh-mint worktree`，仍是 `ok`。
+  树的保留原因：`未合并 | 有未提交改动 | 不到 1 小时 | 年龄不可测 | 删除失败`；
+  分支的保留原因：`未加 force，默认只报告 | 删除失败`。分支行带 `branch` 词、且分支那半句只在
+  真有候选时出现（一条都没有时提它就是噪声）。两类都没有（含空仓）时输出
+  `本仓没有可清理的 dsh-mint worktree`，仍是 `ok`。
 
 ## 6. 落点与测试
 
-| 层       | 文件                                                                                                                                                                               |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 工具面   | `src/dag/worktree-tool.ts`（`TOOL_NAME`/`WORKTREE_TOOL_DESCRIPTION`/`parseWorktreeAction`/`executeWorktreeTool`/`installWorktreeTool`；注册器与执行器分离）                        |
-| git 层   | `src/dag/dag-worktree.ts`（`worktreeRoot`/`worktreePath`/`worktreeBranch`/`createWorktree`/`mergeWorktree`/`removeWorktree`/`installedWorktrees`/`pruneWorktrees`/`WorktreeDeps`） |
-| 文档记录 | `src/dag/dag.ts` 的 `dag/internal`（节点 `worktree` 字段的读写校验 `checkWorktree` 在 `internal/validate.ts`）、`src/dag/dag-store.ts`（`updateDag`）                              |
-| 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用）                                                                                     |
-| 挂载     | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁）                                                                                                           |
-| 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`）                                                                      |
-| skill    | `skill/references/worktree-exec.md`（唯一一份操作指南；保留现场与开工点清理见 §7）                                                                                                 |
+| 层       | 文件                                                                                                                                                                                               |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 工具面   | `src/dag/worktree-tool.ts`（`TOOL_NAME`/`WORKTREE_TOOL_DESCRIPTION`/`parseWorktreeAction`/`executeWorktreeTool`/`installWorktreeTool`；注册器与执行器分离）                                        |
+| git 层   | `src/dag/dag-worktree.ts`（`worktreeRoot`/`worktreePath`/`worktreeBranch`/`createWorktree`/`mergeWorktree`/`removeWorktree`/`installedWorktrees`/`pruneWorktrees`/`pruneBranches`/`WorktreeDeps`） |
+| 文档记录 | `src/dag/dag.ts` 的 `dag/internal`（节点 `worktree` 字段的读写校验 `checkWorktree` 在 `internal/validate.ts`）、`src/dag/dag-store.ts`（`updateDag`）                                              |
+| 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用）                                                                                                     |
+| 挂载     | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁）                                                                                                                           |
+| 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`）                                                                                      |
+| skill    | `skill/references/worktree-exec.md`（唯一一份操作指南；保留现场与开工点清理见 §7）                                                                                                                 |
 
 测试：
 
 - `tests/unit/dag/worktree-tool.test.ts`：工具面全动作（create/幂等/未知节点/坏 action/无 DAG/
-  无 repo/merge 与 sha/冲突落盘/remove 与 force/target 守卫/list 三态/20 行截断/prune 空仓与
-  「做旧的删、未合并的留」），全部对**真实临时仓**跑生产 `runGit`，写盘落
-  `mkdtempSync(tmpdir()…)`；做旧靠提交时 `GIT_*_DATE` + 树目录 `utimesSync`。
+  无 repo/merge 与 sha/冲突落盘/remove 与 force/target 守卫/list 三态/20 行截断/prune 空仓、
+  「做旧的删、未合并的留」与无树旧分支的「默认只报告 / force 才删」），全部对**真实临时仓**跑
+  生产 `runGit`，写盘落 `mkdtempSync(tmpdir()…)`；做旧靠提交时 `GIT_*_DATE` + 树目录 `utimesSync`。
 - `tests/unit/dag/dag-worktree.test.ts`：git 层域逻辑（含老 git 假 runner 的降级文案），
-  以及 `pruneWorktrees` 的五个 verdict 分支（removed/unmerged/dirty/recent/unmeasured）。
+  `pruneWorktrees` 的五个树 verdict（removed/unmerged/dirty/recent/unmeasured）与
+  `pruneBranches` 的三条分支判据（命名空间 / 已合并 / 无树检出）。
 - `tests/unit/dag/dag.test.ts`：节点 `worktree` 字段（含 `target`）的读写校验，以及
   `wt`/`merge` 两个老 action 被**重定向**的拒绝文案。
 - `tests/guard/injection-size.test.ts`：`WORKTREE_TOOL_DESCRIPTION` 的每请求字节预算。

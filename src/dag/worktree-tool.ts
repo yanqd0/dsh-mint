@@ -28,10 +28,18 @@ import {
   createWorktree,
   installedWorktrees,
   mergeWorktree,
+  pruneBranches,
   pruneWorktrees,
   removeWorktree,
 } from './dag-worktree.js';
-import type { PruneResult, PruneVerdict, WorktreeDeps, WorktreeNode } from './dag-worktree.js';
+import type {
+  PruneBranchResult,
+  PruneBranchVerdict,
+  PruneResult,
+  PruneVerdict,
+  WorktreeDeps,
+  WorktreeNode,
+} from './dag-worktree.js';
 import { isRecord } from '../mint/mint-json.js';
 import { runGit } from '../shared/git.js';
 import type { GitRunResult } from '../shared/git.js';
@@ -81,9 +89,9 @@ export const WORKTREE_TOOL_DESCRIPTION = [
   '按节点管理 git worktree：每棵独立的树对应 DAG 的一个节点；只回摘要。',
   'action：create(node?,base?) 建树并记 target=当前分支；list 列出本仓已装的树（无需 DAG）；',
   'merge(node) 合回该节点记录的目标分支（不一致即拒绝，冲突不裁决）；remove(node?,force?) 清理（未合并默认拒绝）。',
-  'prune 按「未合并 / 脏树 / 不到 1 小时」保护清理旧的（开工点用，仓库级）；',
-  '只有 main agent 调 create/merge/remove；一步一节点派发、同批同 base（见 skill worktree-exec.md）。',
-  '例：worktree({action:"prune"}) 或 worktree({action:"create",node:"a1",base:"<sha>"})。',
+  'prune(force?) 清旧树（未合并/脏树/不到 1 小时即留），并报出无树的已合并旧分支（默认只报，force 才删；仓库级）；',
+  '只有 main agent 调 create/merge/remove；一步一节点、同批同 base（见 skill worktree-exec.md）。',
+  '例：worktree({action:"create",node:"a1",base:"<sha>"})。',
 ].join('\n');
 
 /**
@@ -102,14 +110,17 @@ const WORKTREE_TOOL_PARAMETERS: Record<string, unknown> = {
       type: 'string',
       enum: [...WORKTREE_ACTIONS],
       description:
-        '要执行的操作：create 建树，list 列出，merge 合回目标分支，remove 清理，prune 按规则清理旧的（仓库级）',
+        '要执行的操作：create 建树，list 列出，merge 合回目标分支，remove 清理，prune 按规则清理旧树与无树旧分支（仓库级）',
     },
     node: { type: 'string', description: '目标 DAG 节点 id（create/merge/remove 必需）' },
     base: {
       type: 'string',
       description: 'create 的起点 commit（缺省 HEAD；一批并行节点必须传同一个 base）',
     },
-    force: { type: 'boolean', description: 'remove 时强制删除未合并的 worktree' },
+    force: {
+      type: 'boolean',
+      description: 'remove 时强制删除未合并的 worktree；prune 时一并删除候选分支',
+    },
   },
   required: ['action'],
 };
@@ -205,14 +216,30 @@ function pruneLine(entry: PruneResult): string {
 }
 
 /**
+ * 分支候选的保留原因：与树那侧同一张「为什么没删」的清单，`kept` = 本轮没传 `force`。
+ */
+const PRUNE_BRANCH_REASONS: Record<Exclude<PruneBranchVerdict, 'removed'>, string> = {
+  kept: '未加 force，默认只报告',
+  failed: '删除失败',
+};
+
+/** 分支行带 `branch` 词：树与分支在同一屏里，两类结果必须一眼分得清。 */
+function pruneBranchLine(entry: PruneBranchResult): string {
+  const where = `${entry.session}/${entry.node} · ${entry.branch}`;
+  return entry.verdict === 'removed'
+    ? `  removed branch ${where}`
+    : `  kept branch ${where} · ${PRUNE_BRANCH_REASONS[entry.verdict]}`;
+}
+
+/**
  * Validate raw tool arguments into a typed call.
  *
  * The combinations are the point: `base` only ever means something to `create`
  * (it is the commit a parallel batch shares), `force` only to `remove` (the
- * override of the unmerged guard), and every action except the two repository-
- * level ones (`list`/`prune`) names exactly one node. Accepting a stray field
- * would silently ignore an intent the caller clearly had, so each one is refused
- * by name.
+ * override of the unmerged guard) and to `prune` (候选分支默认只报告，`force` 才真删),
+ * and every action except the two repository-level ones (`list`/`prune`) names
+ * exactly one node. Accepting a stray field would silently ignore an intent the
+ * caller clearly had, so each one is refused by name.
  *
  * @param raw - the tool call's arguments, however malformed.
  */
@@ -246,7 +273,11 @@ export function parseWorktreeAction(raw: unknown): WorktreeCall | { error: strin
     call.base = args.base;
   }
   if (args.force !== undefined) {
-    if (call.action !== 'remove') return { error: 'force 只用于 remove' };
+    // `force` 的两个含义都指向同一条「覆盖保护」：`remove` 覆盖未合并守卫，`prune`
+    // 把候选分支从「只报告」升成「真删」。其余动作没有可覆盖的守卫，塞进来就是误以为生效。
+    if (call.action !== 'remove' && call.action !== 'prune') {
+      return { error: 'force 只用于 remove/prune' };
+    }
     if (typeof args.force !== 'boolean') return { error: 'force 必须是布尔值' };
     call.force = args.force;
   }
@@ -282,17 +313,33 @@ export async function executeWorktreeTool(
     return answer(shown.join('\n'));
   }
 
-  // `prune` 同样是仓库级：开工点先收旧的，判据与「删哪一棵」都在 git 层，
+  // `prune` 同样是仓库级：开工点先收旧的，判据与「删哪一棵/哪条分支」都在 git 层，
   // 这里只负责排版。它不接受 node —— 点名一棵是 `remove` 的事（显式丢弃）。
+  // 顺序是先树后分支且有依赖：树一没，它那条已合并分支才成为「无树」候选，同一次
+  // prune 才收得干净（分两趟就得跑两次开工点）。
   if (parsed.action === 'prune') {
-    const results = await pruneWorktrees({ git, repo, session: '' });
-    if (results.length === 0) return answer('本仓没有可清理的 dsh-mint worktree');
-    const removed = results.filter((entry) => entry.verdict === 'removed').length;
+    const repoDeps: WorktreeDeps = { git, repo, session: '' };
+    const trees = await pruneWorktrees(repoDeps);
+    const branches = await pruneBranches(repoDeps, { force: parsed.force === true });
+    if (trees.length === 0 && branches.length === 0) {
+      return answer('本仓没有可清理的 dsh-mint worktree');
+    }
+    const removedTrees = trees.filter((entry) => entry.verdict === 'removed').length;
+    const removedBranches = branches.filter((entry) => entry.verdict === 'removed').length;
+    // 分支那半句只在真有候选时出现：一条都没有时提它就是噪声。
+    const branchHead =
+      branches.length === 0
+        ? ''
+        : ` 分支：删 ${String(removedBranches)} 条，保留 ${String(branches.length - removedBranches)} 条；`;
     const lines = [
-      `prune：删除 ${String(removed)} 棵，保留 ${String(results.length - removed)} 棵；`,
+      `prune：删除 ${String(removedTrees)} 棵，保留 ${String(trees.length - removedTrees)} 棵；${branchHead}`,
     ];
-    lines.push(...results.slice(0, LIST_MAX - 1).map((entry) => pruneLine(entry)));
-    const rest = results.length - (lines.length - 1);
+    const rows = [
+      ...trees.map((entry) => pruneLine(entry)),
+      ...branches.map((entry) => pruneBranchLine(entry)),
+    ];
+    lines.push(...rows.slice(0, LIST_MAX - 1));
+    const rest = rows.length - (lines.length - 1);
     if (rest > 0) lines.push(`  …还有 ${String(rest)} 条`);
     return answer(lines.join('\n'));
   }
