@@ -30,6 +30,7 @@ import {
   truncateBody,
 } from '../../../src/host/routes.js';
 import type { MintRouteDeps } from '../../../src/host/routes.js';
+import type { AgentTreeRead } from '../../../src/dag/agent-tree/agent-tree.js';
 import type { DshContext } from '../../../src/shared/types.js';
 
 /** A response double exposing only what the handler touches. */
@@ -71,6 +72,8 @@ function harness(options: {
   openDagTab?: boolean;
   /** Per-node live metrics seam for the DAG route. */
   readDagMetrics?: MintRouteDeps['readDagMetrics'];
+  /** Subagent tree seam for the agents route. */
+  readAgentTree?: MintRouteDeps['readAgentTree'];
 }): {
   handler: (req: IncomingMessage, res: ServerResponse) => Promise<void>;
   runs: RecordedRun[];
@@ -90,6 +93,7 @@ function harness(options: {
     ...(options.dagDir === undefined ? {} : { dagDir: options.dagDir }),
     ...(options.openDagTab === undefined ? {} : { openDagTab: options.openDagTab }),
     ...(options.readDagMetrics === undefined ? {} : { readDagMetrics: options.readDagMetrics }),
+    ...(options.readAgentTree === undefined ? {} : { readAgentTree: options.readAgentTree }),
   };
   return { handler: createMintHandler(deps), runs };
 }
@@ -1211,6 +1215,113 @@ describe('the plan DAG route', () => {
   it('refuses a non-GET like every other route', async () => {
     const { handler } = harness({ cwd: '/proj', dagDir: dir });
     const res = await invoke(handler, `${ROUTE_PREFIX}/dag?session=s1`, 'POST');
+    expect(res.statusCode).toBe(405);
+    expect(res.headers['allow']).toBe('GET');
+  });
+});
+
+describe('the subagent tree route', () => {
+  /** 一份只填断言需要字段的空树答案。 */
+  function emptyRead(): AgentTreeRead {
+    return { nodes: [], counts: { total: 0, running: 0, unsupported: 0 } };
+  }
+
+  // 信封与采样钟：`sampled_at` 来自路由自己的 `now()`，读数与它同源，面板据它走秒。
+  it('answers the read tree with the sample clock', async () => {
+    const asked: Array<[string, number]> = [];
+    const nodes: AgentTreeRead['nodes'] = [
+      { id: 's1', kind: 'main', depth: 0, label: 'main', running: true },
+      {
+        id: 'c1',
+        kind: 'subagent',
+        parent: 's1',
+        depth: 1,
+        label: '审 tests',
+        running: true,
+        metrics: { tokens: 12, context: 900 },
+      },
+    ];
+    const { handler } = harness({
+      cwd: '/proj',
+      now: () => 1_700_000_000_000,
+      readAgentTree: (sessionId, sampledMs) => {
+        asked.push([sessionId, sampledMs]);
+        return Promise.resolve({ nodes, counts: { total: 2, running: 2, unsupported: 0 } });
+      },
+    });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`);
+    expect(res.statusCode).toBe(200);
+    const payload = res.json();
+    expect(payload).toMatchObject({
+      ok: true,
+      nodes,
+      counts: { total: 2, running: 2, unsupported: 0 },
+      sampled_at: 1_700_000_000_000,
+    });
+    expect(payload).not.toHaveProperty('warnings');
+    // The reader is asked about this session, once per request, at the envelope's own clock.
+    expect(asked).toEqual([['s1', 1_700_000_000_000]]);
+  });
+
+  it('carries the reader warnings through the envelope', async () => {
+    const { handler } = harness({
+      cwd: '/proj',
+      readAgentTree: () =>
+        Promise.resolve({ ...emptyRead(), warnings: ['root session is not live'] }),
+    });
+    const payload = (await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`)).json();
+    expect(payload.warnings).toEqual(['root session is not live']);
+  });
+
+  // 服务缺失/抛错一律退化成空树：这条路由没有「文档不可读」那种态，只有「读不到」。
+  it('degrades to an empty tree without a reader or when the read throws', async () => {
+    const noReader = await invoke(
+      harness({ cwd: '/proj' }).handler,
+      `${ROUTE_PREFIX}/agents?session=s1`
+    );
+    expect(noReader.statusCode).toBe(200);
+    expect(noReader.json()).toMatchObject({ ok: true, nodes: [] });
+
+    const throwing = await invoke(
+      harness({
+        cwd: '/proj',
+        readAgentTree: () => Promise.reject(new Error('registry gone')),
+      }).handler,
+      `${ROUTE_PREFIX}/agents?session=s1`
+    );
+    expect(throwing.statusCode).toBe(200);
+    expect(throwing.json()).toMatchObject({ ok: true, nodes: [] });
+  });
+
+  // session 是查询参数里唯一的外部输入：坏 id 一律 400，绝不进任何服务调用。
+  it('refuses a session id that is not a plain id', async () => {
+    let asked = 0;
+    const { handler } = harness({
+      cwd: '/proj',
+      readAgentTree: () => {
+        asked += 1;
+        return Promise.resolve(emptyRead());
+      },
+    });
+    for (const session of ['', '../../etc/passwd', 'a/b', 'x'.repeat(65)]) {
+      const res = await invoke(
+        handler,
+        `${ROUTE_PREFIX}/agents?session=${encodeURIComponent(session)}`
+      );
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toMatchObject({ ok: false });
+    }
+    const missing = await invoke(handler, `${ROUTE_PREFIX}/agents`);
+    expect(missing.statusCode).toBe(400);
+    expect(asked).toBe(0);
+  });
+
+  it('refuses a non-GET like every other route', async () => {
+    const { handler } = harness({
+      cwd: '/proj',
+      readAgentTree: () => Promise.resolve(emptyRead()),
+    });
+    const res = await invoke(handler, `${ROUTE_PREFIX}/agents?session=s1`, 'POST');
     expect(res.statusCode).toBe(405);
     expect(res.headers['allow']).toBe('GET');
   });
