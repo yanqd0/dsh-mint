@@ -36,7 +36,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 - **允许：节点内 UT**。子代理**在自己的 worktree 内**跑**该节点相关的 UT**——用**主仓的 vitest 二进制**，
   在该 worktree 目录内执行 `node <repo>/node_modules/vitest/vitest.mjs run <该节点的测试文件…>`
   （或 `<repo>/node_modules/.bin/vitest run …`）；配置取该 worktree 里的 `vitest.config.ts`。
-  可行是因为 worktree 落在 `<repo>/.git/dsh-mint/worktrees/<session前8位>/<node>`，从它沿目录向上
+  可行是因为 worktree 落在 `<repo>/.git/dsh-mint/worktrees/<session 短标识>/<node>`，从它沿目录向上
   就能走到 `<repo>/node_modules`；万一在某台机器上解析不到，退路是上一条（用宿主 `pnpm` 工具在该树内
   装一次），或在树内 `ln -s <repo>/node_modules node_modules`（该树位于 `.git` 内，这个 symlink
   不会出现在 `git status` 里）。
@@ -49,8 +49,8 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
     → 子代理在 worktree 内跑该节点 UT（绿）→ merge → issue state commit --sha →（保留现场，收尾不删）
 
 1. **建 worktree（主 agent，派发前）**：`worktree({action:"create", node:"a1", base:"<sha>"})`
-   - 落点 `.git/dsh-mint/worktrees/<session前8位>/<node>`（`<common-git-dir>` 内部，
-     `git status` 不可见，**无需** `.gitignore` 条目）；分支 `dsh-mint/wt/<session前8位>/<node>`。
+   - 落点 `.git/dsh-mint/worktrees/<session 短标识>/<node>`（`<common-git-dir>` 内部，
+     `git status` 不可见，**无需** `.gitignore` 条目）；分支 `dsh-mint/wt/<session 短标识>/<node>`。
      仓里若残留旧的 `.worktrees/`（迁址前的遗留目录），手工删掉即可。
    - **一批的多个节点必须显式传同一个 `base`**（不同 base 的 commit 无法按序 merge）；
      `base` 取开工点的 `git rev-parse HEAD`。工具只校验 `base` 是本仓的 commit，
@@ -67,7 +67,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
      dev 被认领后由 dev 子代理把本对的 test 节点 `set running` 再派二级子代理（`parallel-exec.md` §3.1）。
 2. **派活（一批的活一起跑，但派发按「一步一节点」串行）**：提示词五段不变（`parallel-exec.md` §3），
    **必须写明该节点自己的 worktree 路径**，并写明「在本 worktree 内 `git add` / `git commit`」。
-   漏写路径 = 子代理在主工作树上改，隔离失效。
+   漏写路径 = 子代理在主工作树上改，隔离失效。路径等**变体槽排在逐字固定头之后**。
 3. **子代理在自己的 worktree 内 commit**（dev/test 对里只有 **dev 子代理**做；test 子代理只读、不 commit）：
    - 允许：在**其 worktree 内** `git add` / `git commit`；commit message 用 **Angular 前缀 + 中文描述**，
      **不带任何 mint ID**——issue↔commit 关联由主 agent 收口时 `state commit --sha` 登记（§3 步骤 6）。
@@ -151,7 +151,7 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 `git worktree prune` 只清孤儿元数据（目录被手工删过时残留的登记），同样不动分支。
 
 ⑤ **怎么读输出**：首行 `prune：删除 N 棵，保留 M 棵；`，其下每棵一行——
-`removed <会话前8位>/<节点> · <分支>` 或 `kept <会话前8位>/<节点> · <分支> · <原因>`，
+`removed <会话短标识>/<节点> · <分支>` 或 `kept <会话短标识>/<节点> · <分支> · <原因>`，
 原因是 `未合并 | 有未提交改动 | 不到 1 小时 | 年龄不可测 | 删除失败`。一条都没有时输出
 `本仓没有可清理的 dsh-mint worktree`（空仓不是错误）。**`prune` 是仓库级动作**：它扫命名空间内的树，
 不读 DAG、不需要节点、也不限于本会话；要立刻丢掉某一棵仍然用 `remove(node)`（可 `force:true`）。

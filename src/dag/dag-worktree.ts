@@ -12,7 +12,7 @@
  * Two decisions shape everything below:
  *
  * - **Inside the workspace, under the git common dir.** A worktree lives
- *   at `<common git dir>/dsh-mint/worktrees/<session8>/<node>`, never outside the
+ *   at `<common git dir>/dsh-mint/worktrees/<session-slug>/<node>`, never outside the
  *   repository: the bash tool resolves `workdir` against the sandbox's workspace
  *   root, so a path outside it is unreachable for the agents that are supposed to
  *   work there. `git common dir` rather than the repo root because the repo root
@@ -24,6 +24,7 @@
  * This module is pure orchestration over a git runner, so the whole cycle is
  * testable against a real temporary repository with no host wiring.
  */
+import { createHash } from 'node:crypto';
 import { statSync } from 'node:fs';
 import { basename, dirname, join, resolve, sep } from 'node:path';
 
@@ -31,6 +32,14 @@ import { checkNodeId } from './dag.js';
 import type { DagWorktree } from '../shared/records.js';
 import type { GitRunResult } from '../shared/git.js';
 
+/**
+ * 会话 id 的固定前缀（主会话 id 一律 `session-<uuid>`）。
+ *
+ * 它本身恰好 8 个字符，所以「先截 8 位再当 slug」会让所有会话同 slug——见 {@link sessionSlug}。
+ */
+const SESSION_ID_PREFIX = 'session-';
+
+/** 会话短标识的长度：见 {@link sessionSlug}。 */
 const SESSION_PREFIX = 8;
 
 /** Default branch prefix; the `dsh-` namespace keeps it out of user branches. */
@@ -77,8 +86,23 @@ export type WorktreeOutcome =
   | { ok: true; worktree: DagWorktree; note?: string }
   | { ok: false; error: string; conflict?: readonly string[]; worktree?: DagWorktree };
 
+/**
+ * 会话短标识（落点目录段与分支段）。
+ *
+ * 顺序是清洗 → **摘掉开头的 `session-`** → 才截前 8 位：主会话 id 一律 `session-<uuid>`，
+ * 直接截位只会得到 `session-`，于是所有会话同 slug、落点与分支同名，`create` 的幂等分支
+ * 会认领别人的树。清洗去前缀后为空（id 恰是前缀本身，或整段都被剔除）时回退 `sha256(id)`
+ * 的前 8 位十六进制：路径段非空，且同一个 id 永远得到同一个 slug。
+ */
 function sessionSlug(session: string): string {
-  return session.replace(/[^A-Za-z0-9_-]/g, '').slice(0, SESSION_PREFIX);
+  const cleaned = session.replace(/[^A-Za-z0-9_-]/g, '');
+  const stripped = cleaned.startsWith(SESSION_ID_PREFIX)
+    ? cleaned.slice(SESSION_ID_PREFIX.length)
+    : cleaned;
+  const slug = stripped.slice(0, SESSION_PREFIX);
+  return slug === ''
+    ? createHash('sha256').update(session).digest('hex').slice(0, SESSION_PREFIX)
+    : slug;
 }
 
 /**
@@ -144,7 +168,7 @@ export interface InstalledWorktree {
   path: string;
   /** 该树签出的分支名；detached 时为 `''`。 */
   branch: string;
-  /** 落点路径的父目录名 = 会话前 8 位（见 {@link worktreeRoot}）。 */
+  /** 落点路径的父目录名 = 会话 id 去掉 `session-` 前缀后的前 8 位（见 {@link worktreeRoot}）。 */
   session: string;
   /** 落点路径的末段名 = 节点 id。 */
   node: string;
@@ -158,7 +182,7 @@ export interface InstalledWorktree {
  * 本仓命名空间内**当前装着的** worktree 清单（仓库级，不读 DAG）。
  *
  * 与 {@link registeredWorktrees} 的差别有两点，都是有意为之：① 只认落在
- * `<git common dir>/dsh-mint/worktrees/<session8>/<node>` 这个命名空间里的树——
+ * `<git common dir>/dsh-mint/worktrees/<session-slug>/<node>` 这个命名空间里的树——
  * 用户在仓里手工建的普通 worktree 不是本工具的东西，列出来只会让人误会；② 每条带
  * 分支、是否已合并与分支头时间，供 `list` 一屏说清「哪棵树、什么状态、还要不要
  * merge」。**只保留两层深**（少一层 = 会话目录本身，多一层 = 别人的目录）。

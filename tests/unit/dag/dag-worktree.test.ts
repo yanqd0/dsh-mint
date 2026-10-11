@@ -1,12 +1,14 @@
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join, sep } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import {
   createWorktree,
+  installedWorktrees,
   mergeWorktree,
   pruneWorktrees,
   removeWorktree,
@@ -30,6 +32,16 @@ import type { GitRunResult } from '../../../src/shared/git.js';
  * global identity and the suite leaves nothing behind outside its temp dir.
  */
 const SESSION = 'sess1234';
+
+/**
+ * 主会话 id 的真实形态 `session-<uuid>`。
+ *
+ * 前缀恰好 8 字符，正是旧 slug「清洗后取前 8 位」的取值来源：两个不同会话会得到同一个
+ * `session-`，落点与分支相撞。凡是验「不同会话必须分家」的用例都用这两个 id。
+ */
+const SESSION_A = 'session-11111111-1111-4111-8111-111111111111';
+const SESSION_B = 'session-22222222-2222-4222-8222-222222222222';
+
 const USER = [
   '-c',
   'user.name=dsh-mint test',
@@ -161,6 +173,51 @@ describe('worktree naming', () => {
     expect(root).not.toContain('..');
     expect(root.endsWith('etcpassw')).toBe(true);
   });
+
+  it('gives two session-<uuid> ids their own slug instead of the shared session- prefix', async () => {
+    // 旧 slug = 清洗后前 8 位 = `session-`：两个会话同 slug，落点与分支都撞在一起。
+    // 每个会话各问一次落点与分支，断言互异、且父目录名是 uuid 的前 8 位。
+    const node: WorktreeNode = { id: 'a1' };
+    const rootA = await worktreeRoot(deps({ session: SESSION_A }));
+    const rootB = await worktreeRoot(deps({ session: SESSION_B }));
+    expect(typeof rootA).toBe('string');
+    expect(typeof rootB).toBe('string');
+    if (typeof rootA !== 'string' || typeof rootB !== 'string') return;
+    expect(rootA).not.toBe(rootB);
+    expect(basename(rootA)).toBe('11111111');
+    expect(basename(rootB)).toBe('22222222');
+    expect(worktreeBranch(deps({ session: SESSION_A }), node)).toBe('dsh-mint/wt/11111111/a1');
+    expect(worktreeBranch(deps({ session: SESSION_A }), node)).not.toBe(
+      worktreeBranch(deps({ session: SESSION_B }), node)
+    );
+  });
+
+  it('falls back to a sha256 slug when stripping the session- prefix leaves nothing', async () => {
+    // id 恰是前缀本身：清洗去前缀后为空，绝不能落成空目录段（路径会塌到上一级）。
+    // 断言 slug 是 8 位十六进制、等于 sha256(原始 id) 前 8 位，且命名空间下正好一层。
+    const root = await worktreeRoot(deps({ session: 'session-' }));
+    expect(typeof root).toBe('string');
+    if (typeof root !== 'string') return;
+    const slug = basename(root);
+    expect(slug).toMatch(/^[0-9a-f]{8}$/);
+    expect(slug).toBe(createHash('sha256').update('session-').digest('hex').slice(0, 8));
+    const shard = root.slice(join(repo, '.git', 'dsh-mint', 'worktrees').length + 1).split(sep);
+    expect(shard).toEqual([slug]);
+  });
+});
+
+describe('installedWorktrees', () => {
+  it('still reads a tree left under the old session- directory', async () => {
+    // 存量旧 slug 树：写侧（create/merge/remove）已按新 slug 找不到它，
+    // 但只读视图必须照旧认出来——`list`/`prune` 是这类树唯一的收尾通道。
+    const legacy = join(repo, '.git', 'dsh-mint', 'worktrees', 'session-', 'a1');
+    gitIn(repo, 'worktree', 'add', '-q', '-b', 'legacy/a1', legacy, 'HEAD');
+
+    const found = await installedWorktrees(deps({ session: SESSION_A }));
+    const entry = found.find((item) => item.path === legacy);
+    expect(entry?.session).toBe('session-');
+    expect(entry?.node).toBe('a1');
+  });
 });
 
 describe('node id guard', () => {
@@ -238,6 +295,30 @@ describe('createWorktree', () => {
     if (!again.ok || !first.ok) return;
     expect(again.note).toContain('已存在');
     expect(again.worktree.path).toBe(first.worktree.path);
+  });
+
+  it('does not let one session claim another session tree for the same node id', async () => {
+    // 端到端隔离：两个真实 `session-<uuid>` 会话对**同一个节点 id** 各建一棵树。
+    // 修前两者 slug 都是 `session-`、路径相同，B 会走幂等分支认领 A 的树。
+    const a = await createWorktree(deps({ session: SESSION_A }), { id: 'a1' });
+    const b = await createWorktree(deps({ session: SESSION_B }), { id: 'a1' });
+    expect(a.ok).toBe(true);
+    expect(b.ok).toBe(true);
+    if (!a.ok || !b.ok) return;
+    expect(b.worktree.path).not.toBe(a.worktree.path);
+    expect(b.worktree.branch).not.toBe(a.worktree.branch);
+    // B 是真建出来的，不是认领 A 的树：幂等返回会带那条 note。
+    expect(b.note).toBeUndefined();
+    // 两棵树同时在册，且各自签出自己的分支。
+    const registered = gitIn(repo, 'worktree', 'list', '--porcelain');
+    expect(registered).toContain(a.worktree.path);
+    expect(registered).toContain(b.worktree.path);
+    expect(gitIn(a.worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(
+      a.worktree.branch
+    );
+    expect(gitIn(b.worktree.path, 'rev-parse', '--abbrev-ref', 'HEAD').trim()).toBe(
+      b.worktree.branch
+    );
   });
 
   it('refuses a base that is not a commit of this repository', async () => {

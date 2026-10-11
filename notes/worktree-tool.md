@@ -51,9 +51,16 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
 ## 2. 落点与记录
 
-- 落点 `<common-git-dir>/dsh-mint/worktrees/<session前8位>/<node>`，分支
-  `dsh-mint/wt/<session前8位>/<node>`（`WORKTREE_SUBDIR` / `DEFAULT_WORKTREE_BRANCH_PREFIX`）。
+- 落点 `<common-git-dir>/dsh-mint/worktrees/<session 短标识>/<node>`，分支
+  `dsh-mint/wt/<session 短标识>/<node>`（`WORKTREE_SUBDIR` / `DEFAULT_WORKTREE_BRANCH_PREFIX`）。
+  短标识 = 会话 id 清洗后**去掉开头的 `session-`**再取前 8 位（主会话 id 一律 `session-<uuid>`，
+  先截位只会得到 `session-`，所有会话同 slug）；去前缀后为空（id 恰是 `session-`）时回退
+  `sha256(id)` 的前 8 位十六进制，路径段与分支段因此永不为空。
   落在 git 公共目录内部，所以 `git status` 看不见它，**不需要** `.gitignore` 条目。
+- **已知代价（改 slug 之后）**：存量按旧 slug 落在 `session-/` 目录下的树对**写侧**
+  （`create`/`merge`/`remove`）失联——写侧按新 slug 拼路径，认不出它们；`list`/`prune` 仍
+  看得见、也清得掉（只读视图按路径父目录名判定，不看 slug 规则）。它们的分支
+  （`dsh-mint/wt/session-/*`）由 main 手工处理（删树不删分支，分支本就是回退凭据）。
 - 每个动作成功后把完整的 `DagWorktree` 记录写回该节点：`updateDag` + `revision + 1`
   （沿用既有 `persist` 手法——先做 git、再落盘，git 被拒时文档里不会留下半个声明）。
   字段：`path` / `branch` / `base` / `state`（`active`|`merged`|`conflict`|`removed`）/
@@ -77,7 +84,7 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 输出每行（`listLine`）：
 
 ```
-  <session前8位>/<node> · <branch> · merged|unmerged · <tip 提交 ISO 时间> · <绝对路径>
+  <session 短标识>/<node> · <branch> · merged|unmerged · <tip 提交 ISO 时间> · <绝对路径>
 ```
 
 - 最多 **20 行**，超出追加一行 `  …还有 N 条`；一条都没有时输出 `本仓还没有 dsh-mint worktree`。
@@ -86,10 +93,11 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
   `src/dag/dag-worktree.ts`）：
   - 块内字段：`worktree <path>` / `HEAD <sha>` / `branch refs/heads/<name>` / `detached` /
     `prunable`；`branch` 去掉 `refs/heads/` 前缀。
-  - **只保留命名空间内的项**：路径必须正好是 `<commonGitDir>/dsh-mint/worktrees/<一层>/<一层>`
+  - **只保留命名空间内的项**：路径必须正好是 `<commonGitDir>/dsh-mint/worktrees/<会话短标识>/<节点>`
     （少一层 = 会话目录本身，多一层 = 别人的目录）。用户在仓里手工建的普通 worktree 不是本
     工具的东西，**不得**出现在清单里。
-  - `session` = 路径的父目录名、`node` = 末段名。
+  - `session` = 路径的父目录名（即会话 id 去掉 `session-` 前缀后的前 8 位；旧 slug 目录
+    `session-/` 读出来的就是字面 `session-`，只读视图照旧认它）、`node` = 末段名。
   - `merged` = `merge-base --is-ancestor <branch> HEAD` 成功（与 `remove` 的收尾判据同源）。
     **刚建出来的树就在 HEAD 上，所以显示为 `merged`**——这是定义的结果，不是 bug：
     「unmerged」= 分支有自己的 commit。
@@ -133,7 +141,7 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 - **不删分支**：`prune` 只删工作树，分支一律留着（回退与复看的唯一凭据）；扫描结束后跑一次
   `git worktree prune` 清**孤儿元数据**（目录被手工删过时的残留登记，失败忽略）——它同样不动分支。
 - **只碰命名空间内的树**：处理范围就是 `installedWorktrees(deps)` 返回的那批
-  （`<commonGitDir>/dsh-mint/worktrees/<session8>/<node>`，正好两层深）。主工作树与用户在仓里手工建的
+  （`<commonGitDir>/dsh-mint/worktrees/<session 短标识>/<node>`，正好两层深）。主工作树与用户在仓里手工建的
   普通 worktree **一律不碰**（与 §3 的过滤同源，一处收口）。
 - **接口**：`pruneWorktrees(deps, { nowMs?, minAgeMs? })`（`src/dag/dag-worktree.ts`）→
   `PruneResult[]`（`{ path, session, node, branch, verdict }`，按 `path` 排序）；两个 option 只为测试存在。
@@ -141,8 +149,8 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 
   ```
   prune：删除 N 棵，保留 M 棵；
-    removed <session前8位>/<node> · <branch>
-    kept <session前8位>/<node> · <branch> · <原因>
+    removed <session 短标识>/<node> · <branch>
+    kept <session 短标识>/<node> · <branch> · <原因>
   ```
 
   原因文案：`未合并 | 有未提交改动 | 不到 1 小时 | 年龄不可测 | 删除失败`。
