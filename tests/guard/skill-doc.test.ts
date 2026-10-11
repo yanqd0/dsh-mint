@@ -195,6 +195,10 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       '读取粒度',
       '谁读什么',
       '预期步数上限',
+      // 硬上限与「口径清单」是同一轮实测补上的：白名单文件数是最好的先验信号，
+      // 固定头必须自带本仓口径（注释语言等）才不用收口返工；bash 输出要收窄。
+      '本项目口径清单',
+      'bash 只回吐事实行',
     ],
   ],
   // The fallback is deliberately **not** on the default path: it holds what to
