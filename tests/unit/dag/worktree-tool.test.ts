@@ -36,6 +36,16 @@ let repo: string;
 const SESSION = 'sess-wt1';
 
 /**
+ * 两个真实形态的主会话 id 与它们的短标识（去掉 `session-` 前缀后的前 8 位）。
+ *
+ * 前缀恰好 8 字符，正是旧 slug 的取值来源：修前两个会话同 slug、同一节点 id 会撞车。
+ */
+const SESSION_A = 'session-11111111-1111-4111-8111-111111111111';
+const SESSION_B = 'session-22222222-2222-4222-8222-222222222222';
+const SLUG_A = '11111111';
+const SLUG_B = '22222222';
+
+/**
  * 合并提交也要有身份：merge 发生在工具进程内（`dag-worktree.ts`），拿不到下面
  * `commit` 的 `-c`，只能靠仓内配置，否则在没有全局身份的机器上必失败。
  */
@@ -503,12 +513,30 @@ describe('executeWorktreeTool', () => {
       { action: 'list' }
     );
     expect(listed.ok).toBe(true);
-    // 会话前 8 位 / 节点 · 分支 · 是否已合并 · 分支头提交时间 · 绝对路径
+    // 会话短标识（会话 id 去掉 `session-` 前缀后的前 8 位）/ 节点 · 分支 · 是否已合并 · 分支头提交时间 · 绝对路径
     expect(listed.summary).toContain(`  ${SESSION}/a1`);
     expect(listed.summary).toContain(`dsh-mint/wt/${SESSION}/a1`);
     expect(listed.summary).toContain('unmerged');
     expect(listed.summary).toMatch(/\d{4}-\d{2}-\d{2}T/);
     expect(listed.summary).toContain(join(repo, '.git', 'dsh-mint', 'worktrees'));
+  });
+
+  it('lists two sessions side by side when the same node id exists in both', async () => {
+    // 跨会话并列：两个 `session-<uuid>` 会话各建一棵 a1，`list` 必须给两行不同的
+    // `session/节点` 前缀（修前两者同 slug，第二棵会走幂等分支认领第一棵）。
+    await seedGraph(SESSION_A);
+    await seedGraph(SESSION_B);
+    expect((await runWorktree({ action: 'create', node: 'a1' }, SESSION_A)).ok).toBe(true);
+    expect((await runWorktree({ action: 'create', node: 'a1' }, SESSION_B)).ok).toBe(true);
+
+    const listed = await runWorktree({ action: 'list' });
+    expect(listed.ok).toBe(true);
+    // 首行带 `[worktree] ` 前缀，先摘掉再按行看（与 20 行截断那条同一手法）；
+    // 清单按 path 排序，所以 uuid 小的那个会话在前。
+    const rows = listed.summary.slice('[worktree] '.length).split('\n');
+    expect(rows).toHaveLength(2);
+    expect(rows[0]?.startsWith(`  ${SLUG_A}/a1 `)).toBe(true);
+    expect(rows[1]?.startsWith(`  ${SLUG_B}/a1 `)).toBe(true);
   });
 
   it('leaves a worktree outside the dsh-mint namespace out of the repository list', async () => {
