@@ -36,14 +36,18 @@ plan always has a mint plan behind it.
   execution graph the agent records through the `mint_plan_dag` tool: pending,
   running (pulsing) and settled nodes, each showing the token count and elapsed
   time the host measures from the child session itself (kept as a dated sample
-  once the child is gone), with the full title and the conclusion text on hover. It opens itself as soon as a DAG exists for the
+  once the child is gone), with the full title and the conclusion text on hover. The graph is split into
+  three stacked **stage bands** — plan, execution, post — each a labelled subgraph
+  (`<stage> · <node count>`), so nodes of different stages never share a row. It opens itself as soon as a DAG exists for the
   session, and a running node's time ticks while it is on screen. The panel also
   switches to a **Subagents** view of the same session: the sub-agent tree (at
   most two levels), one line per agent with its delegation label, whether it is
   running, the context it currently occupies, its cumulative tokens, elapsed
   time, and the DAG node it is working on.
 - **Reminders** — after a `git commit` the agent is reminded to register it, and
-  after a mint state change to sync the host todo panel.
+  after a mint state change to sync the host todo panel. Entering plan mode
+  appends one hint naming the default execution shape (one subagent per node,
+  one worktree per node in the execution stage).
 - **Bundled mint skill** — the `mint` skill ships with this package and is
   installed into `$DSH_HOME/skills/mint` on load, so the agent knows the
   issue/plan/milestone workflow without a manual skill install.
