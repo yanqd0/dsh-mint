@@ -3,6 +3,7 @@ import { sessionIdOf } from '../shared/session-id.js';
 import { invocationsOf } from '../mint/cross-project-gate.js';
 import { hasMintWrite, noteRecordGapNotified } from './session-ledger.js';
 import { EXIT_PLAN_MODE } from './planbind.js';
+import { planModeState } from './plan-mode.js';
 import type {
   ContentBlockLike,
   DshContext,
@@ -399,4 +400,68 @@ export async function readonlyDbHintListener(
 /** 在 `tools/post-execute` 上注册只读 db 诊断提示。 */
 export function installReadonlyDbHint(ctx: DshContext): () => void {
   return ctx.on('tools/post-execute', readonlyDbHintListener);
+}
+
+/** 进入计划模式时给一次的执行形态提示。 */
+export const PLAN_ENTRY_HINT =
+  '[mint] 已进入计划模式——按 mint skill 的默认执行形态：调研/实现/测试各自派独立子代理' +
+  '（串行也逐个派，main 不亲自实现），实现阶段一节点一棵 worktree（dev/test 对走两级委派）；' +
+  '细节见 mint skill。';
+
+/**
+ * 记住的会话数上限；与其它会话级表同值（`session-ledger.ts` / `context.ts` 都是 100）。
+ *
+ * 有界是泄漏守卫：本模块活得比进程服务的任何会话都久。最旧的先被挤出——被挤出的会话
+ * 至多多收一次提示，比无界表便宜。
+ */
+export const MAX_PLAN_HINTED_SESSIONS = 100;
+
+/** 已收到过入口提示的会话，最旧的在前。 */
+const planHinted = new Set<string>();
+
+/** 忘掉全部会话（测试用：状态不许在用例间串）。 */
+export function resetPlanEntryHint(): void {
+  planHinted.clear();
+}
+
+/**
+ * `tools/post-execute` 监听器：进入计划模式后的第一条成功调用，追加一次默认执行形态提示。
+ *
+ * 为什么走这条通道：宿主的 `session/event` 里那条 `plan/mode` 只发不收，插件改不了它的
+ * 内容；概览 provider 又拿不到 `exec`，判不出本次调用是否落在计划模式里。在工具结果后补
+ * 一块文本，是唯一「跟着某次调用到达模型」的位置。
+ *
+ * 为什么是软的：执行形态是纪律、不是拒绝一次调用的理由，所以它只提示不拦（`accept` 加
+ * 内容，永不 deny/block），每会话只播一次，判据读不到（无投影、无会话 id、子代理会话）就
+ * 沉默；整段 try/catch，任何异常都落回 `next()`。
+ */
+export async function planEntryHintListener(
+  exec: ToolExecutionLike,
+  result: ToolResultLike,
+  next: () => Promise<PostToolDecisionLike>,
+  ctx?: DshContext
+): Promise<PostToolDecisionLike> {
+  try {
+    if (isFailedResult(result)) return next();
+    if ((exec.agent?.session?.header?.delegationDepth ?? 0) > 0) return next();
+    const sessionId = sessionIdOf(exec.agent);
+    if (sessionId === undefined || planHinted.has(sessionId)) return next();
+    if (planModeState(ctx, exec)?.active !== true) return next();
+    if (planHinted.size >= MAX_PLAN_HINTED_SESSIONS) {
+      const oldest = planHinted.values().next().value;
+      if (oldest !== undefined) planHinted.delete(oldest);
+    }
+    planHinted.add(sessionId);
+    const hint: ContentBlockLike = { type: 'text', text: PLAN_ENTRY_HINT };
+    return { kind: 'accept', content: [...result.content, hint] };
+  } catch {
+    return next();
+  }
+}
+
+/** 在 `tools/post-execute` 上注册进计划模式的一次性提示。 */
+export function installPlanEntryHint(ctx: DshContext): () => void {
+  return ctx.on('tools/post-execute', (exec, result, next) =>
+    planEntryHintListener(exec, result, next, ctx)
+  );
 }

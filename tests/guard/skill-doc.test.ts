@@ -67,6 +67,9 @@ const SKILL_MARKERS: readonly string[] = [
   // parallel batches are the plan-level constraint that keeps
   // concurrently delegated work off the same files.
   '并行批次',
+  // 「谁执行」是独立于「怎么分批」的一条口径：只有一条链的会话也必须派子代理，
+  // main 不亲自实现。钉住它，防止再次退化成「串行就由 main 依次执行」。
+  '串行也要派子代理',
   // registration never pre-schedules; `plan plan` belongs to the start of
   // work, not to filing the issue.
   '提 issue 一律 open',

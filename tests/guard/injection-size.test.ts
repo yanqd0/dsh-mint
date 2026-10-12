@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { MINT_TOOL_GUIDANCE, RECORD_GAP_LINE, renderOverview } from '../../src/host/context.js';
+import { PLAN_ENTRY_HINT } from '../../src/host/reminders.js';
 import { renderDagDepthNotice, renderOverviewDepthLine } from '../../src/host/subagent-depth.js';
 import { DAG_TOOL_DESCRIPTION } from '../../src/dag/dag-tool.js';
 import { WORKTREE_TOOL_DESCRIPTION } from '../../src/dag/worktree-tool.js';
@@ -148,6 +149,9 @@ describe('per-request injection budget', () => {
     expect(DAG_TOOL_DESCRIPTION).toContain('to 依赖 from');
     expect(DAG_TOOL_DESCRIPTION).toContain('label ≤6 字');
     expect(DAG_TOOL_DESCRIPTION).toContain('mint_plan_dag({action:"add"');
+    // 阶段名从 research/exec 扩到 post 由另一个节点改 `src/dag/dag-tool.ts`：本节点只钉
+    // 断言、不动那个源文件，所以在它合并前这一条会红（见提交说明的未决项）。
+    expect(DAG_TOOL_DESCRIPTION).toContain('phase:"research"|"exec"|"post"');
   });
 
   // The worktree tool is the third per-request budget, and the only one whose
@@ -233,6 +237,13 @@ describe('per-request injection budget', () => {
   it('keeps the record-gap line within budget', () => {
     expect(RECORD_GAP_LINE.startsWith('[Mint] ')).toBe(true);
     expect(bytes(RECORD_GAP_LINE)).toBeLessThanOrEqual(300);
+  });
+
+  // 进计划模式的一次性提示同样只在计划模式里出现（每会话一次，子代理跳过），
+  // 所以它自带上限：断言前缀与 UTF-8 字节量，不并入每请求预算。
+  it('keeps the plan-entry hint within budget', () => {
+    expect(PLAN_ENTRY_HINT.startsWith('[mint] ')).toBe(true);
+    expect(bytes(PLAN_ENTRY_HINT)).toBeLessThanOrEqual(300);
   });
 
   // The delegation-downgrade lines are condition lines too: they render only on a

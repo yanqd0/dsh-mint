@@ -14,6 +14,7 @@ import { installPlanBinding } from './host/planbind.js';
 import {
   installCommitReminder,
   installFailureSignal,
+  installPlanEntryHint,
   installReadonlyDbHint,
   installSessionRecordReminder,
   installSleepHint,
@@ -95,6 +96,9 @@ export function apply(ctx: DshContext, config: Config): void {
   installSessionLedger(ctx, mintEntry);
   installSessionRecordReminder(ctx);
   installPlanBinding(ctx, mintEntry);
+  // 进计划模式先点名「谁执行」（默认派子代理），再讲 DAG 纪律：执行形态是会话开工前的
+  // 第一件事，两条提示同一条工具结果到达时，顺序也该是这个。
+  installPlanEntryHint(ctx);
   // 没有 DAG 的计划模式在面板上不可见（空图不会开面板），研究纪律因此在两种缺口上各给一次软提醒：
   // 文档缺失，以及 `init` 之后仍无节点。它读的是与上面的退出门禁同一份计划模式答案（`src/host/plan-mode.ts`）。
   installDagPlanReminder(ctx);

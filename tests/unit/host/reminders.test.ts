@@ -2,12 +2,14 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   BASH_DIAGNOSTIC_HINT,
+  PLAN_ENTRY_HINT,
   READONLY_DB_SYMPTOM,
   SESSION_RECORD_REMINDER,
   TODO_SYNC_REMINDER,
   commitReminderListener,
   installCommitReminder,
   installFailureSignal,
+  installPlanEntryHint,
   installReadonlyDbHint,
   installSessionRecordReminder,
   installSleepHint,
@@ -18,7 +20,9 @@ import {
   isReadonlyDbFailure,
   isSleepPoll,
   isSleepPollArgv,
+  planEntryHintListener,
   readonlyDbHintListener,
+  resetPlanEntryHint,
   sessionRecordReminderListener,
   sleepPollHint,
   sleepPollReminderListener,
@@ -595,6 +599,116 @@ describe('readonlyDbHintListener', () => {
   it('registers a tools/post-execute listener', () => {
     const { ctx, listeners } = makeCtx();
     installReadonlyDbHint(ctx);
+    expect(listeners['tools/post-execute']).toBeTypeOf('function');
+  });
+});
+
+describe('planEntryHintListener', () => {
+  const planExec = (sessionId?: string, delegationDepth?: number): ToolExecutionLike => ({
+    name: 'bash',
+    arguments: { command: 'ls' },
+    ...(sessionId === undefined
+      ? {}
+      : {
+          agent: {
+            session: {
+              id: sessionId,
+              header:
+                delegationDepth === undefined
+                  ? { cwd: '/proj' }
+                  : { cwd: '/proj', delegationDepth },
+            },
+          },
+        }),
+  });
+
+  /** 带会话投影的 ctx：`planModeState` 读到它就当证据，不再回退到台账。 */
+  const planCtx = (active: boolean): DshContext => ({
+    on: () => () => {},
+    get: (name) => (name === 'sessionProjections' ? { stateOf: () => ({ active }) } : undefined),
+  });
+
+  afterEach(() => {
+    resetPlanEntryHint();
+    resetSessionLedger();
+  });
+
+  // 入口提示是软信号：计划模式里第一次成功调用带上它，同一会话第二次必须沉默。
+  // 直调监听器（第 4 参给带投影的 ctx），第一次断言追加、第二次断言透传 next()。
+  it('appends the hint once per session in plan mode', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await planEntryHintListener(
+      planExec('sess-plan'),
+      successResult,
+      next,
+      planCtx(true)
+    );
+
+    expect(next).not.toHaveBeenCalled();
+    expect(decision.content?.[0]).toBe(successResult.content[0]);
+    expect(decision.content?.[1]?.text).toBe(PLAN_ENTRY_HINT);
+
+    const second = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const again = await planEntryHintListener(
+      planExec('sess-plan'),
+      successResult,
+      second,
+      planCtx(true)
+    );
+
+    expect(second).toHaveBeenCalled();
+    expect(again.content).toBeUndefined();
+  });
+
+  it('stays silent outside plan mode', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    const decision = await planEntryHintListener(
+      planExec('sess-plan'),
+      successResult,
+      next,
+      planCtx(false)
+    );
+
+    expect(next).toHaveBeenCalled();
+    expect(decision.content).toBeUndefined();
+  });
+
+  it('stays silent when the plan projection is unreadable', async () => {
+    const ctx: DshContext = { on: () => () => {}, get: () => undefined };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await planEntryHintListener(planExec('sess-plan'), successResult, next, ctx);
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('skips a subagent session', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await planEntryHintListener(planExec('sess-plan', 1), successResult, next, planCtx(true));
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('skips a failed call', async () => {
+    const failed: ToolResultLike = {
+      isError: true,
+      content: [{ type: 'text', text: 'keep planning' }],
+    };
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await planEntryHintListener(planExec('sess-plan'), failed, next, planCtx(true));
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('says nothing it cannot attribute to a session', async () => {
+    const next = vi.fn(() => Promise.resolve({ kind: 'accept' as const }));
+    await planEntryHintListener(planExec(), successResult, next, planCtx(true));
+
+    expect(next).toHaveBeenCalled();
+  });
+
+  it('registers a tools/post-execute listener', () => {
+    const { ctx, listeners } = makeCtx();
+    installPlanEntryHint(ctx);
     expect(listeners['tools/post-execute']).toBeTypeOf('function');
   });
 });
