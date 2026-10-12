@@ -5,7 +5,7 @@
  * 宿主不下发坐标——文档只是图，布局放在这里，让浏览器成为决定像素的唯一一处。
  * 全文件都是视图的纯函数：无需 DOM 即可在 Node 里验证几何，同一视图永远画出同一张图。
  */
-import { dagLayers } from '../dag/dag.js';
+import { DAG_PHASES, dagLayers } from '../dag/dag.js';
 import type { DagNodeMetrics, DagNodeView, DagView, DagWorktreeState } from '../shared/records.js';
 import type { CopyKey, CopyTranslate } from './copy.js';
 import type { StatusTone } from './model.js';
@@ -20,6 +20,15 @@ export const DAG_V_GAP = 46;
 
 /** 画布留白，同时也是最小画布：空 DAG 也要有边框。 */
 export const DAG_PAD = 12;
+
+/** 阶段带的标签条高度：带名写在条内，节点因此从条下起排。 */
+export const DAG_STAGE_HEAD = 18;
+
+/** 阶段带的左右与底部留白：节点不贴框，带与内容之间留出呼吸。 */
+export const DAG_STAGE_PAD = 10;
+
+/** 相邻两条阶段带之间的垂直间隙。 */
+export const DAG_STAGE_GAP = 20;
 
 /** 图层推进的方向（横排 = 整张图转 90°）：默认自上而下。 */
 export type DagDirection = 'vertical' | 'horizontal';
@@ -52,11 +61,23 @@ export interface DagEdgeLine {
   points: string;
 }
 
+/** 一个阶段的带：包住该阶段全部节点的框，`phase` 是阶段名（未知阶段原样保留）。 */
+export interface DagStageBand {
+  phase: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** 带内节点数（标签上显示）。 */
+  count: number;
+}
+
 export interface DagLayout {
   width: number;
   height: number;
   boxes: DagBox[];
   edges: DagEdgeLine[];
+  bands: DagStageBand[];
 }
 
 /**
@@ -129,88 +150,126 @@ function round(value: number): string {
   return String(Number(value.toFixed(3)));
 }
 
+/** 层内 n 个盒子并排的宽度：n 个盒宽加 n-1 个水平间隙。 */
+function rowWidth(count: number): number {
+  return count * DAG_NODE_W + Math.max(0, count - 1) * DAG_H_GAP;
+}
+
+/** 层内 n 个盒子纵向叠放的高度：n 个盒高加 n-1 个垂直间隙。 */
+function columnHeight(count: number): number {
+  return count * DAG_NODE_H + Math.max(0, count - 1) * DAG_V_GAP;
+}
+
 /**
- * 布局一张 DAG。默认自上而下：分层逐层向下、层内节点从左到右并整体居中；`horizontal` 则
- * 把整张图转 90°——分层逐层向右、层内节点自上而下并整体居中，连线从父节点右中走到子节点左中。
+ * 按阶段把节点分组：已知阶段按 {@link DAG_PHASES} 的顺序各占一组（空组丢掉），
+ * 枚举外的阶段（手改坏的文件）按首次出现顺序另起一组，排在已知阶段之后。
  *
- * 分层复用宿主自己的 `dagLayers`，它容忍环与悬空引用而不抛错——手改坏的文件必须画出
- * 一张错的图，绝不能是空白面板。两个方向共用同一份分组与同一份边集。
+ * 用 Map 的插入序承载这个顺序：先按阶段顺序种下已知阶段，再在遍历文档时追加未知阶段。
+ */
+function stageGroups(view: DagView): Array<{ phase: string; nodes: DagNodeView[] }> {
+  const buckets = new Map<string, DagNodeView[]>();
+  for (const phase of DAG_PHASES) buckets.set(phase, []);
+  for (const node of view.nodes) {
+    const phase: string = node.phase;
+    const bucket = buckets.get(phase);
+    if (bucket === undefined) {
+      buckets.set(phase, [node]);
+      continue;
+    }
+    bucket.push(node);
+  }
+  const groups: Array<{ phase: string; nodes: DagNodeView[] }> = [];
+  for (const [phase, nodes] of buckets) {
+    if (nodes.length === 0) continue;
+    groups.push({ phase, nodes });
+  }
+  return groups;
+}
+
+/**
+ * 布局一张 DAG：**先按阶段分区、带内再按依赖分层**。
+ *
+ * 默认自上而下：阶段带按计划 → 执行 → 收尾从上往下排，带内分层逐层向下、层内节点从左到右
+ * 并整体居中；`horizontal` 则把整张图转 90°——阶段带仍自上而下，带内分层逐层向右、层内节点
+ * 自上而下并居中，连线从父节点右中走到子节点左中。
+ *
+ * 分层复用宿主自己的 `dagLayers`，它容忍环与悬空引用而不抛错——手改坏的文件必须画出一张错的
+ * 图，绝不能是空白面板。分层在**每一带内部**做，故不同阶段的节点绝不共行共列；跨阶段的边照画
+ * （两个盒子都在），只是不参与任何一带的分层。
  */
 export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): DagLayout {
-  // dagLayers 的层号正好就是行号（层 0 是无依赖者，节点排在最深依赖之后）。
-  const layers = dagLayers(view.nodes, view.edges);
-  const depth = new Map<string, number>();
-  layers.forEach((layer, level) => {
-    for (const id of layer) depth.set(id, level);
+  const groups = stageGroups(view);
+
+  // 每带先算自己的层号与内容尺寸：带内节点数目决定带有多宽、多高，画幅再取各带的极值。
+  const laid = groups.map((group) => {
+    const layers = dagLayers(group.nodes, view.edges);
+    // 层的下标就是行号（竖排）或列号（横排），空洞（成环时的空层）按 0 计但不画。
+    const counts: number[] = [];
+    for (let level = 0; level < layers.length; level += 1) counts.push(layers[level]?.length ?? 0);
+    const contentW =
+      direction === 'horizontal'
+        ? rowWidth(counts.length)
+        : Math.max(0, ...counts.map((count) => rowWidth(count)));
+    const contentH =
+      direction === 'horizontal'
+        ? Math.max(0, ...counts.map((count) => columnHeight(count)))
+        : columnHeight(counts.length);
+    return { group, layers, contentW, contentH };
   });
 
-  // 分组随 `view.nodes` 顺序：万一分层漏掉某节点（今天不会，但两者的形状互不保证），
-  // 它仍然会有盒子。
-  const groups: string[][] = [];
-  for (const node of view.nodes) {
-    const level = depth.get(node.id) ?? 0;
-    (groups[level] ??= []).push(node.id);
-  }
+  const maxContentW = Math.max(0, ...laid.map((stage) => stage.contentW));
+  // 带框至少容得下一个盒子，故空文档仍是最小画幅；空文档不带、高度为 0，两条分支在此汇合。
+  const inner = Math.max(DAG_NODE_W, maxContentW + 2 * DAG_STAGE_PAD);
+  const width = laid.length === 0 ? DAG_NODE_W : inner;
+  let height = 0;
+  for (const stage of laid) height += DAG_STAGE_HEAD + stage.contentH + DAG_STAGE_PAD;
+  height += DAG_STAGE_GAP * Math.max(0, laid.length - 1);
 
   const boxes: DagBox[] = [];
   const at = new Map<string, DagBox>();
-  let width = 0;
-  let height = 0;
+  const bands: DagStageBand[] = [];
+  let cursor = DAG_PAD;
 
-  if (direction === 'horizontal') {
-    // 横排：层号→列，层内纵向排。列宽只由本层节点数决定（各列等宽是巧合，不是前提）。
-    const columnHeights = groups.map(
-      (group) => group.length * DAG_NODE_H + Math.max(0, group.length - 1) * DAG_V_GAP
-    );
-    const tallest = Math.max(0, ...columnHeights);
-    let left = DAG_PAD;
-    groups.forEach((group, level) => {
-      if (group.length === 0) return;
-      // 单节点列因此垂直居中，与竖排里「单节点行水平居中」对称。
-      const top = DAG_PAD + (tallest - (columnHeights[level] ?? 0)) / 2;
-      group.forEach((id, column) => {
+  for (const { group, layers, contentW, contentH } of laid) {
+    const band: DagStageBand = {
+      phase: group.phase,
+      x: DAG_PAD,
+      y: cursor,
+      w: inner,
+      h: DAG_STAGE_HEAD + contentH + DAG_STAGE_PAD,
+      count: group.nodes.length,
+    };
+    bands.push(band);
+    cursor += band.h + DAG_STAGE_GAP;
+
+    // 内容在带内居中：居中范围从整幅画布收窄到这一带的标签条以下。
+    const innerW = band.w - 2 * DAG_STAGE_PAD;
+    const left = band.x + DAG_STAGE_PAD + (innerW - contentW) / 2;
+    const top = band.y + DAG_STAGE_HEAD;
+
+    for (let level = 0; level < layers.length; level += 1) {
+      const layer = layers[level];
+      if (layer === undefined || layer.length === 0) continue;
+      // 横排里单节点列因此垂直居中于带内内容区，与竖排里单节点行水平居中对齐。
+      const lineHeight = columnHeight(layer.length);
+      layer.forEach((id, column) => {
         const box: DagBox = {
           id,
-          x: left,
-          y: top + column * (DAG_NODE_H + DAG_V_GAP),
+          x:
+            direction === 'horizontal'
+              ? left + level * (DAG_NODE_W + DAG_H_GAP)
+              : left + column * (DAG_NODE_W + DAG_H_GAP),
+          y:
+            direction === 'horizontal'
+              ? top + (contentH - lineHeight) / 2 + column * (DAG_NODE_H + DAG_V_GAP)
+              : top + level * (DAG_NODE_H + DAG_V_GAP),
           w: DAG_NODE_W,
           h: DAG_NODE_H,
         };
         boxes.push(box);
         at.set(id, box);
       });
-      left += group.length * DAG_NODE_W + Math.max(0, group.length - 1) * DAG_H_GAP + DAG_H_GAP;
-    });
-    const span = Math.max(0, left - DAG_PAD - DAG_H_GAP);
-    width = Math.max(span, DAG_NODE_W);
-    height = tallest;
-  } else {
-    // 竖排：层号→行，层内水平排，行整体居中。
-    let widest = 0;
-    for (const group of groups) {
-      if (group === undefined || group.length === 0) continue;
-      widest = Math.max(widest, group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP);
     }
-    widest = Math.max(widest, DAG_NODE_W);
-    width = widest;
-    height = groups.length * DAG_NODE_H + Math.max(0, groups.length - 1) * DAG_V_GAP;
-
-    groups.forEach((group, level) => {
-      if (group.length === 0) return;
-      const rowWidth = group.length * DAG_NODE_W + (group.length - 1) * DAG_H_GAP;
-      const left = DAG_PAD + (widest - rowWidth) / 2;
-      group.forEach((id, column) => {
-        const box: DagBox = {
-          id,
-          x: left + column * (DAG_NODE_W + DAG_H_GAP),
-          y: DAG_PAD + level * (DAG_NODE_H + DAG_V_GAP),
-          w: DAG_NODE_W,
-          h: DAG_NODE_H,
-        };
-        boxes.push(box);
-        at.set(id, box);
-      });
-    });
   }
 
   const edges: DagEdgeLine[] = [];
@@ -249,6 +308,7 @@ export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): 
     height: DAG_PAD * 2 + height,
     boxes,
     edges,
+    bands,
   };
 }
 
@@ -287,7 +347,31 @@ export const DAG_COPY_KEYS = {
   dirLabel: 'dag.dir.label',
   dirVertical: 'dag.dir.vertical',
   dirHorizontal: 'dag.dir.horizontal',
+  stagePlan: 'dag.stage.plan',
+  stageExec: 'dag.stage.exec',
+  stagePost: 'dag.stage.post',
 } as const;
+
+/** 阶段带标签所用的三阶段文案；枚举外的阶段不在表内，标签原样显示它。 */
+const STAGE_COPY: Record<string, CopyKey> = {
+  research: DAG_COPY_KEYS.stagePlan,
+  exec: DAG_COPY_KEYS.stageExec,
+  post: DAG_COPY_KEYS.stagePost,
+};
+
+/**
+ * 阶段带的标签：已知三阶段取本地化文案，枚举外的阶段（手改坏的文件）原样报出该字符串——
+ * 冒充某个已知阶段会让读者看错分区。
+ */
+export function stageLabel(copy: CopyTranslate, phase: string): string {
+  const key = STAGE_COPY[phase];
+  return key === undefined ? phase : copy(key);
+}
+
+/** 阶段带的表头：`阶段名 · 节点数`。 */
+export function stageHeadline(copy: CopyTranslate, phase: string, count: number): string {
+  return `${stageLabel(copy, phase)} · ${String(count)}`;
+}
 
 function measuredInt(value: unknown): number | undefined {
   // 宿主发的是一对数，但路由过的是 JSON：负数、小数、非数都是该丢的 bug，而不是

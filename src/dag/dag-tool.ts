@@ -70,7 +70,7 @@ const PREFIX = '[plan-dag] ';
 export const DAG_TOOL_DESCRIPTION = [
   '维护本会话的 plan 执行 DAG（节点=工作单元，边=依赖）；只回摘要，全图见面板。',
   '动作：init(title?) 新建/重置；add(nodes,edges?) 加节点连边；set(id,status,verdict?,note?,tokens?) 改节点；get 取摘要。',
-  'nodes 每项 {id,label,title,phase:"research"|"exec",depends_on?,issue?}；edges 是 [from,to]，语义「to 依赖 from」；label ≤6 字。',
+  'nodes 每项 {id,label,title,phase:"research"|"exec"|"post",depends_on?,issue?}；edges 是 [from,to]，语义「to 依赖 from」；label ≤6 字。',
   // worktree 建/合/列的用法已拆到独立的 `worktree` 工具（injection-size 守卫按
   // 实测值 +20 B 收紧），故这里只留四个图动作，不再复述那条工作流。
   '只有 main agent 建节点/连边，子代理只 set 自己的节点；DAG 归属根会话。',
@@ -126,7 +126,11 @@ const DAG_TOOL_PARAMETERS: Record<string, unknown> = {
           },
           label: { type: 'string', description: '节点上显示的短标签（≤6 字）' },
           title: { type: 'string', description: '完整标题，悬停显示' },
-          phase: { type: 'string', enum: ['research', 'exec'], description: '所属阶段' },
+          phase: {
+            type: 'string',
+            enum: ['research', 'exec', 'post'],
+            description: '所属阶段：research 计划 / exec 执行 / post 收尾',
+          },
           depends_on: {
             type: 'array',
             items: { type: 'string' },

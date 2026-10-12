@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 import { srcPath } from '../../helpers/repo.js';
-import type { DagNodeView, DagView } from '../../../src/shared/records.js';
+import type { DagNodeView, DagPhase, DagView } from '../../../src/shared/records.js';
 import {
   DAG_COPY_KEYS,
   DAG_DIRECTIONS,
@@ -11,6 +11,9 @@ import {
   DAG_NODE_H,
   DAG_NODE_W,
   DAG_PAD,
+  DAG_STAGE_GAP,
+  DAG_STAGE_HEAD,
+  DAG_STAGE_PAD,
   DAG_V_GAP,
   dagCounts,
   dagStatusTone,
@@ -24,6 +27,7 @@ import {
   liveElapsedMs,
   metricsBreakdown,
   nodeMetricsMap,
+  stageHeadline,
 } from '../../../src/client/dag-model.js';
 import type { DagDirection, DagLayout } from '../../../src/client/dag-model.js';
 
@@ -108,9 +112,12 @@ describe('layoutDag', () => {
       view([node('a'), node('b', { depends_on: ['a'] }), node('c', { depends_on: ['b'] })])
     );
     expect(layout.boxes.map((b) => b.id)).toEqual(['a', 'b', 'c']);
-    for (const [index, id] of ['a', 'b', 'c'].entries()) {
-      expect(box(layout, id).y).toBe(DAG_PAD + index * (DAG_NODE_H + DAG_V_GAP));
-    }
+    // 单阶段（`node()` 默认 exec）在带内成列：x 是带内留白，y 每层一个「盒高 + 层间隙」。
+    expect(box(layout, 'a')).toEqual({ id: 'a', x: 22, y: 30, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect(box(layout, 'b')).toEqual({ id: 'b', x: 22, y: 120, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect(box(layout, 'c')).toEqual({ id: 'c', x: 22, y: 210, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect(layout.width).toBe(148);
+    expect(layout.height).toBe(276);
     expect(layout.edges.map((e) => [e.from, e.to])).toEqual([
       ['a', 'b'],
       ['b', 'c'],
@@ -129,12 +136,12 @@ describe('layoutDag', () => {
     const middle = [box(layout, 'b'), box(layout, 'c')];
     expect(middle[0]?.y).toBe(middle[1]?.y);
     expect(middle[1]?.x).toBe((middle[0]?.x ?? 0) + DAG_NODE_W + DAG_H_GAP);
-    expect(box(layout, 'd').y).toBe(DAG_PAD + 2 * (DAG_NODE_H + DAG_V_GAP));
-    // A single-node layer is centered over the two-node one.
+    expect(box(layout, 'd').y).toBe(210);
+    // A single-node layer is centered over the two-node one, inside the band.
     const center = (b: { x: number; w: number }): number => b.x + b.w / 2;
     expect(center(box(layout, 'a'))).toBe(center(box(layout, 'd')));
-    expect(layout.width).toBe(DAG_PAD * 2 + 2 * DAG_NODE_W + DAG_H_GAP);
-    expect(layout.height).toBe(DAG_PAD * 2 + 3 * DAG_NODE_H + 2 * DAG_V_GAP);
+    expect(layout.width).toBe(268);
+    expect(layout.height).toBe(276);
   });
 
   it('places a node below its deepest dependency, not its first', () => {
@@ -146,14 +153,14 @@ describe('layoutDag', () => {
         node('z', { depends_on: ['a1', 'b'] }),
       ])
     );
-    expect(box(layout, 'a1').y).toBe(DAG_PAD + DAG_NODE_H + DAG_V_GAP);
-    expect(box(layout, 'z').y).toBe(DAG_PAD + 2 * (DAG_NODE_H + DAG_V_GAP));
+    expect(box(layout, 'a1').y).toBe(120);
+    expect(box(layout, 'z').y).toBe(210);
   });
 
   it('reads `edges` as the same relation as `depends_on`, without duplicating', () => {
     const layout = layoutDag(view([node('a'), node('b', { depends_on: ['a'] })], [['a', 'b']]));
     expect(layout.edges).toHaveLength(1);
-    expect(layout.edges[0]?.points).toBe('64,56 64,79 64,102');
+    expect(layout.edges[0]?.points).toBe('74,74 74,97 74,120');
   });
 
   it('draws an elbow from the parent bottom-center to the child top-center', () => {
@@ -231,6 +238,138 @@ describe('layoutDag', () => {
   });
 });
 
+describe('layoutDag stage bands', () => {
+  it('stacks one band per phase in the declared phase order', () => {
+    const layout = layoutDag(
+      view([
+        node('r', { phase: 'research' }),
+        node('e', { phase: 'exec' }),
+        node('p', { phase: 'post' }),
+      ])
+    );
+    expect(layout.bands.map((band) => band.phase)).toEqual(['research', 'exec', 'post']);
+    // 三阶段各占一条带，故三个盒子必须落在三个不同的 y 上：不同阶段绝不共行。
+    const rows = ['r', 'e', 'p'].map((id) => box(layout, id).y);
+    expect(new Set(rows).size).toBe(3);
+  });
+
+  // 带的顺序由 `DAG_PHASES` 决定，与节点在文档里排第几无关。
+  it('orders the bands by phase, not by where a node appears', () => {
+    const layout = layoutDag(
+      view([node('p', { phase: 'post' }), node('r', { phase: 'research' })])
+    );
+    expect(layout.bands.map((band) => band.phase)).toEqual(['research', 'post']);
+  });
+
+  // 跨阶段的边照画，但带外 id 会被 `dagLayers` 丢掉，故依赖不把子节点推深一层。
+  it('does not let a cross-phase edge add a row inside the band', () => {
+    const layout = layoutDag(
+      view([node('a', { phase: 'research' }), node('b', { phase: 'exec', depends_on: ['a'] })])
+    );
+    const band = layout.bands.find((candidate) => candidate.phase === 'exec');
+    if (band === undefined) throw new Error('no exec band');
+    expect(box(layout, 'b').y).toBe(band.y + DAG_STAGE_HEAD);
+    expect(layout.edges).toHaveLength(1);
+  });
+
+  it('draws no band for a phase the document does not use', () => {
+    const layout = layoutDag(view([node('e', { phase: 'exec' })]));
+    expect(layout.bands.map((band) => band.phase)).toEqual(['exec']);
+  });
+
+  it('keeps every node inside the band of its own phase', () => {
+    const layout = layoutDag(
+      view([node('a'), node('b', { depends_on: ['a'] }), node('r', { phase: 'research' })])
+    );
+    for (const item of layout.boxes) {
+      const phase = item.id === 'r' ? 'research' : 'exec';
+      const band = layout.bands.find((candidate) => candidate.phase === phase);
+      if (band === undefined) throw new Error(`no band for ${item.id}`);
+      expect(item.y, item.id).toBeGreaterThanOrEqual(band.y + DAG_STAGE_HEAD);
+      expect(item.y + item.h, item.id).toBeLessThanOrEqual(band.y + band.h);
+      expect(item.x, item.id).toBeGreaterThanOrEqual(band.x);
+      expect(item.x + item.w, item.id).toBeLessThanOrEqual(band.x + band.w);
+    }
+  });
+
+  // 两条带各占一段互不相交的 y 区间；带内一条链的两个节点共 y、逐层向右（横排口径）。
+  it('keeps horizontal bands apart and the rows inside one aligned', () => {
+    const layout = layoutDag(
+      view([
+        node('r', { phase: 'research' }),
+        node('e1', { phase: 'exec' }),
+        node('e2', { phase: 'exec', depends_on: ['e1'] }),
+      ]),
+      'horizontal'
+    );
+    const [first, second] = layout.bands;
+    if (first === undefined || second === undefined) throw new Error('expected two bands');
+    expect(first.phase).toBe('research');
+    expect(first.y + first.h).toBeLessThanOrEqual(second.y);
+    expect(box(layout, 'e2').y).toBe(box(layout, 'e1').y);
+    expect(box(layout, 'e2').x).toBe(box(layout, 'e1').x + DAG_NODE_W + DAG_H_GAP);
+    // 同层（同一列）的两个节点共 x、纵向依次排开。
+    const sameLayer = layoutDag(
+      view([node('e1', { phase: 'exec' }), node('e2', { phase: 'exec' })]),
+      'horizontal'
+    );
+    expect(box(sameLayer, 'e2').x).toBe(box(sameLayer, 'e1').x);
+    expect(box(sameLayer, 'e2').y).toBe(box(sameLayer, 'e1').y + DAG_NODE_H + DAG_V_GAP);
+  });
+
+  it('gives an empty document no bands', () => {
+    expect(layoutDag(view([])).bands).toEqual([]);
+  });
+
+  // 手改坏的文件可能带枚举外的阶段：它另起一带、带内仍是完整节点，只是排在已知阶段之后。
+  // `as`：这里正是要模拟那道防线之外的输入，TS 侧只能靠断言构造。
+  it('draws an unknown phase as its own band after the known ones', () => {
+    const weird = 'weird' as DagPhase;
+    const layout = layoutDag(view([node('w', { phase: weird }), node('e', { phase: 'exec' })]));
+    expect(layout.bands.map((band) => band.phase)).toEqual(['exec', 'weird']);
+    expect(layout.bands[1]?.count).toBe(1);
+    expect(box(layout, 'w')).toEqual({ id: 'w', x: 22, y: 122, w: DAG_NODE_W, h: DAG_NODE_H });
+  });
+
+  it('reports the band geometry the band count and the copy line need', () => {
+    const layout = layoutDag(
+      view([node('a'), node('b', { depends_on: ['a'] }), node('r', { phase: 'research' })])
+    );
+    const [first, second] = layout.bands;
+    if (first === undefined || second === undefined) throw new Error('expected two bands');
+    expect(first).toEqual({
+      phase: 'research',
+      x: DAG_PAD,
+      y: DAG_PAD,
+      w: DAG_NODE_W + 2 * DAG_STAGE_PAD,
+      h: DAG_STAGE_HEAD + DAG_NODE_H + DAG_STAGE_PAD,
+      count: 1,
+    });
+    expect(second.y).toBe(DAG_PAD + first.h + DAG_STAGE_GAP);
+    expect(second.count).toBe(2);
+  });
+});
+
+describe('stageHeadline', () => {
+  const labels: Record<string, string> = {
+    'dag.stage.plan': '计划阶段',
+    'dag.stage.exec': '执行阶段',
+    'dag.stage.post': '收尾阶段',
+  };
+  const copy = (key: string): string => labels[key] ?? key;
+
+  it('names the three phases and counts the band', () => {
+    expect(stageHeadline(copy, 'research', 3)).toBe('计划阶段 · 3');
+    expect(stageHeadline(copy, 'exec', 0)).toBe('执行阶段 · 0');
+    expect(stageHeadline(copy, 'post', 12)).toBe('收尾阶段 · 12');
+  });
+
+  // 未知阶段没有文案可查：原样报出它，而不是悄悄冒充某个已知阶段。
+  it('passes an unknown phase through verbatim', () => {
+    expect(stageHeadline(copy, 'weird', 2)).toBe('weird · 2');
+  });
+});
+
 describe('horizontal layout', () => {
   // 横排就是竖排转 90°：同一层从「一行」变成「一列」，故层号推的是 x 而不是 y。
   // 传三层链，断言 y 齐平、x 逐层右移一个「盒宽 + 层间隙」，画幅也照列合成。
@@ -242,30 +381,39 @@ describe('horizontal layout', () => {
     const step = DAG_NODE_W + DAG_H_GAP;
     expect(layout.boxes.map((item) => item.id)).toEqual(['a', 'b', 'c']);
     expect(box(layout, 'b').y).toBe(box(layout, 'a').y);
-    expect(box(layout, 'b').x).toBe(DAG_PAD + step);
-    expect(box(layout, 'c').x).toBe(DAG_PAD + 2 * step);
-    expect(layout.width).toBe(DAG_PAD * 2 + 3 * DAG_NODE_W + 2 * DAG_H_GAP);
-    // 最高的一列就是画幅的高度：三层各一个节点。
-    expect(layout.height).toBe(DAG_PAD * 2 + DAG_NODE_H);
+    expect(box(layout, 'a').x).toBe(22);
+    expect(box(layout, 'b').x).toBe(142);
+    expect(box(layout, 'c').x).toBe(262);
+    expect(box(layout, 'b').x).toBe(DAG_PAD + DAG_STAGE_PAD + step);
+    expect(box(layout, 'c').x).toBe(DAG_PAD + DAG_STAGE_PAD + 2 * step);
+    expect(layout.width).toBe(388);
+    // 最高的一列就是带内内容高度：三层各一个节点。
+    expect(layout.height).toBe(96);
+    expect(box(layout, 'a').y).toBe(30);
   });
 
-  // 竖排里单节点行水平居中；转过来之后它应当垂直居中于画幅，而不是贴顶。
+  // 竖排里单节点行在**带内**水平居中；转过来之后它应当垂直居中于带内内容区，而不是整幅画布。
   // `dagLayers` 把 `a` 与 `a2` 放在同一层（都是无依赖者），单节点的 `b` 因此独居一列，
-  // 而两节点列决定画幅高度——若丢掉居中，`b` 会落在 `DAG_PAD` 上。
+  // 而两节点列决定带内内容高度——若丢掉居中，`b` 会落在标签条下沿。
   it('vertically centers a single-node column against a taller one', () => {
     const layout = layoutDag(
       view([node('a'), node('b', { depends_on: ['a'] }), node('a2')]),
       'horizontal'
     );
+    const band = layout.bands[0];
+    if (band === undefined) throw new Error('no band');
     const center = (item: { y: number; h: number }): number => item.y + item.h / 2;
-    expect(center(box(layout, 'b'))).toBe(layout.height / 2);
+    const contentH = 2 * DAG_NODE_H + DAG_V_GAP;
+    expect(center(box(layout, 'b'))).toBe(band.y + DAG_STAGE_HEAD + contentH / 2);
     expect(center(box(layout, 'b'))).not.toBe(center(box(layout, 'a')));
     // 同层两个节点共处一列：同一 x，纵向依次排开。
     expect(box(layout, 'a').x).toBe(box(layout, 'a2').x);
     expect(box(layout, 'a2').y).toBe(box(layout, 'a').y + DAG_NODE_H + DAG_V_GAP);
     // 高列比它高「一个盒高 + 一个间隙」，它因此下移这差值的一半。
-    expect(box(layout, 'b').y).toBe(DAG_PAD + (DAG_NODE_H + DAG_V_GAP) / 2);
-    expect(layout.height).toBe(DAG_PAD * 2 + 2 * DAG_NODE_H + DAG_V_GAP);
+    expect(box(layout, 'b').y).toBe(DAG_PAD + DAG_STAGE_HEAD + (DAG_NODE_H + DAG_V_GAP) / 2);
+    expect(layout.height).toBe(
+      DAG_PAD * 2 + DAG_STAGE_HEAD + 2 * DAG_NODE_H + DAG_V_GAP + DAG_STAGE_PAD
+    );
   });
 
   // 边也转了：父节点右中 → 中点 x 折两次 → 子节点左中，四个坐标对。
@@ -608,6 +756,10 @@ describe('DAG_COPY_KEYS', () => {
       dirLabel: 'dag.dir.label',
       dirVertical: 'dag.dir.vertical',
       dirHorizontal: 'dag.dir.horizontal',
+      // 阶段带标签（`DagGraphView.tsx` 经 `stageHeadline` 取值）同理。
+      stagePlan: 'dag.stage.plan',
+      stageExec: 'dag.stage.exec',
+      stagePost: 'dag.stage.post',
     });
   });
 });
@@ -719,5 +871,18 @@ describe('DAG worktree contract', () => {
     expect(source).toContain("copy('dag.worktree.state.merged')");
     expect(source).toContain("copy('dag.worktree.state.conflict')");
     expect(source).toContain("copy('dag.worktree.state.removed')");
+  });
+});
+
+// 阶段带同样活在 `.tsx` 里：这里的字面量就是「布局给出带、视图照它画、表头走字典」的接线守卫。
+describe('DAG stage-band contract', () => {
+  it('draws the bands the layout reports, with the styled headline', () => {
+    const source = clientSource();
+    expect(source).toContain('layout.bands');
+    expect(source).toContain('dagStageStyle');
+    expect(source).toContain('DAG_STAGE_LABEL');
+    expect(source).toContain('stageHeadline');
+    // 新枚举值的节点标签：`phaseLabel` 的 switch 是穷尽的，字面量必须落在源码里。
+    expect(source).toContain("copy('dag.phase.post')");
   });
 });

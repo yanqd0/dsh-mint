@@ -98,6 +98,11 @@ export const ZH = {
   'dag.verdict.fail': 'fail',
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
+  'dag.phase.post': 'post',
+  // 阶段带的表头：这是本地化文案（不是枚举值），故两侧不同词。
+  'dag.stage.plan': '计划阶段',
+  'dag.stage.exec': '执行阶段',
+  'dag.stage.post': '收尾阶段',
   'dag.tokens': '{tokens} tokens',
   // 宿主自己实测出来的值；上面的 `dag.tokens` 是宿主测不到子代理时的退路，标记用来
   // 把两者区分开。
@@ -224,6 +229,10 @@ export const EN = {
   'dag.verdict.fail': 'fail',
   'dag.phase.research': 'research',
   'dag.phase.exec': 'exec',
+  'dag.phase.post': 'post',
+  'dag.stage.plan': 'Plan stage',
+  'dag.stage.exec': 'Execution stage',
+  'dag.stage.post': 'Post stage',
   'dag.tokens': '{tokens} tokens',
   'dag.liveTokens': '{tokens} tokens (measured)',
   'dag.seconds': 's',
@@ -262,7 +271,7 @@ export const EN = {
  * `mint` 是品牌，`Issue` / `Plan` / `Milestone` 是 mint 的核心概念：无论当前是哪种
  * locale，面板都用英文称呼它们（这些概念词在中文句子里也照样是英文，例如 `所属 plan`）。
  * DAG tab 又添了两组：tab 自己的名字（它就是 plan 的名字），以及节点携带的枚举值——
- * `pending` / `running` / `done`、`pass` / `fail`、`research` / `exec` 都是 mint 的
+ * `pending` / `running` / `done`、`pass` / `fail`、`research` / `exec` / `post` 都是 mint 的
  * 词汇，改名的 tooltip 会与读者刚调用过的工具对不上；worktree 状态
  * （`active` / `merged` / `conflict` / `removed`）出于同样理由入列。`copy.test.ts` 双向
  * 断言这份名单，所以「保留英文」是被检查过的决定，而不是随手。
@@ -283,6 +292,7 @@ export const KEPT_IN_ENGLISH: readonly CopyKey[] = [
   'dag.verdict.fail',
   'dag.phase.research',
   'dag.phase.exec',
+  'dag.phase.post',
   'dag.worktree.state.active',
   'dag.worktree.state.merged',
   'dag.worktree.state.conflict',

@@ -13,10 +13,25 @@ import type { MintDagPayload } from '../shared/records.js';
 import { NodeMetricsLine, NodeTooltip } from './NodeCard.js';
 import { StateNotice } from './StateNotice.js';
 import type { DagDirection } from './dag-model.js';
-import { dagCounts, dagTone, isRunning, layoutDag } from './dag-model.js';
+import {
+  DAG_STAGE_PAD,
+  dagCounts,
+  dagTone,
+  isRunning,
+  layoutDag,
+  stageHeadline,
+} from './dag-model.js';
 import { sampleMetrics } from './dag-sampler.js';
 import type { LoadState } from './model.js';
-import { DAG_CANVAS, DAG_NODE_LABEL, DAG_RUNNING_CLASS, NOTE, dagNodeStyle } from './styles.js';
+import {
+  DAG_CANVAS,
+  DAG_NODE_LABEL,
+  DAG_RUNNING_CLASS,
+  DAG_STAGE_LABEL,
+  NOTE,
+  dagNodeStyle,
+  dagStageStyle,
+} from './styles.js';
 import type { MintBodyProps } from './types.js';
 
 const TICK_MS = 1000;
@@ -124,6 +139,22 @@ export function DagGraphView({ copy, state, active, direction }: DagGraphViewPro
           role="img"
           aria-label={copy('dag.type.label')}
         >
+          {/* 阶段带先画：它是背景分区，边与节点都落在带里。 */}
+          {layout.bands.map((band) => (
+            <g key={band.phase}>
+              <rect
+                x={band.x}
+                y={band.y}
+                width={band.w}
+                height={band.h}
+                rx={8}
+                style={dagStageStyle()}
+              />
+              <text x={band.x + DAG_STAGE_PAD} y={band.y + 12} style={DAG_STAGE_LABEL}>
+                {stageHeadline(copy, band.phase, band.count)}
+              </text>
+            </g>
+          ))}
           {layout.edges.map((edge) => (
             <polyline
               key={`${edge.from}->${edge.to}`}
