@@ -307,6 +307,27 @@ export const DAG_NODE_LABEL: CSSProperties = {
 };
 
 /**
+ * 阶段带的外框：虚线、极淡填充，好让读者看见分区而不把它误认成一个巨大的节点。
+ *
+ * 填充是把它自己那一层压到 35% 透明上，带框因此在明暗两种主题下都只是一层薄纱。
+ */
+export function dagStageStyle(): CSSProperties {
+  return {
+    fill: 'color-mix(in srgb, var(--dsw-alias-bg-layer-2) 35%, transparent)',
+    stroke: 'var(--dsw-alias-border-l2)',
+    strokeWidth: 1,
+    strokeDasharray: '4 4',
+  };
+}
+
+/** 阶段带左上角的表头：比节点标签小一号、次色，读起来是框的一部分而不是一个节点。 */
+export const DAG_STAGE_LABEL: CSSProperties = {
+  fill: 'var(--dsw-alias-label-secondary)',
+  fontSize: 11,
+  fontFamily: 'inherit',
+};
+
+/**
  * 节点的第二行：实测指标对，比标签小一号。
  *
  * 它继承标签的字体，让节点读起来是一整块文字；字号小到两个数字连同单位都塞得进 104px 的

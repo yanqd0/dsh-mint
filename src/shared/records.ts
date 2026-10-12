@@ -169,7 +169,7 @@ export type MintResponse<T extends { ok: true }> = T | MintFailurePayload;
  * （`src/dag.ts`）在 {@link DagView} 之上另加自己的归属字段。
  */
 
-export type DagPhase = 'research' | 'exec';
+export type DagPhase = 'research' | 'exec' | 'post';
 
 export type DagStatus = 'pending' | 'running' | 'done';
 

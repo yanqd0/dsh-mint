@@ -54,7 +54,11 @@ export const AGENT_ID_MAX = 128;
 
 export const DOC_TITLE_MAX = 200;
 
-export const DAG_PHASES: readonly DagPhase[] = ['research', 'exec'];
+/**
+ * 阶段取值，**数组顺序即阶段顺序（计划 → 执行 → 收尾）**：面板据此自上而下画阶段带，
+ * 故这里不是一份无序集合，改动顺序就是改动画面。
+ */
+export const DAG_PHASES: readonly DagPhase[] = ['research', 'exec', 'post'];
 export const DAG_STATUSES: readonly DagStatus[] = ['pending', 'running', 'done'];
 export const DAG_VERDICTS: readonly DagVerdict[] = ['pass', 'fail'];
 
