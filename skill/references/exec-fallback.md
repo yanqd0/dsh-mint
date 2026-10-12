@@ -55,9 +55,10 @@ UT，main 按 issue 顺序 merge（`parallel-exec.md` §1、`worktree-exec.md` �
 
 ### 3.1 worktree 不可用 → 共享工作区
 
-- 子代理照旧**逐个派发**（一步一节点，**不并行**）；也可以 main 亲自依次执行（伪 DAG）。批次表
-  （`parallel-exec.md` §1）**仍然有效**：谁和谁可以并行的判据没变，变的只是执行方式；子代理照旧只改
-  白名单内的文件。
+- 子代理照旧**逐个派发**（一步一节点，**不并行**）；**仅当委派不可能**（宿主 `subagent.maxDepth = 0`，
+  即委派被禁用）时才由 main 亲自依次执行，否则无论单批还是单节点都仍然逐个派子代理
+  （`parallel-exec.md` §1）。批次表（`parallel-exec.md` §1）**仍然有效**：谁和谁可以并行的判据没变，
+  变的只是执行方式；子代理照旧只改白名单内的文件。
 - git 与一切 mint 写归 main：逐 issue `git add -- <白名单>` → commit → `state commit --sha`。
 - 节点内 UT 由子代理在**主工作树**内跑**同一批文件**（命令形式见 `worktree-exec.md` §2）。
 - 降级时**不许并行派发**（失去隔离后并行会互相污染，正是 worktree 要避免的事）。

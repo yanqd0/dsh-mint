@@ -77,3 +77,5 @@
   skill 不重复这些内容，只写流程与纪律。
 - 注入在 **agent 创建**时挂到该 agent 的 ctx 上（宿主事件 `agent/created`；`agent/session-start`
   是 0.2.x 不存在的旧名，只作兼容回退）；**子代理会话不注入**（它继承 `mint` 工具即可）。
+- 进计划模式的**一次性**提示走 `tools/post-execute`（`PLAN_ENTRY_HINT`，每会话一次，子代理跳过；
+  判据 = 会话投影 `plan.active === true`）：它是**软信号**，只提示不拦，判据读不到就沉默。

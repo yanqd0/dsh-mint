@@ -45,6 +45,7 @@
 | `exit_plan_mode` 门禁（`planbind.ts`） | 项目里有没有已拆解的 mint plan                        | 拦（deny） |
 | 工具结果补登记提示                     | 本会话零 mint 写就离开计划模式                        | 提示       |
 | 概览条件行                             | 非工具退出（`/plan off`、GUI 切换）同一条提示，一次性 | 提示       |
+| 进计划模式入口提示                     | 本会话的执行形态（谁执行、什么节奏）                  | 提示       |
 
 - 门禁看到的是**项目级**事实，无法判断「这个 plan 是不是本次工作的」；那正是软信号存在的理由。
 - 两者都不判断工作质量：策略只保证「有记录 + 可见」，不保证「计划得好」。
@@ -66,18 +67,19 @@
 
 ## 7. 边界表：什么被强制、什么只是提示
 
-| 规则                                                 | 强度                          |
-| ---------------------------------------------------- | ----------------------------- |
-| 改码前 `state start`、commit 后 `state commit --sha` | 强制（CLI 状态机）            |
-| 计划模式退出前必须有已拆解的 mint plan               | 强制（插件 deny）             |
-| 同 milestone 同时最多一个 running plan               | 强制（插件 deny）             |
-| 非计划模式调 `exit_plan_mode`                        | 强制（插件 deny，不跑 mint）  |
-| 同 plan 统一测试后 `plan close`                      | 强制（CLI：test 才能 close）  |
-| 当前 plan 的 issue 在开工点锁 `planned`              | 流程要求（skill 口径）        |
-| 登记别处的新 issue / 建议保持 `open`                 | 流程要求（skill 口径）        |
-| 本会话零写离开计划模式 → 补登记提示                  | 软信号（提示不拦）            |
-| 宿主 todo 同步                                       | 提醒 + skill 口径（模型执行） |
-| 无 running milestone                                 | 必须问用户，不得自行置位      |
+| 规则                                                 | 强度                           |
+| ---------------------------------------------------- | ------------------------------ |
+| 改码前 `state start`、commit 后 `state commit --sha` | 强制（CLI 状态机）             |
+| 计划模式退出前必须有已拆解的 mint plan               | 强制（插件 deny）              |
+| 同 milestone 同时最多一个 running plan               | 强制（插件 deny）              |
+| 非计划模式调 `exit_plan_mode`                        | 强制（插件 deny，不跑 mint）   |
+| 同 plan 统一测试后 `plan close`                      | 强制（CLI：test 才能 close）   |
+| 当前 plan 的 issue 在开工点锁 `planned`              | 流程要求（skill 口径）         |
+| 登记别处的新 issue / 建议保持 `open`                 | 流程要求（skill 口径）         |
+| 本会话零写离开计划模式 → 补登记提示                  | 软信号（提示不拦）             |
+| 宿主 todo 同步                                       | 提醒 + skill 口径（模型执行）  |
+| 无 running milestone                                 | 必须问用户，不得自行置位       |
+| 进计划模式后的默认执行形态提示                       | 软信号（提示不拦，每会话一次） |
 
 ## 8. 变更要点
 
@@ -86,3 +88,4 @@
 - running 守卫｜软信号｜进度可见
 - 同 milestone 至多一个 running plan（分桶）｜非计划模式下的 `exit_plan_mode`
 - 建 plan 保持 `open`（开工点条件式：确实要开工才 `plan plan`）
+- 进计划模式一次性提示｜「谁执行」单一口径（SKILL.md 门禁 + parallel-exec 触发词 + exec-fallback 收敛）
