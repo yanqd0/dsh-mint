@@ -41,7 +41,7 @@ export function sampleOf(payload: ReadSampleInput): ReadSample {
   return { revision: payload.revision, sampledAt: payload.sampled_at, metrics: payload.metrics };
 }
 
-/** 子代理树的读数没有 revision（数据不落盘），也无法据锚点老化。 */
+/** 子代理树的读数与 DAG 同形：`revision` 来自落盘的兜底快照（live 读数缺省为 0），但没有可据以老化的采样锚点。 */
 export type DagSample = ReadSample;
 
 /**

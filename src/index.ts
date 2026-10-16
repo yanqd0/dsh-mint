@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { installApprovalGate } from './mint/approval-gate.js';
 import { installOverviewChannel } from './host/context.js';
 import { installCrossProjectGate } from './mint/cross-project-gate.js';
+import { installAgentTreeCapture } from './dag/agent-tree/agent-tree-capture.js';
 import { installDagLifecycle } from './dag/dag-lifecycle.js';
 import { installDagPlanReminder } from './dag/dag-plan-reminder.js';
 import { installDagTool } from './dag/dag-tool.js';
@@ -110,6 +111,9 @@ export function apply(ctx: DshContext, config: Config): void {
   // 是两套词汇，`list` 更是仓库级问题（不读 DAG），所以 schema、描述与执行器都独立。
   installWorktreeTool(ctx);
   installDagLifecycle(ctx);
+  // 与 DAG 生命周期并列装在这里，**不经** `installMintRoutes`：那条在 `ctx.inject(['webServer'])`
+  // 里，headless/ACP 这样的组合会整块跳过，而子代理树快照本就该与面板在不在无关。
+  installAgentTreeCapture(ctx);
   // A closed plan is the last moment anyone looks at the DAG, so leftover
   // worktrees get named once instead of staying on disk unwatched.
   installWorktreeSweep(ctx);
