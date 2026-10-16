@@ -13,13 +13,18 @@
 
 ## 2. 三条数据真源（各自独立，不可混用）
 
-| 问题     | 真源                                                                                                                                   | 为什么是它                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
-| 谁是谁   | 父会话自己的 `subagentCatalog` 会话投影：`[{id, createdAt, mode, label?}]`，**只列直接子级**                                           | 它是**父会话日志里的持久事实**，所以子代理结束、会话离开注册表之后，树形与标签仍然读得到；`label` 就是派发时的 description，不必再问别处 |
-| 活不活   | `ctx.agents.get(id)?.status === 'running'`（Agent 上直接可读；`'idle' \| 'running'`）                                                  | catalog 是历史，存活度是此刻；宿主自己也是这么答的（`@deepseek-ai/dsh-client-ui-subagent` 的目录下拉读的就是它）                         |
-| 花了多少 | `ctx.sessionProjections.stateOf(session, key)`：`tokenUsage`（四桶 + `last`）、**`contextPressure`**、`subagentTiming`、`sessionStats` | 与本仓 DAG 的 `dag-metrics.ts` 同一条读法；**同步、内存、按会话惰性 fold**                                                               |
+| 问题     | 真源                                                                                                                                                                                             | 为什么是它                                                                                                                               |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 谁是谁   | 父会话自己的 `subagentCatalog` 会话投影的 **wire view**（`projections.snapshot(session, ['subagentCatalog'])` 的 `values.subagentCatalog`）：`[{id, createdAt, mode, label?}]`，**只列直接子级** | 它是**父会话日志里的持久事实**，所以子代理结束、会话离开注册表之后，树形与标签仍然读得到；`label` 就是派发时的 description，不必再问别处 |
+| 活不活   | `ctx.agents.get(id)?.status === 'running'`（Agent 上直接可读；`'idle' \| 'running'`）                                                                                                            | catalog 是历史，存活度是此刻；宿主自己也是这么答的（`@deepseek-ai/dsh-client-ui-subagent` 的目录下拉读的就是它）                         |
+| 花了多少 | `ctx.sessionProjections.stateOf(session, key)`：`tokenUsage`（四桶 + `last`）、**`contextPressure`**、`subagentTiming`、`sessionStats`                                                           | 与本仓 DAG 的 `dag-metrics.ts` 同一条读法；这些 unit **没有 `wire` 段，state 即 view**；**同步、内存、按会话惰性 fold**                  |
 
-读取路径是**同步**的（`stateOf`），不是宿主自带的 `listChildren`/`listDescendants`——后者走
+两条读法各走各的口：**树的形状与标签**走 `subagentCatalog` 的 **wire view**
+（`projections.snapshot(session, ['subagentCatalog'])` 的 `values.subagentCatalog`）——宿主 `stateOf`
+只给投影 **state**（catalog 的 state 是 `{inheritedEventCount, head}`），拿它当 catalog 读会永远答
+「没有子级」，所以**不做 `stateOf` 回落**，`snapshot` 缺失即没有子级；**读数**（`tokenUsage` /
+`contextPressure` / `subagentTiming` / `sessionStats`）仍走 `stateOf`——这些 unit 没有 `wire` 段，
+state 即 view。两条都是**同步**的内存读法，不是宿主自带的 `listChildren`/`listDescendants`——后者走
 `sessionQuery.observeSession`（异步观察 + 释放），对本面板 2s 一次的轮询来说过重。代价是
 「子代理的 catalog 只有在那个会话对象还在手上时读得到」，这正是下面第 4 节的边界。
 
@@ -81,7 +86,7 @@
 
 - 形状是**扁平数组 + `parent`**（不是嵌套树）：客户端要按行排版，嵌套结构只会把「父缺失」
   「id 重复」这类坏数据的处理塞进序列化里。
-- `warnings` 只在非空时出现；**根不在册、服务缺失、`stateOf` 抛错都是空树**，不是 404 也不是 500。
+- `warnings` 只在非空时出现；**根不在册、服务缺失、`snapshot` 缺失或抛错都是空树**，不是 404 也不是 500。
 - **护栏**：`visited` 去重（防坏 catalog 的环）、`mode` 未知即丢、深度 ≤ 8、节点 ≤ 200；一个分支
   抛错只丢它自己。
 - **live 优先、快照兜底**（两个方向各是三段之一）：
@@ -153,7 +158,7 @@
 
 | 层             | 文件                                                                                                                                                                                                                                                                                                          |
 | -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 宿主读树       | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；纯同步、无 I/O、无 `node:`）                                                                                                                                                                                                                          |
+| 宿主读树       | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；树的形状读 `subagentCatalog` 的 wire view（`snapshot`），读数读 `stateOf`；纯同步、无 I/O、无 `node:`）                                                                                                                                               |
 | 宿主快照文件层 | `src/dag/agent-tree/agent-tree-store.ts`（原子写 + 按会话锁 + 三态读）、`src/dag/agent-tree/internal/parse-doc.ts`（文档校验）                                                                                                                                                                                |
 | 宿主快照写入   | `src/host/routes/internal/agent-snapshot.ts`（「值不值得写」的判据 + 落盘）                                                                                                                                                                                                                                   |
 | 宿主事件抓拍   | `src/dag/agent-tree/agent-tree-capture.ts`（`subagent/start` / `subagent/end` → 链上逐会话 `collectAgentTree` → `flushAgentSnapshot`）                                                                                                                                                                        |

@@ -3,14 +3,19 @@
  *
  * 三件事分别有各自的真源，本模块只负责把它们对齐到同一个 id 上：
  *
- * - **谁是谁** —— 父会话自己的 `subagentCatalog` 会话投影（`[{id, createdAt, mode, label?}]`，
- *   只列**直接**子级）。它是**持久事实**（写在父会话日志里），所以子代理结束、会话离开注册表
- *   之后，树形与标签仍然读得到；这也正是「不靠遍历活会话猜父子」的原因。
+ * - **谁是谁** —— 父会话自己的 `subagentCatalog` 会话投影的 **wire view**（经
+ *   `projections.snapshot(session, ['subagentCatalog'])` 的 `values.subagentCatalog` 读，
+ *   形状 `[{id, createdAt, mode, label?}]`，只列**直接**子级）。它是**持久事实**（写在父会话日志里），
+ *   所以子代理结束、会话离开注册表之后，树形与标签仍然读得到；这也正是「不靠遍历活会话猜父子」的原因。
+ *   坑：`stateOf` 给的是投影 **state**（catalog 的 state 是 `{inheritedEventCount, head}`），不是
+ *   catalog 数组——拿它当子级读只会永远答「没有子级」，所以本模块**不做 `stateOf` 回落**。
  * - **活不活** —— `ctx.agents.get(id)?.status === 'running'`（宿主自己的答案），退
  *   `ctx.sessions.get(id)` 的存在性。catalog 是历史事实，存活度是此刻的事实，两者刻意分开。
- * - **花了多少** —— 复用 `dag-metrics.ts` 的 `nodeMetrics`：四桶、上下文占用、步数、时长。
+ * - **花了多少** —— 复用 `dag-metrics.ts` 的 `nodeMetrics`：四桶、上下文占用、步数、时长。它读的
+ *   `tokenUsage` / `contextPressure` / `subagentTiming` / `sessionStats` 都没有 `wire` 段，**state
+ *   即 view**，所以那条路继续走 `stateOf` 是对的。
  *
- * 全模块**同步、无 I/O**：数据都在宿主内存里，按请求现读；一个坏分支（`stateOf` 抛错、
+ * 全模块**同步、无 I/O**：数据都在宿主内存里，按请求现读；一个坏分支（`snapshot` 缺失或抛错、
  * catalog 形状漂移）只丢它自己的子树，绝不带走整棵树——与 `nodeMetrics` 的既有纪律相同。
  */
 import { nodeMetrics } from '../dag-metrics.js';
@@ -140,8 +145,9 @@ function isRunning(id: string, input: CollectAgentTreeInput): boolean {
 /**
  * 读一个会话的直接子级。
  *
- * `subagentCatalog` 未注册、形状不对或 `stateOf` 抛错都答「没有子级」：树少一层远好过整条
- * 路由 500。`mode === 'unknown'` 的条目**按宿主自己的语义**不画（`listDescendants` 把它报成
+ * 只认 wire view：`snapshot` 缺失、不是函数、`subagentCatalog` 未注册、形状不对或抛错，都答
+ * 「没有子级」——树少一层远好过整条路由 500。**不回落 `stateOf`**：那里是投影 state，不是
+ * catalog 数组。`mode === 'unknown'` 的条目**按宿主自己的语义**不画（`listDescendants` 把它报成
  * `unsupported`）：那样的条目连 one-shot / continuable 都还没确定，没有可展示的身份。
  */
 function childrenOf(
@@ -151,7 +157,11 @@ function childrenOf(
   if (input.projections === undefined) return { children: [], unsupported: 0 };
   let raw: unknown;
   try {
-    raw = input.projections.stateOf(session, 'subagentCatalog');
+    const snapshot = input.projections.snapshot?.(session, ['subagentCatalog']);
+    if (!isRecord(snapshot)) return { children: [], unsupported: 0 };
+    const values = snapshot['values'];
+    if (!isRecord(values)) return { children: [], unsupported: 0 };
+    raw = values['subagentCatalog'];
   } catch {
     return { children: [], unsupported: 0 };
   }

@@ -264,6 +264,11 @@ export interface AgentCwdLike {
 export interface SessionProjectionsLike {
   /** One unit's live host state; `undefined` when the key is not registered. */
   stateOf(session: unknown, key: string): unknown;
+  /**
+   * wire view 取数口：答 `{asOfSeq, values}`，`values[key]` 是过 `viewSchema` 的 wire view；
+   * unit 未定义 `wire` 段时不出现（那时 `stateOf` 的 state 就是 view）。缺失即该宿主读不到 wire 投影。
+   */
+  snapshot?(session: unknown, keys?: readonly string[]): unknown;
 }
 
 /** Subset of the host's `ctx.agents` service. */

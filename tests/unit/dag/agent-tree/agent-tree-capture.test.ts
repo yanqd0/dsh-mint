@@ -102,11 +102,20 @@ function harness(dir: string): Harness {
         return { get: (id: string) => (parents.has(id) ? session(id) : undefined) };
       }
       if (name === 'sessionProjections') {
+        const idOf = (value: unknown): string => (value as { id?: string }).id ?? '';
+        // 按真实宿主的两半给料：`stateOf` 只答投影 **state**（`{inheritedEventCount, head}`），
+        // 树的形状在 `snapshot` 的 wire view 里；两半都给，实现回头读 stateOf 就会读不出子级。
         return {
           stateOf: (value: unknown, key: string): unknown =>
             key === 'subagentCatalog'
-              ? catalogs.get((value as { id?: string }).id ?? '')
+              ? { inheritedEventCount: catalogs.get(idOf(value))?.length ?? 0 }
               : undefined,
+          snapshot: (value: unknown, keys?: readonly string[]): unknown => ({
+            asOfSeq: 1,
+            values: (keys ?? []).includes('subagentCatalog')
+              ? { subagentCatalog: catalogs.get(idOf(value)) }
+              : {},
+          }),
         };
       }
       return undefined;

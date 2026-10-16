@@ -69,7 +69,27 @@ function tree(input: {
         return { ...own, ...(status === undefined ? {} : { status }) };
       },
     },
-    projections: { stateOf: (s, key) => (key === 'subagentCatalog' ? catalogs.get(s) : undefined) },
+    // 按真实宿主的两半给料：`stateOf` 只答投影 **state**（`{inheritedEventCount, head}`，head 是
+    // 最近一条的 `childId`/`childCreatedAt`），树的形状在 `snapshot` 的 wire view 里。两半都给，
+    // 于是「实现有没有回头读 stateOf」在每条形状用例上都能被证伪。
+    projections: {
+      stateOf: (s, key) => {
+        if (key !== 'subagentCatalog') return undefined;
+        const children = catalogs.get(s) ?? [];
+        return {
+          inheritedEventCount: children.length,
+          ...(children.length === 0
+            ? {}
+            : { head: { childId: 'state-head', childCreatedAt: 7, mode: 'one-shot' } }),
+        };
+      },
+      snapshot: (s, keys) => ({
+        asOfSeq: 1,
+        values: (keys ?? []).includes('subagentCatalog')
+          ? { subagentCatalog: catalogs.get(s) }
+          : {},
+      }),
+    },
   };
 }
 
@@ -246,17 +266,63 @@ describe('collectAgentTree', () => {
     });
   });
 
-  it('degrades to the root alone when the catalog key is not registered', () => {
+  // 反面用例：wire view 读不到就没有子级——四种坏输入各自定位（缺 `snapshot` 端口 / `values` 里
+  // 没这个键 / 值不是数组 / `stateOf` 那边放着像 catalog 的数组），**绝不回落 `stateOf`**。
+  const noWireView: Array<[string, SessionProjectionsLike]> = [
+    ['a missing snapshot port', { stateOf: () => undefined }],
+    [
+      'a snapshot without the catalog value',
+      { stateOf: () => undefined, snapshot: () => ({ asOfSeq: 1, values: {} }) },
+    ],
+    [
+      'a catalog value that is not an array',
+      {
+        stateOf: () => undefined,
+        snapshot: () => ({ asOfSeq: 1, values: { subagentCatalog: { inheritedEventCount: 1 } } }),
+      },
+    ],
+    [
+      'a stateOf that looks like a catalog',
+      { stateOf: () => [{ id: 'child-1', mode: 'one-shot', label: 'stateOf 里的' }] },
+    ],
+  ];
+
+  it.each(noWireView)('answers the root alone with %s', (_case, projections) => {
     const read = collectAgentTree(
-      input(tree({ parents: { [ROOT]: undefined } }), {
-        projections: { stateOf: () => undefined },
-      })
+      input(
+        tree({
+          parents: { [ROOT]: undefined, 'child-1': ROOT },
+          catalogs: { [ROOT]: [{ id: 'child-1', mode: 'one-shot', label: '读不到的' }] },
+        }),
+        { projections }
+      )
     );
-    expect(read.nodes).toHaveLength(1);
+    expect(read.nodes.map((node) => node.id)).toEqual([ROOT]);
     expect(read.counts.unsupported).toBe(0);
   });
 
-  // 一个坏分支（`stateOf` 抛错）只丢它自己：根照旧、兄弟照旧，绝不带走整棵树。
+  // 反面用例：`stateOf` 答的是投影 state（`{inheritedEventCount, head}`），把它当 catalog 读正是
+  // 这次误读的来源——即使 fixture 里有真 catalog，没有 wire view 就必须答「没有子级」。
+  it('never takes the projection state for the catalog', () => {
+    const fixture = tree({
+      parents: { [ROOT]: undefined, 'child-1': ROOT },
+      catalogs: { [ROOT]: [{ id: 'child-1', mode: 'one-shot', label: '真子级' }] },
+    });
+    const read = collectAgentTree(
+      input(fixture, {
+        projections: {
+          stateOf: () => ({
+            inheritedEventCount: 1,
+            head: { childId: 'child-1', childCreatedAt: 7, mode: 'one-shot' },
+          }),
+        },
+      })
+    );
+    expect(read.nodes.map((node) => node.id)).toEqual([ROOT]);
+    expect(read.counts).toEqual({ total: 1, running: 0, unsupported: 0 });
+  });
+
+  // 一个坏分支（`snapshot` 抛错）只丢它自己：根照旧、兄弟照旧，绝不带走整棵树。
   it('loses only the branch whose catalog read throws', () => {
     const fixture = tree({
       parents: { [ROOT]: undefined, bad: ROOT, good: ROOT },
@@ -267,14 +333,14 @@ describe('collectAgentTree', () => {
         ],
       },
     });
-    const bad = fixture.sessions.get('bad');
+    const bad = fixture.sessions.get('bad')?.session;
     const read = collectAgentTree(
       input(fixture, {
         projections: {
-          stateOf: (s, key) => {
-            if (key !== 'subagentCatalog') return undefined;
+          stateOf: (s, key) => fixture.projections.stateOf(s, key),
+          snapshot: (s, keys) => {
             if (s === bad) throw new Error('unknown session');
-            return fixture.projections.stateOf(s, key);
+            return fixture.projections.snapshot?.(s, keys);
           },
         },
       })
@@ -316,8 +382,8 @@ describe('collectAgentTree', () => {
   });
 
   // 上下文/时长等读数来自 `nodeMetrics`：这里只钉「main 不发 token 计数、子级发」，
-  // 四桶与降级的细节由 dag-metrics 自己的用例守。catalog 仍由 fixture 提供，投影服务
-  // 只在其余键上补料——树的形状与读数是两条独立的读。
+  // 四桶与降级的细节由 dag-metrics 自己的用例守。树的形状仍从 fixture 的 wire view 取，
+  // 投影服务只在读数那几把键上补料——树的形状与读数是两条独立的读。
   it('withholds token counts for main but publishes them for a subagent', () => {
     const usage = {
       totals: {
@@ -341,6 +407,7 @@ describe('collectAgentTree', () => {
             if (key === 'subagentTiming') return { settledMs: 42 };
             return fixture.projections.stateOf(s, key);
           },
+          snapshot: (s, keys) => fixture.projections.snapshot?.(s, keys),
         },
       })
     );
