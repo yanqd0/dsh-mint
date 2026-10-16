@@ -249,8 +249,8 @@ export function createMintHandler(
       // 树的读取是尽力而为：一个注册表塌了也不能把 200 变成 500（面板宁可画空树）。
       read = { nodes: [], counts: { total: 0, running: 0, unsupported: 0 } };
     }
-    // 活着的服务答得出东西，就以它为准；这也是快照的唯一写入时机——快照只能取自真实读数，
-    // 绝不能把上一次的旧树再写回去变成新的旧树。
+    // 活着的服务答得出东西，就以它为准；另一处写入来源见 `src/dag/agent-tree/agent-tree-capture.ts`
+    // 的宿主子代理起止事件抓拍——快照只能取自真实读数，绝不能把上一次的旧树再写回去变成新的旧树。
     if (read.nodes.length > 0) {
       await flushAgentSnapshot({ sessionId, read, dir: agentsDir, sampledMs });
       sendJson(res, 200, {

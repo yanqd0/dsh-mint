@@ -96,8 +96,18 @@
 
 ### 4.1 快照文档（`/tmp/mint/agents/<sessionId>.json`）
 
-- **写入时机＝面板轮询**（与 DAG 的 `samples` 同形态）：路由每次拿到**非空**实时树就顺手写一份；
-  空树**绝不**写（它什么都没答，写下去只会把上一次好快照抹掉）。
+- **两个写入来源，共用同一份判据**：① **面板轮询**该路由（与 DAG 的 `samples` 同形态）：每次拿到
+  **非空**实时树就顺手写一份；② **宿主生命周期事件抓拍**：`src/dag/agent-tree/agent-tree-capture.ts`
+  监听 `subagent/start` / `subagent/end`，对抓拍链上每个会话 `collectAgentTree` → `flushAgentSnapshot`
+  （在 `src/index.ts` 与 `installDagLifecycle` 并列装配，**不经** `installMintRoutes`，所以面板不在的
+  headless/ACP 组合也照旧抓拍）。
+  两来源落在**同一个** `flushAgentSnapshot` 上，所以「值不值得写」只有一处口径：空树**绝不**写（它
+  什么都没答，写下去只会把上一次好快照抹掉）。
+- **抓拍链＝链上每个会话各写一份**：从事件里的子代理会话沿 `parentSession` 上溯的**全部可读祖先**，
+  **不含子代理自己**（面板读的是父会话的树，子代理那张图是它的下一层）；注册表答不出下一跳就停，
+  非法 id 跳过不写但**继续上溯**，`MAX_CAPTURE_HOPS = 16` 只用来切断坏注册表里的环。链里**根会话
+  必然在内**：一级委派的直接父就是根，两级委派拿到 `[中间, 根]`。整条链共用事件到达时现读的同一个
+  `sampledMs`，几份文档的 `sampled_at` 说的是同一时刻。
 - 形状 `{ version: 1, session, revision, sampled_at, nodes }`：`revision` 从 1 起、只在**树真的变了**
   时才前进，`sampled_at` 存**这次读数的宿主钟**（不是写盘那一刻）。
 - 「变没变」的判据排除 `elapsed_ms`：时长只增不减，把它算进来等于每次轮询都写盘。判据实现在
@@ -127,9 +137,13 @@
 
 ## 6. 已知限制
 
-- **只有被观测过才留痕**：快照的唯一来源是面板轮询。整段会话都没开过 DAG 面板（或面板一直停在
-  Nodes 视图、从未切到 Subagents）时，路由不会被请求，也就没有快照——事后仍然是空树。这与 DAG 的
-  `samples` 是同一条边界（见 [plan-dag.md](plan-dag.md) §7.6），不是本视图特有的缺口。
+- **起止两点一定留痕，中间读数仍靠观测**：宿主生命周期事件（`subagent/start` / `subagent/end`）会给
+  链上每个会话写快照，**与面板开没开无关**——一次委派的头（挂上）与尾（结束）必定有文档。但**子代理
+  运行期间**的中间读数仍只在面板轮询到该视图时落盘：整段没开过 DAG 面板（或面板一直停在 Nodes
+  视图、从未切到 Subagents）时，只有起止两点可看，看不到中途的 token / 步数变化（这是本轮明确保留的
+  边界）。与 DAG 的 `samples` 对照（见 [plan-dag.md](plan-dag.md) §7.6）：那边**没有起样本**——
+  子代理挂上那一刻的读数不落盘；尾样本由 `set → done` 与 `subagent/end` 两条收尾路径写（与面板开没开
+  无关），只有**运行期间的连续读数**才依赖面板轮询。本视图比它多「起点」这一路，缺的只剩中间的连续读数。
 - **快照一律按已结束画**：会话结束后的那棵树里没有任何东西还在跑，故路由把 `running` 全部改成
   `false`；读者看到的是「最后一棵树的形状与读数」，不是一个仍在推进的现状。
 - **`sessionQuery` 那条路没走**：宿主自己能用 `observeSession` 读到已经归档的会话 catalog；本插件
@@ -137,16 +151,17 @@
 
 ## 7. 落点与测试
 
-| 层             | 文件                                                                                                                                                                                                                                                  |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 宿主读树       | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；纯同步、无 I/O、无 `node:`）                                                                                                                                                                  |
-| 宿主快照文件层 | `src/dag/agent-tree/agent-tree-store.ts`（原子写 + 按会话锁 + 三态读）、`src/dag/agent-tree/internal/parse-doc.ts`（文档校验）                                                                                                                        |
-| 宿主快照写入   | `src/host/routes/internal/agent-snapshot.ts`（「值不值得写」的判据 + 落盘）                                                                                                                                                                           |
-| 宿主路由       | `src/host/routes/internal/mint-handler.ts` 的 `sendAgents` + `readAgentTree` / `agentsDir` 缝；路由名在 `src/shared/route-paths.ts`                                                                                                                   |
-| 线格式         | `src/shared/records.ts` 的 `AgentNodeView` / `MintAgentsPayload`（`revision` / `file` / `stale` 三处增量）；`DagNodeMetrics` 加 `context`                                                                                                             |
-| 客户端纯逻辑   | `src/client/agent-tree-model.ts`（行/排版/单元格/摘要）、`src/client/dag-sampler.ts` 的 `agentSampleOf`                                                                                                                                               |
-| 客户端视图     | `src/client/DagBody.tsx`（容器 + 两处切换 + stale 说明）、`DagGraphView.tsx`、`AgentTreeBody.tsx`                                                                                                                                                     |
-| 测试           | `tests/unit/dag/agent-tree/{agent-tree,agent-tree-store}.test.ts`、`tests/unit/host/routes.test.ts`（子代理树路由组）、`tests/unit/host/routes/internal/agent-snapshot.test.ts`、`tests/unit/client/{agent-tree-model,dag-sampler,api,index}.test.ts` |
+| 层             | 文件                                                                                                                                                                                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 宿主读树       | `src/dag/agent-tree/agent-tree.ts`（`collectAgentTree`；纯同步、无 I/O、无 `node:`）                                                                                                                                                                                                                          |
+| 宿主快照文件层 | `src/dag/agent-tree/agent-tree-store.ts`（原子写 + 按会话锁 + 三态读）、`src/dag/agent-tree/internal/parse-doc.ts`（文档校验）                                                                                                                                                                                |
+| 宿主快照写入   | `src/host/routes/internal/agent-snapshot.ts`（「值不值得写」的判据 + 落盘）                                                                                                                                                                                                                                   |
+| 宿主事件抓拍   | `src/dag/agent-tree/agent-tree-capture.ts`（`subagent/start` / `subagent/end` → 链上逐会话 `collectAgentTree` → `flushAgentSnapshot`）                                                                                                                                                                        |
+| 宿主路由       | `src/host/routes/internal/mint-handler.ts` 的 `sendAgents` + `readAgentTree` / `agentsDir` 缝；路由名在 `src/shared/route-paths.ts`                                                                                                                                                                           |
+| 线格式         | `src/shared/records.ts` 的 `AgentNodeView` / `MintAgentsPayload`（`revision` / `file` / `stale` 三处增量）；`DagNodeMetrics` 加 `context`                                                                                                                                                                     |
+| 客户端纯逻辑   | `src/client/agent-tree-model.ts`（行/排版/单元格/摘要）、`src/client/dag-sampler.ts` 的 `agentSampleOf`                                                                                                                                                                                                       |
+| 客户端视图     | `src/client/DagBody.tsx`（容器 + 两处切换 + stale 说明）、`DagGraphView.tsx`、`AgentTreeBody.tsx`                                                                                                                                                                                                             |
+| 测试           | `tests/unit/dag/agent-tree/{agent-tree,agent-tree-store}.test.ts`、`tests/unit/dag/agent-tree/agent-tree-capture.test.ts`、`tests/unit/host/routes.test.ts`（子代理树路由组）、`tests/unit/host/routes/internal/agent-snapshot.test.ts`、`tests/unit/client/{agent-tree-model,dag-sampler,api,index}.test.ts` |
 
 ## 8. 实测
 
@@ -161,3 +176,10 @@
 - **待重启复核（人眼）**：面板内的两处 `SegmentedControl`、树的缩进与肘线、running 行的脉动、
   token 黄 / 时长紫在两个主题下的可读性、hover 卡片、以及**快照兜底**那一行说明（把会话结束后重开
   面板当作一次人工用例：应当看到「会话已结束，显示 …」+ 最后一棵树，且没有任何脉动）。
+- **本轮（2026-10-16）**：口径同步，无逻辑改动（`notes/agent-tree.md` 的 §4.1 / §6 / §7 表 / §8 本条、
+  `notes/memory.md` 的索引行、`src/AGENTS.md` 模块 tree 一行，以及
+  `src/host/routes/internal/mint-handler.ts` 的一处过期注释）；本节历史数字未改。节点 UT
+  `node node_modules/vitest/vitest.mjs run tests/unit/dag/agent-tree/agent-tree-capture.test.ts`
+  → 1 file / 9 tests passed（7 个 `it`，非法 id 用 `it.each` 3 例）。收口全量
+  （`pnpm lint && pnpm check-types && pnpm test:coverage && pnpm build`）由 main 在 plan 收口时跑，
+  本节不记全量数字。

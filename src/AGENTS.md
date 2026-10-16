@@ -24,7 +24,7 @@ src/                                       # 宿主半边（TS）+ 客户端半�
 ├── dag/                                   # 依赖 shared + mint，并反向接 host
 │   ├── dag.ts                             # DAG 数据层公开面（只再导出 dag/ 的实现）
 │   ├── dag/internal/                      # 按职责拆分：model / validate / parse-action / parse-doc / write / graph
-│   ├── agent-tree/                        # 子代理树：读父会话的 subagentCatalog 投影 + 注册表 + 会话投影；agent-tree-store.ts 是它的快照文件层（/tmp/mint/agents，与 dag-store 同形态）
+│   ├── agent-tree/                        # 子代理树：读父会话的 subagentCatalog 投影 + 注册表 + 会话投影；agent-tree-store.ts 是它的快照文件层（/tmp/mint/agents，与 dag-store 同形态）；agent-tree-capture.ts 是宿主子代理起止事件的抓拍（subagent/start|end → 链上逐会话写快照）
 │   ├── dag-store.ts / dag-lifecycle.ts    # /tmp 文档读写与锁 / 子代理起止配对
 │   ├── dag-tool.ts / worktree-tool.ts     # mint_plan_dag 与 worktree 两个宿主工具
 │   └── ...                                # metrics / plan-reminder / worktree-sweep
