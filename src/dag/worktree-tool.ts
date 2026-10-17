@@ -422,9 +422,15 @@ export async function executeWorktreeTool(
   if (!outcome.ok) return refusal(outcome.error);
   await persist(outcome.worktree);
   const note = outcome.note === undefined ? '' : ` · ${outcome.note}`;
+  // 只有 create 追加派活提醒：子代理默认 cwd 是主工作树（不是刚建好的树），漏带 workdir 就会改错地方；
+  // remove 的回答保持原样，避免既有回执形态被这条提醒污染。
+  const reminder =
+    parsed.action === 'create'
+      ? '；派活时要求子代理所有命令显式带 workdir=该树路径（子代理默认 cwd 是主工作树）'
+      : '';
   return answer(
     `${parsed.action} ${target.id} → ${outcome.worktree.state} · ${outcome.worktree.branch} · ` +
-      `${outcome.worktree.path}${note}`
+      `${outcome.worktree.path}${note}${reminder}`
   );
 }
 

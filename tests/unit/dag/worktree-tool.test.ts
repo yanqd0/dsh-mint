@@ -400,6 +400,9 @@ describe('executeWorktreeTool', () => {
     expect(outcome.ok).toBe(true);
     expect(outcome.summary).toContain('[worktree] create a1 → active');
     expect(outcome.summary).toContain(`dsh-mint/wt/${SESSION}/a1`);
+    // 子代理默认 cwd 是主工作树：create 的回答必须带出「显式带 workdir」这条派活纪律，
+    // 否则那棵树建好也不会被用上（子代理仍在主工作树里改）。
+    expect(outcome.summary).toContain('显式带 workdir');
 
     const stored = await node();
     expect(stored?.worktree?.state).toBe('active');
@@ -499,6 +502,8 @@ describe('executeWorktreeTool', () => {
     const forced = await runWorktree({ action: 'remove', node: 'a1', force: true });
     expect(forced.ok).toBe(true);
     expect(forced.summary).toContain('[worktree] remove a1 → removed');
+    // 反向钉住：派活提醒只属于 create，remove 的回答形态一字不变。
+    expect(forced.summary).not.toContain('显式带 workdir');
     expect((await node())?.worktree?.state).toBe('removed');
   });
 
