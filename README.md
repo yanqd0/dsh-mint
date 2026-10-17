@@ -37,8 +37,10 @@ plan always has a mint plan behind it.
   running (pulsing) and settled nodes, each showing the token count and elapsed
   time the host measures from the child session itself (kept as a dated sample
   once the child is gone), with the full title and the conclusion text on hover. The graph is split into
-  three stacked **stage bands** — plan, execution, post — each a labelled subgraph
-  (`<stage> · <node count>`), so nodes of different stages never share a row. It opens itself as soon as a DAG exists for the
+  three **stage bands** — plan, execution, post — each a labelled subgraph
+  (`<stage> · <node count>`); the default direction stacks them top-down and can be switched to
+  left-right, laying the three bands side by side. Nodes of different stages never share a row or
+  column. It opens itself as soon as a DAG exists for the
   session, and a running node's time ticks while it is on screen. The panel also
   switches to a **Subagents** view of the same session: the sub-agent tree (at
   most two levels), one line per agent with its delegation label, whether it is
