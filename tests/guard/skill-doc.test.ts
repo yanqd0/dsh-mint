@@ -202,6 +202,9 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
       // 固定头必须自带本仓口径（注释语言等）才不用收口返工；bash 输出要收窄。
       '本项目口径清单',
       'bash 只回吐事实行',
+      // 工作目录纪律的唯一落点：子代理默认 cwd 是主工作树，固定头必须要求所有
+      // 命令显式带 `workdir`（worktree 批次 = 树路径），否则树建好也照样改错地方。
+      '显式带 `workdir`',
     ],
   ],
   // The fallback is deliberately **not** on the default path: it holds what to
@@ -225,7 +228,22 @@ const HOME_MARKERS: ReadonlyArray<readonly [string, readonly string[]]> = [
   // A dev/test pair shares **one** tree: `create`/`merge`/`remove` all name the
   // dev node, and both nodes may be `running` at once (the dev subagent
   // dispatches its own test child). A second tree would break the pairing.
-  ['references/worktree-exec.md', ['dev/test 节点对只建一棵树', '两节点可同时 `running`']],
+  // Tree-side operations are the other half: dependencies are really installed
+  // in the tree (never symlinked from the main repo — the package manager then
+  // rewrites the *main* repo's top-level links by the tree's depth), the
+  // project's own commit hook implicitly installs via `verifyDepsBeforeRun`,
+  // and a path containing `.git/` trips `server.fs.deny`. Pinning them keeps
+  // the silent-corruption route from coming back.
+  [
+    'references/worktree-exec.md',
+    [
+      'dev/test 节点对只建一棵树',
+      '两节点可同时 `running`',
+      '树内真装',
+      'verifyDepsBeforeRun',
+      'server.fs.deny',
+    ],
+  ],
   // cross-project registration carries its source, and the tool gate is
   // one confirmation per session and target project — not per call. A subagent
   // has no approval channel at all, so a decision it hits travels back in its

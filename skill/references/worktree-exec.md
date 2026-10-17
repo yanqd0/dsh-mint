@@ -28,20 +28,31 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 
 - **worktree 里不跑重命令**：`build` / `test:coverage` / 全量 `lint` / `check-types` / 重启 harness
   是全仓级资源竞争源，一律归主 agent 在主工作树、**merge 之后**串行跑。
-- **装依赖不再是「worktree 装不了」**：需要时主 agent 用宿主 `pnpm` 工具把 `cwd` 指向该树跑
-  `pnpm install --frozen-lockfile` 即可——树在 `<repo>/.git/` 内、仍属会话工作区，不触发越界确认；
-  全局虚拟存储（`virtualStoreType: global`）下实测 **172ms**、`node_modules` **1.3M**、与主树
-  `node_modules/zod/package.json` **同 inode**，依赖链入口（`mint-faa`）在该树内直接可用。
-  **bash 里装依赖仍必然失败**（沙箱 + 显式 `storeDir` 关掉了项目内回退）：出路是工具，不是回避 worktree。
-- **允许：节点内 UT**。子代理**在自己的 worktree 内**跑**该节点相关的 UT**——用**主仓的 vitest 二进制**，
-  在该 worktree 目录内执行 `node <repo>/node_modules/vitest/vitest.mjs run <该节点的测试文件…>`
-  （或 `<repo>/node_modules/.bin/vitest run …`）；配置取该 worktree 里的 `vitest.config.ts`。
-  可行是因为 worktree 落在 `<repo>/.git/dsh-mint/worktrees/<session 短标识>/<node>`，从它沿目录向上
-  就能走到 `<repo>/node_modules`；万一在某台机器上解析不到，退路是上一条（用宿主 `pnpm` 工具在该树内
-  装一次），或在树内 `ln -s <repo>/node_modules node_modules`（该树位于 `.git` 内，这个 symlink
-  不会出现在 `git status` 里）。
-  **为什么现在允许**：UT 贴着本次改动，成本低（只跑指定文件、秒级），能在 merge **之前**挡住红；
+- **装依赖一律在树内真装**：用宿主 `pnpm` 工具把 `cwd` 指向该树的**依赖落点**（看 lockfile 的位置
+  ——仓根，或子包如 `frontend/`）跑 `pnpm install --frozen-lockfile`（全局虚拟存储下实测秒级）。
+  **禁止**用 `ln -s` 把主仓（或主仓某个子包）的 `node_modules` 接进树内：软链目标会被包管理器当成
+  自己的顶层目录、按**树的目录深度**重写顶层链接，主仓依赖当场悬空；树内 commit 触发的项目 hook 里
+  的隐式安装（`pnpm` 的 `verifyDepsBeforeRun`，默认开启）正是触发点。树内若已有指向主仓的软链，
+  先删掉再装。bash 里装依赖仍必然失败（沙箱 + 显式 `storeDir`）：出路是工具，不是回避 worktree。
+- **允许：节点内 UT**（两条起手路，按依赖落点二选一）：仓根有 `node_modules` → 用主仓 vitest 二进制
+  （在该树目录内执行 `node <repo>/node_modules/vitest/vitest.mjs run <该节点的测试文件…>`，
+  从树内沿目录向上能走到 `<repo>/node_modules`）；依赖落在子包 / 仓根没有 `node_modules`
+  （monorepo 子包布局）→ 用上一条在树内装出来的 `<node_modules>/.bin/vitest`，或用宿主 `pnpm` 工具
+  把 `cwd` 指向树内包目录跑 `pnpm exec vitest run <文件…>`。配置取该 worktree 里的配置。
+  **为什么允许**：UT 贴着本次改动，成本低（只跑指定文件、秒级），能在 merge **之前**挡住红；
   真正吃资源的是上面那批重命令，它们与收口全量仍归主 agent。
+- **树内 commit 会跑项目自带 hook**：树内 `git commit` 会触发项目 hook（`.githooks/pre-commit`、
+  `core.hooksPath`），hook 里的 `pnpm exec` / `pnpm run` 在 `verifyDepsBeforeRun` 开启时会隐式安装
+  → 树内依赖必须先按第一条**真装**（**不要**软链）；若该仓 hook 在树内必然跑不起来，才用
+  `git commit --no-verify`，并把它写进回执，由主 agent 在收口全量里补上该 hook 对应的检查
+  （**默认不跳 hook**）。
+- **树路径含 `.git/` 的路径陷阱（撞到才处理，不预防性改配置）**：`vite`/`vitest` 的
+  `server.fs.deny` 默认含 `**/.git/**`，会把项目根挡在服务白名单外（症状如
+  `Cannot find module '/tests/setup.ts'`、0 test 执行；注意 `test.server.fs` 是无效位置、要放顶层
+  `server.fs`）；`unplugin-vue-components` / `unplugin-auto-import` 的 exclude 默认含 `.git`
+  （组件解析失败、自动导入静默失效）；`prettier` 对含 `.git/` 的路径可能报 `No matching files`
+  或静默返回原文。出路：把放宽写进**树内测试配置**（正常 checkout 路径不含 `.git/`，放宽无副作用），
+  或改用树内绝对路径 / `--config`。
 
 ## 3. 全流程（工具形态）
 
@@ -68,6 +79,8 @@ plan 常在功能分支上执行，worktree 就从那个分支的 HEAD 切出，
 2. **派活（一批的活一起跑，但派发按「一步一节点」串行）**：提示词五段不变（`parallel-exec.md` §3），
    **必须写明该节点自己的 worktree 路径**，并写明「在本 worktree 内 `git add` / `git commit`」。
    漏写路径 = 子代理在主工作树上改，隔离失效。路径等**变体槽排在逐字固定头之后**。
+   子代理默认 cwd 是**主工作树**：提示词必须要求它所有命令显式带 `workdir`=该树路径，
+   read/write/edit 用树内绝对路径（口径见 `parallel-exec.md` §3.3）。
 3. **子代理在自己的 worktree 内 commit**（dev/test 对里只有 **dev 子代理**做；test 子代理只读、不 commit）：
    - 允许：在**其 worktree 内** `git add` / `git commit`；commit message 用 **Angular 前缀 + 中文描述**，
      **不带任何 mint ID**——issue↔commit 关联由主 agent 收口时 `state commit --sha` 登记（§3 步骤 6）。
