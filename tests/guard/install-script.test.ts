@@ -14,7 +14,9 @@ import { spawnSync } from 'node:child_process';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-const SCRIPT = join(process.cwd(), 'scripts', 'install-dsh.sh');
+import { repoPath } from '../helpers/repo.js';
+
+const SCRIPT = repoPath('scripts', 'install-dsh.sh');
 
 /** Every scratch root this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];

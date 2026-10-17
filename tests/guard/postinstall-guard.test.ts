@@ -5,7 +5,9 @@ import { spawnSync } from 'node:child_process';
 
 import { afterAll, describe, expect, it } from 'vitest';
 
-const GUARD = join(process.cwd(), 'scripts', 'install-skill-postinstall.mjs');
+import { repoPath } from '../helpers/repo.js';
+
+const GUARD = repoPath('scripts', 'install-skill-postinstall.mjs');
 
 /** Every scratch directory this file creates, removed again in `afterAll`. */
 const scratchDirs: string[] = [];

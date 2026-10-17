@@ -123,9 +123,10 @@ describe('describeMintEntry', () => {
   });
 
   it('names the dependency by version even when the probe path is not the store path', () => {
-    expect(
-      describeMintEntry(join(process.cwd(), 'node_modules', 'mint-faa', 'run-mint.js'))
-    ).toMatch(/^mint-faa@\d/);
+    // 目的：不依赖 cwd 也能点名依赖版本（worktree 树内 cwd 就是那棵树，树里没有 node_modules，
+    // 旧写法的 realpath 必然失败 → 与改动无关的假红）。
+    // 手法：用生产解析器取真实的链接路径——包根探测与 require.resolve 兜底都与 cwd 无关。
+    expect(describeMintEntry(resolveDependencyEntry())).toMatch(/^mint-faa@\d/);
   });
 
   // 全局虚拟存储把版本放进目录段（`mint-faa/0.8.0/<hash>/`）而不是 `@` 后缀，标签仍要点名版本。
