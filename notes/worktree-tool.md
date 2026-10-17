@@ -27,6 +27,9 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 - 输出前缀 `[worktree] `；拒绝一律 `[worktree] 拒绝：<可行动文案>`。
 - 返回值只给摘要（单棵 1–3 行；仓库级的 `list`/`prune` 最多 20 行 + 一行计数），
   不回灌全图、不贴 git 全量输出。
+- `create` 的回答在分支与路径之后还带一句「派活时要求子代理所有命令显式带 `workdir`=该树路径
+  （子代理默认 cwd 是主工作树）」——树建好但派活漏写 `workdir`，子代理仍会在主工作树里改；
+  `remove` 的回答**不带**这句（单测反向钉住），既有回执形态不变。
 
 参数与动作（`parseWorktreeAction` 校验，非法组合给明确拒绝）：
 
@@ -192,7 +195,7 @@ worktree 动作原先挂在 `mint_plan_dag` 的 `action:"wt"` / `action:"merge"`
 | 会话身份 | `src/shared/session-id.ts`（`sessionIdOf` / `rootSession` / `resolveToolOwner`，两个工具共用）                                                                                                     |
 | 挂载     | `src/index.ts`（`installWorktreeTool(ctx)` 在 `installDagTool(ctx)` 旁）                                                                                                                           |
 | 收尾提醒 | `src/dag/dag-worktree-sweep.ts`（`plan close` 后点名还在盘上的树，说明**保留现场** + 下一个开工点的 `prune`）                                                                                      |
-| skill    | `skill/references/worktree-exec.md`（唯一一份操作指南；保留现场与开工点清理见 §7）                                                                                                                 |
+| skill    | `skill/references/worktree-exec.md`（**默认执行形态**的操作指南；何时不用与各类阻塞的降级流程见 `exec-fallback.md`，保留现场与开工点清理见 §7）                                                    |
 
 测试：
 
