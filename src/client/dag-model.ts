@@ -27,7 +27,7 @@ export const DAG_STAGE_HEAD = 18;
 /** 阶段带的左右与底部留白：节点不贴框，带与内容之间留出呼吸。 */
 export const DAG_STAGE_PAD = 10;
 
-/** 相邻两条阶段带之间的垂直间隙。 */
+/** 相邻阶段带间隙（竖排纵向 / 横排横向）。 */
 export const DAG_STAGE_GAP = 20;
 
 /** 图层推进的方向（横排 = 整张图转 90°）：默认自上而下。 */
@@ -187,11 +187,12 @@ function stageGroups(view: DagView): Array<{ phase: string; nodes: DagNodeView[]
 }
 
 /**
- * 布局一张 DAG：**先按阶段分区、带内再按依赖分层**。
+ * 布局一张 DAG：**先按阶段分区、带内再按依赖分层**。默认带自上而下；横排 = 整张图转 90°
+ * （带左右并排、公共带高、层号→列、层内节点纵向排列并居中）。
  *
- * 默认自上而下：阶段带按计划 → 执行 → 收尾从上往下排，带内分层逐层向下、层内节点从左到右
- * 并整体居中；`horizontal` 则把整张图转 90°——阶段带仍自上而下，带内分层逐层向右、层内节点
- * 自上而下并居中，连线从父节点右中走到子节点左中。
+ * 竖排：阶段带按计划 → 执行 → 收尾从上往下排，带内分层逐层向下、层内节点从左到右并整体居中。
+ * 横排：阶段带沿 x 从前往后排，带宽只由本带内容决定，带高取各带内容的极值（公共带高，故各带同高），
+ * 带内分层逐层向右、层内节点自上而下并在公共带高里居中，连线从父节点右中走到子节点左中。
  *
  * 分层复用宿主自己的 `dagLayers`，它容忍环与悬空引用而不抛错——手改坏的文件必须画出一张错的
  * 图，绝不能是空白面板。分层在**每一带内部**做，故不同阶段的节点绝不共行共列；跨阶段的边照画
@@ -218,40 +219,45 @@ export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): 
   });
 
   const maxContentW = Math.max(0, ...laid.map((stage) => stage.contentW));
-  // 带框至少容得下一个盒子，故空文档仍是最小画幅；空文档不带、高度为 0，两条分支在此汇合。
-  const inner = Math.max(DAG_NODE_W, maxContentW + 2 * DAG_STAGE_PAD);
-  const width = laid.length === 0 ? DAG_NODE_W : inner;
-  let height = 0;
-  for (const stage of laid) height += DAG_STAGE_HEAD + stage.contentH + DAG_STAGE_PAD;
-  height += DAG_STAGE_GAP * Math.max(0, laid.length - 1);
+  // 竖排各带同宽（取内容极值 + 两侧留白，至少容得下一个盒子）；横排各带同高（公共带高）。
+  const innerW = Math.max(DAG_NODE_W, maxContentW + 2 * DAG_STAGE_PAD);
+  const innerH = Math.max(DAG_NODE_H, Math.max(0, ...laid.map((stage) => stage.contentH)));
+  const bandH = DAG_STAGE_HEAD + innerH + DAG_STAGE_PAD;
 
   const boxes: DagBox[] = [];
   const at = new Map<string, DagBox>();
   const bands: DagStageBand[] = [];
+  // `cursor` 是竖排的带顶 / 横排的带左；`span` 累计竖排总高、横排总宽。
   let cursor = DAG_PAD;
+  let span = 0;
 
   for (const { group, layers, contentW, contentH } of laid) {
     const band: DagStageBand = {
       phase: group.phase,
-      x: DAG_PAD,
-      y: cursor,
-      w: inner,
-      h: DAG_STAGE_HEAD + contentH + DAG_STAGE_PAD,
+      x: direction === 'horizontal' ? cursor : DAG_PAD,
+      y: direction === 'horizontal' ? DAG_PAD : cursor,
+      w: direction === 'horizontal' ? contentW + 2 * DAG_STAGE_PAD : innerW,
+      h: direction === 'horizontal' ? bandH : DAG_STAGE_HEAD + contentH + DAG_STAGE_PAD,
       count: group.nodes.length,
     };
     bands.push(band);
-    cursor += band.h + DAG_STAGE_GAP;
+    cursor += (direction === 'horizontal' ? band.w : band.h) + DAG_STAGE_GAP;
+    span += direction === 'horizontal' ? band.w : band.h;
 
-    // 内容在带内居中：居中范围从整幅画布收窄到这一带的标签条以下。
-    const innerW = band.w - 2 * DAG_STAGE_PAD;
-    const left = band.x + DAG_STAGE_PAD + (innerW - contentW) / 2;
-    const top = band.y + DAG_STAGE_HEAD;
+    // 内容在带内居中：竖排按带宽收窄左右留白，横排按公共带高上下居中。
+    const left =
+      direction === 'horizontal'
+        ? band.x + DAG_STAGE_PAD
+        : band.x + DAG_STAGE_PAD + (band.w - 2 * DAG_STAGE_PAD - contentW) / 2;
 
     for (let level = 0; level < layers.length; level += 1) {
       const layer = layers[level];
       if (layer === undefined || layer.length === 0) continue;
-      // 横排里单节点列因此垂直居中于带内内容区，与竖排里单节点行水平居中对齐。
-      const lineHeight = columnHeight(layer.length);
+      // 横排里单节点列因此垂直居中于公共带高，与竖排里单节点行水平居中对齐。
+      const top =
+        direction === 'horizontal'
+          ? band.y + DAG_STAGE_HEAD + (innerH - columnHeight(layer.length)) / 2
+          : band.y + DAG_STAGE_HEAD;
       layer.forEach((id, column) => {
         const box: DagBox = {
           id,
@@ -261,7 +267,7 @@ export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): 
               : left + column * (DAG_NODE_W + DAG_H_GAP),
           y:
             direction === 'horizontal'
-              ? top + (contentH - lineHeight) / 2 + column * (DAG_NODE_H + DAG_V_GAP)
+              ? top + column * (DAG_NODE_H + DAG_V_GAP)
               : top + level * (DAG_NODE_H + DAG_V_GAP),
           w: DAG_NODE_W,
           h: DAG_NODE_H,
@@ -271,6 +277,11 @@ export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): 
       });
     }
   }
+
+  // 空文档不带：竖排退成一条最小带宽、横排退成零高，两者都靠 DAG_PAD 撑出最小画幅。
+  span += DAG_STAGE_GAP * Math.max(0, laid.length - 1);
+  const frameW = laid.length === 0 ? DAG_NODE_W : direction === 'horizontal' ? span : innerW;
+  const frameH = laid.length === 0 ? 0 : direction === 'horizontal' ? bandH : span;
 
   const edges: DagEdgeLine[] = [];
   for (const [from, to] of parentEdges(view)) {
@@ -304,8 +315,8 @@ export function layoutDag(view: DagView, direction: DagDirection = 'vertical'): 
   }
 
   return {
-    width: DAG_PAD * 2 + width,
-    height: DAG_PAD * 2 + height,
+    width: DAG_PAD * 2 + frameW,
+    height: DAG_PAD * 2 + frameH,
     boxes,
     edges,
     bands,

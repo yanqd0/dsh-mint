@@ -292,7 +292,7 @@ describe('layoutDag stage bands', () => {
     }
   });
 
-  // 两条带各占一段互不相交的 y 区间；带内一条链的两个节点共 y、逐层向右（横排口径）。
+  // 两条带各占一段互不相交的 x 区间（同 y、逐带右移）；带内一条链的两个节点共 y、逐层向右（横排口径）。
   it('keeps horizontal bands apart and the rows inside one aligned', () => {
     const layout = layoutDag(
       view([
@@ -305,7 +305,8 @@ describe('layoutDag stage bands', () => {
     const [first, second] = layout.bands;
     if (first === undefined || second === undefined) throw new Error('expected two bands');
     expect(first.phase).toBe('research');
-    expect(first.y + first.h).toBeLessThanOrEqual(second.y);
+    expect(second.y).toBe(first.y);
+    expect(second.x).toBe(first.x + first.w + DAG_STAGE_GAP);
     expect(box(layout, 'e2').y).toBe(box(layout, 'e1').y);
     expect(box(layout, 'e2').x).toBe(box(layout, 'e1').x + DAG_NODE_W + DAG_H_GAP);
     // 同层（同一列）的两个节点共 x、纵向依次排开。
@@ -414,6 +415,59 @@ describe('horizontal layout', () => {
     expect(layout.height).toBe(
       DAG_PAD * 2 + DAG_STAGE_HEAD + 2 * DAG_NODE_H + DAG_V_GAP + DAG_STAGE_PAD
     );
+  });
+
+  // 横排是整张图转 90°：带宽只由本带内容决定、带高取公共带高，画幅按各带宽度相加而不是取极值。
+  // 传两条带（各一列/两列），断言带矩形、盒坐标与画幅的具体数值。
+  it('turns the whole graph so the bands sit side by side', () => {
+    const layout = layoutDag(
+      view([
+        node('r', { phase: 'research' }),
+        node('e1', { phase: 'exec' }),
+        node('e2', { phase: 'exec', depends_on: ['e1'] }),
+      ]),
+      'horizontal'
+    );
+    expect(layout.bands).toEqual([
+      { phase: 'research', x: 12, y: 12, w: 124, h: 72, count: 1 },
+      { phase: 'exec', x: 156, y: 12, w: 244, h: 72, count: 2 },
+    ]);
+    expect(box(layout, 'r')).toEqual({ id: 'r', x: 22, y: 30, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect(box(layout, 'e1')).toEqual({ id: 'e1', x: 166, y: 30, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect(box(layout, 'e2')).toEqual({ id: 'e2', x: 286, y: 30, w: DAG_NODE_W, h: DAG_NODE_H });
+    expect([layout.width, layout.height]).toEqual([412, 96]);
+  });
+
+  // 公共带高取各带内容极值：并行三兄弟把执行带撑高，另两条带跟着同高、各自的单个节点仍居中。
+  // 传三带（并行层 + 收尾依赖），断言三带同高、并行层纵向排开、画幅宽大于高。
+  it('gives every band the tallest content and stacks the parallel layer', () => {
+    const layout = layoutDag(
+      view([
+        node('r1', { phase: 'research' }),
+        node('e1', { phase: 'exec', depends_on: ['r1'] }),
+        node('e2', { phase: 'exec', depends_on: ['r1'] }),
+        node('e3', { phase: 'exec', depends_on: ['r1'] }),
+        node('p1', { phase: 'post', depends_on: ['e1'] }),
+      ]),
+      'horizontal'
+    );
+    expect(layout.bands.map((band) => [band.x, band.y, band.w, band.h])).toEqual([
+      [12, 12, 124, 252],
+      [156, 12, 124, 252],
+      [300, 12, 124, 252],
+    ]);
+    expect(box(layout, 'e1').x).toBe(box(layout, 'e3').x);
+    expect(box(layout, 'e1').x).toBe(166);
+    expect([box(layout, 'e1').y, box(layout, 'e2').y, box(layout, 'e3').y]).toEqual([30, 120, 210]);
+    expect([layout.width, layout.height]).toEqual([436, 276]);
+    expect(layout.width).toBeGreaterThan(layout.height);
+  });
+
+  // 空文档没有带：横排退回竖排同一条最小画幅，零高度靠 DAG_PAD 撑出边框。
+  it('falls back to the minimal frame when the document is empty', () => {
+    const layout = layoutDag(view([]), 'horizontal');
+    expect(layout.bands).toEqual([]);
+    expect([layout.width, layout.height]).toEqual([2 * DAG_PAD + DAG_NODE_W, 2 * DAG_PAD]);
   });
 
   // 边也转了：父节点右中 → 中点 x 折两次 → 子节点左中，四个坐标对。
