@@ -30,8 +30,9 @@ import type { GitRunResult } from '../../../src/shared/git.js';
  * repo under the OS temp dir: create → commit in the worktree → merge → remove,
  * plus the two refusals that matter (an unknown base, an unmerged removal).
  *
- * `git` is invoked with `-c user.*` in the setup only, so the repo needs no
- * global identity and the suite leaves nothing behind outside its temp dir.
+ * Setup commits pass `-c user.*`, but the merge commits are made by the
+ * production module, which cannot inject that flag: the identity has to live in
+ * the repo config, or the suite fails on any machine without a global one.
  */
 const SESSION = 'sess1234';
 
@@ -144,6 +145,9 @@ function fakeGit(
 beforeEach(() => {
   repo = mkdtempSync(join(tmpdir(), 'dsh-mint-wt-'));
   gitIn(repo, 'init', '-q', '-b', 'main');
+  // merge 由生产模块执行，拿不到 `-c`，只能靠仓内身份，否则无全局身份的机器上必失败。
+  gitIn(repo, 'config', 'user.name', 'dsh-mint test');
+  gitIn(repo, 'config', 'user.email', 'test@example.invalid');
   commitFile(repo, 'README.md', '# fixture\n', 'init');
 });
 
